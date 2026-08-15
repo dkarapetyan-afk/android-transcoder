@@ -1,0 +1,3 @@
+-keep class com.arthenica.ffmpegkit.** { *; }
+-keep class com.arthenica.** { *; }
+-dontwarn com.arthenica.**

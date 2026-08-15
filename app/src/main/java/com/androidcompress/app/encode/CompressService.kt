@@ -1,0 +1,391 @@
+package com.androidcompress.app.encode
+
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.net.Uri
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import com.androidcompress.app.container
+import com.androidcompress.app.data.EncodeEngine
+import com.androidcompress.app.data.EncodeProgress
+import com.androidcompress.app.data.EncodeResult
+import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.JobStatus
+import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.data.SourceVideo
+import com.androidcompress.app.util.Notifications
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.io.File
+
+class CompressService : Service() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var work: Job? = null
+    private var session: EncodeSession? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var cancelAll = false
+    @Volatile private var currentJobId: String? = null
+    @Volatile private var queueTotal = 1
+    @Volatile private var queueIndex = 1
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_CANCEL -> {
+                session?.cancel()
+                return START_NOT_STICKY
+            }
+            ACTION_CANCEL_ALL -> {
+                cancelAll = true
+                session?.cancel()
+                scope.launch { container().jobs.cancelAllQueued() }
+                return START_NOT_STICKY
+            }
+            ACTION_CANCEL_JOB -> {
+                val id = intent.getStringExtra(EXTRA_JOB_ID)
+                if (id != null && id == currentJobId) {
+                    session?.cancel()
+                } else if (id != null) {
+                    scope.launch { container().jobs.cancelQueued(id) }
+                }
+                return START_NOT_STICKY
+            }
+            ACTION_ENQUEUE, ACTION_START -> {
+                val jobId = intent.getStringExtra(EXTRA_JOB_ID)
+                startAsForeground(jobId ?: currentJobId.orEmpty(), 0)
+                if (work?.isActive != true) {
+                    cancelAll = false
+                    work = scope.launch { drain() }
+                }
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private suspend fun drain() {
+        val app = container()
+        acquireWakeLock()
+        try {
+            do {
+                while (!cancelAll) {
+                    val next = app.jobs.nextQueued() ?: break
+                    val active = EncodeQueue.active(app.jobs.listActive())
+                    queueTotal = active.size.coerceAtLeast(1)
+                    queueIndex = EncodeQueue.position(active, next.id).first.coerceAtLeast(1)
+                    runJob(next.id)
+                }
+            } while (!cancelAll && app.jobs.nextQueued() != null)
+        } finally {
+            currentJobId = null
+            app.encodeProgress.update(null)
+            releaseWakeLock()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
+    private suspend fun runJob(jobId: String) {
+        val app = container()
+        val job = app.jobs.get(jobId)
+        if (job == null) return
+        val settings = SettingsJson.decode(job.settingsJson)
+        val sourceUri = Uri.parse(job.sourceUri)
+        val probed = runCatching { app.probe.probe(sourceUri) }.getOrNull()
+        val source = SourceVideo(
+            uri = job.sourceUri,
+            displayName = job.displayName,
+            width = if (job.width > 0) job.width else probed?.width ?: 0,
+            height = if (job.height > 0) job.height else probed?.height ?: 0,
+            durationMs = if (job.durationMs > 0) job.durationMs else probed?.durationMs ?: 0L,
+            bytes = job.sourceBytes,
+            frameRate = probed?.frameRate ?: 30f,
+            audioCodec = probed?.audioCodec,
+            hasAudio = probed?.hasAudio ?: true,
+        )
+        currentJobId = jobId
+        app.jobs.updateStatus(jobId, JobStatus.RUNNING)
+        val output = app.inputs.encodeOutputFile(jobId)
+        output.delete()
+        val log = StringBuilder()
+        log.appendLine("jobId=$jobId")
+        log.appendLine("name=${job.displayName}")
+        log.appendLine("engine=${settings.engine}")
+        log.appendLine("source=${job.sourceUri}")
+        try {
+            if (!app.inputs.hasSpaceFor(job.sourceBytes)) {
+                error("Not enough free storage to compress this video (need about 2× the source size).")
+            }
+            val result = when (settings.engine) {
+                EncodeEngine.MEDIA3 -> runMedia3(jobId, source, settings, sourceUri, output, log)
+                EncodeEngine.FFMPEG -> runFfmpeg(jobId, source, settings, sourceUri, output, log)
+            }
+            when {
+                result.cancelled -> {
+                    output.delete()
+                    log.appendLine("cancelled")
+                    app.jobLogs.write(jobId, log.toString())
+                    app.jobs.updateStatus(jobId, JobStatus.CANCELLED, finished = true)
+                    app.encodeProgress.update(null)
+                }
+                result.success && output.exists() && output.length() > 0 -> {
+                    val published = app.exporter.publish(output, compressedName(job.displayName))
+                    val bytes = output.length()
+                    output.delete()
+                    log.appendLine("published=$published")
+                    app.jobLogs.write(jobId, log.toString())
+                    app.jobs.updateStatus(
+                        id = jobId,
+                        status = JobStatus.SUCCEEDED,
+                        outputUri = published.toString(),
+                        outputBytes = bytes,
+                        finished = true,
+                    )
+                    if (job.deleteSourceAfter) {
+                        val removed = app.sourceDeleter.delete(job.sourceUri, published.toString())
+                        app.jobs.markSourceDeleted(jobId, removed.deleted)
+                    }
+                    app.inputs.deleteImportCopy(jobId)
+                    app.encodeProgress.update(EncodeProgress(jobId, 1f, source.durationMs))
+                }
+                else -> {
+                    output.delete()
+                    app.jobLogs.write(jobId, log.toString())
+                    app.jobs.updateStatus(
+                        jobId,
+                        JobStatus.FAILED,
+                        error = result.error ?: "Compression failed",
+                        finished = true,
+                    )
+                    app.encodeProgress.update(null)
+                }
+            }
+        } catch (t: Throwable) {
+            output.delete()
+            log.appendLine("exception: ${t.message}")
+            log.appendLine(t.stackTraceToString())
+            runCatching { app.jobLogs.write(jobId, log.toString()) }
+            app.jobs.updateStatus(jobId, JobStatus.FAILED, error = t.message ?: "Compression failed", finished = true)
+            app.encodeProgress.update(null)
+        } finally {
+            runCatching { if (app.jobLogs.read(jobId) == null) app.jobLogs.write(jobId, log.toString()) }
+            runCatching { app.history.prune() }
+            currentJobId = null
+            app.inputs.deleteImportCopy(jobId)
+        }
+    }
+
+    private suspend fun runFfmpeg(
+        jobId: String,
+        source: SourceVideo,
+        settings: EncodeSettings,
+        sourceUri: Uri,
+        output: File,
+        log: StringBuilder,
+    ): EncodeResult {
+        val app = container()
+        val ffmpegInput = app.inputs.resolveForFfmpeg(sourceUri, jobId)
+        val caps = app.encoderCapabilities()
+        var plan = FfmpegCommandBuilder.build(ffmpegInput, output.absolutePath, settings, source, caps)
+        if (settings.ffmpegCommandOverride.isNotBlank()) {
+            val args = FfmpegCommandTemplate.materialize(
+                settings.ffmpegCommandOverride,
+                ffmpegInput,
+                output.absolutePath,
+            ).getOrThrow()
+            log.appendLine("using edited command template")
+            return executePlan(jobId, source, plan.copy(args = args), log)
+        }
+        var result = executePlan(jobId, source, plan, log)
+        while (!result.success && !result.cancelled) {
+            val next = FfmpegCommandBuilder.fallbackPlan(
+                plan, ffmpegInput, output.absolutePath, settings, source, caps,
+            ) ?: break
+            log.appendLine("retrying with fallback encoder/pix_fmt")
+            output.delete()
+            plan = next
+            result = executePlan(jobId, source, plan, log)
+        }
+        return result
+    }
+
+    private suspend fun runMedia3(
+        jobId: String,
+        source: SourceVideo,
+        settings: EncodeSettings,
+        sourceUri: Uri,
+        output: File,
+        log: StringBuilder,
+    ): EncodeResult {
+        var spec = Media3EncodePlanner.plan(settings, source)
+        var result = executeMedia3(jobId, source, spec, sourceUri, output, log)
+        val fallback = Media3EncodePlanner.h264Fallback(spec)
+        if (!result.success && !result.cancelled && fallback != null) {
+            log.appendLine("retrying Media3 H.264 fallback")
+            output.delete()
+            spec = fallback
+            result = executeMedia3(jobId, source, spec, sourceUri, output, log)
+        }
+        return result
+    }
+
+    private suspend fun executeMedia3(
+        jobId: String,
+        source: SourceVideo,
+        spec: Media3EncodeSpec,
+        sourceUri: Uri,
+        output: File,
+        log: StringBuilder,
+    ): EncodeResult {
+        log.appendLine("Media3 encoder=${spec.encoderLabel}")
+        val current = container().media3.encode(
+            input = sourceUri,
+            outputPath = output.absolutePath,
+            spec = spec,
+            durationMs = source.durationMs,
+            onStats = { stats ->
+                val fraction = if (source.durationMs > 0) {
+                    (stats.timeMs.toFloat() / source.durationMs).coerceIn(0f, 0.99f)
+                } else {
+                    0f
+                }
+                container().encodeProgress.update(EncodeProgress(jobId, fraction, stats.timeMs, spec.encoderLabel))
+                startAsForeground(jobId, (fraction * 100).toInt())
+            },
+        )
+        session = current
+        val result = current.await()
+        appendResult(log, result)
+        return result
+    }
+
+    private suspend fun executePlan(
+        jobId: String,
+        source: SourceVideo,
+        plan: EncodePlan,
+        log: StringBuilder,
+    ): EncodeResult {
+        log.appendLine("FFmpeg command: ${quoteArgs(plan.args)}")
+        val current = container().ffmpeg.encode(
+            args = plan.args,
+            onLog = { line -> if (line.isNotBlank()) log.appendLine(line) },
+            onStats = { stats ->
+                val fraction = if (source.durationMs > 0) {
+                    (stats.timeMs.toFloat() / source.durationMs).coerceIn(0f, 0.99f)
+                } else {
+                    0f
+                }
+                container().encodeProgress.update(EncodeProgress(jobId, fraction, stats.timeMs))
+                startAsForeground(jobId, (fraction * 100).toInt())
+            },
+        )
+        session = current
+        val result = current.await()
+        appendResult(log, result)
+        return result
+    }
+
+    private fun appendResult(log: StringBuilder, result: EncodeResult) {
+        log.appendLine("success=${result.success} cancelled=${result.cancelled}")
+        result.error?.let { log.appendLine("error=$it") }
+        if (result.logs.isNotBlank()) {
+            log.appendLine("--- engine log ---")
+            log.appendLine(result.logs)
+        }
+    }
+
+    private fun compressedName(original: String): String {
+        val base = original.substringBeforeLast('.').ifBlank { "video" }
+        return "${base}-compressed.mp4"
+    }
+
+    private fun startAsForeground(jobId: String, percent: Int) {
+        val cancel = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, CompressService::class.java).setAction(ACTION_CANCEL),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = Notifications.encoding(this, jobId, percent, queueIndex, queueTotal, cancel)
+        // Do not use ServiceCompat.startForeground here. androidx.core 1.16 masks
+        // FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING (0x2000) to 0, and targetSdk 36
+        // rejects a type-none FGS (Pixel 10 / Android 16 crash).
+        if (Build.VERSION.SDK_INT >= 35) {
+            startForeground(
+                Notifications.ENCODE_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING,
+            )
+        } else if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                Notifications.ENCODE_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+            )
+        } else {
+            startForeground(Notifications.ENCODE_ID, notification)
+        }
+    }
+
+    private fun acquireWakeLock() {
+        val pm = getSystemService(PowerManager::class.java)
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "reccomp:encode").apply {
+            setReferenceCounted(false)
+            acquire(6 * 60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching { wakeLock?.release() }
+        wakeLock = null
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        releaseWakeLock()
+        super.onDestroy()
+    }
+
+    companion object {
+        const val ACTION_START = "com.androidcompress.app.ENCODE_START"
+        const val ACTION_ENQUEUE = "com.androidcompress.app.ENCODE_ENQUEUE"
+        const val ACTION_CANCEL = "com.androidcompress.app.ENCODE_CANCEL"
+        const val ACTION_CANCEL_ALL = "com.androidcompress.app.ENCODE_CANCEL_ALL"
+        const val ACTION_CANCEL_JOB = "com.androidcompress.app.ENCODE_CANCEL_JOB"
+        const val EXTRA_JOB_ID = "jobId"
+
+        fun start(context: Context, jobId: String) = enqueue(context, jobId)
+
+        fun enqueue(context: Context, jobId: String) {
+            val intent = Intent(context, CompressService::class.java)
+                .setAction(ACTION_ENQUEUE)
+                .putExtra(EXTRA_JOB_ID, jobId)
+            context.startForegroundService(intent)
+        }
+
+        fun cancel(context: Context) {
+            context.startService(Intent(context, CompressService::class.java).setAction(ACTION_CANCEL))
+        }
+
+        fun cancelAll(context: Context) {
+            context.startService(Intent(context, CompressService::class.java).setAction(ACTION_CANCEL_ALL))
+        }
+
+        fun cancelJob(context: Context, jobId: String) {
+            context.startService(
+                Intent(context, CompressService::class.java)
+                    .setAction(ACTION_CANCEL_JOB)
+                    .putExtra(EXTRA_JOB_ID, jobId),
+            )
+        }
+    }
+}

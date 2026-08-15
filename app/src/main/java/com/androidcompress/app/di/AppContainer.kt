@@ -1,0 +1,78 @@
+package com.androidcompress.app.di
+
+import android.content.Context
+import com.androidcompress.app.capture.RecordingStore
+import com.androidcompress.app.data.AppDatabase
+import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.data.HistoryJanitor
+import com.androidcompress.app.data.JobRepository
+import com.androidcompress.app.data.PreferencesRepository
+import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.encode.EncodeProgressStore
+import com.androidcompress.app.encode.FfmpegGateway
+import com.androidcompress.app.encode.FfmpegKitGateway
+import com.androidcompress.app.encode.JobLogStore
+import com.androidcompress.app.encode.Media3Transcoder
+import com.androidcompress.app.encode.MediaCodecEncoderCaps
+import com.androidcompress.app.media.InputResolver
+import com.androidcompress.app.media.MediaProbe
+import com.androidcompress.app.media.MediaStoreExporter
+import com.androidcompress.app.media.SourceFileDeleter
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+class AppContainer(context: Context) {
+    private val appContext = context.applicationContext
+    private val db = AppDatabase.create(appContext)
+
+    val jobs = JobRepository(db.jobDao())
+    val prefs = PreferencesRepository(appContext)
+    val probe = MediaProbe(appContext)
+    val inputs = InputResolver(appContext)
+    val exporter = MediaStoreExporter(appContext)
+    val sourceDeleter = SourceFileDeleter(appContext)
+    val ffmpeg: FfmpegGateway = FfmpegKitGateway()
+    val media3 = Media3Transcoder(appContext)
+    val encodeProgress = EncodeProgressStore()
+    val jobLogs = JobLogStore(appContext)
+    val recording = RecordingStore()
+    val history = HistoryJanitor(jobs, jobLogs, inputs)
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        appScope.launch { runCatching { history.prune() } }
+    }
+
+    private val capsMutex = Mutex()
+    @Volatile private var caps: EncoderCapabilities? = null
+
+    suspend fun encoderCapabilities(): EncoderCapabilities {
+        caps?.let { return it }
+        return capsMutex.withLock {
+            caps?.let { return it }
+            val cached = SettingsJson.decodeCaps(prefs.current().encoderCapsJson)
+            if (cached != null) {
+                val device = runCatching { MediaCodecEncoderCaps.detect() }.getOrElse { EncoderCapabilities() }
+                val merged = cached.copy(
+                    hasH264MediaCodec = cached.hasH264MediaCodec || device.hasH264MediaCodec,
+                    hasHevcMediaCodec = cached.hasHevcMediaCodec || device.hasHevcMediaCodec,
+                )
+                caps = merged
+                return merged
+            }
+            val detected = runCatching { ffmpeg.detectEncoders() }.getOrElse { EncoderCapabilities() }
+            prefs.setEncoderCapsJson(SettingsJson.encodeCaps(detected))
+            val device = runCatching { MediaCodecEncoderCaps.detect() }.getOrElse { EncoderCapabilities() }
+            val merged = detected.copy(
+                hasH264MediaCodec = detected.hasH264MediaCodec || device.hasH264MediaCodec,
+                hasHevcMediaCodec = detected.hasHevcMediaCodec || device.hasHevcMediaCodec,
+            )
+            caps = merged
+            merged
+        }
+    }
+}

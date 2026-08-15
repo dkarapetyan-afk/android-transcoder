@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Recording Compressor</string>
+    <string name="notif_record_channel">Screen recording</string>
+    <string name="notif_encode_channel">Video compression</string>
+    <string name="notif_recording">Recording screen</string>
+    <string name="notif_encoding">Compressing video</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_cancel">Cancel</string>
+</resources>

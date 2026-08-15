@@ -1,0 +1,36 @@
+package com.androidcompress.app.util
+
+import java.util.Locale
+import java.util.concurrent.TimeUnit
+
+fun formatBytes(bytes: Long): String {
+    if (bytes < 0) return "—"
+    val units = arrayOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var idx = 0
+    while (value >= 1024 && idx < units.lastIndex) {
+        value /= 1024
+        idx++
+    }
+    val pattern = if (idx == 0) "%.0f %s" else "%.1f %s"
+    return String.format(Locale.US, pattern, value, units[idx])
+}
+
+fun formatDuration(ms: Long): String {
+    if (ms <= 0) return "0:00"
+    val hours = TimeUnit.MILLISECONDS.toHours(ms)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(ms) % 60
+    val seconds = TimeUnit.MILLISECONDS.toSeconds(ms) % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
+    }
+}
+
+fun formatResolution(width: Int, height: Int): String {
+    if (width <= 0 || height <= 0) return "Unknown"
+    return "${width}×$height"
+}
+
+fun even(value: Int): Int = value and 1.inv()

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recording Compressor privacy policy</title>
+</head>
+<body>
+  <h1>Recording Compressor privacy policy</h1>
+  <p>Last updated: 14 August 2026</p>
+  <p>Recording Compressor processes video entirely on your device. The app does not create accounts, does not include advertising or analytics SDKs, and does not send recordings to a server. If you optionally paste a Google Gemini API key and use “Generate extra args,” only the text prompt and encode settings are sent to Google. The video file is not uploaded.</p>
+  <h2>Data the app uses</h2>
+  <ul>
+    <li>Videos you import or record, stored in app cache and, after compression, in <code>Movies/RecordingCompressor</code> on the device.</li>
+    <li>Optional microphone audio, only when you enable microphone capture.</li>
+    <li>Optional internal playback audio (Android 10+), only when you enable internal capture. This uses the same screen-capture consent dialog.</li>
+    <li>Job history (file names, sizes, status) stored locally in an on-device database.</li>
+    <li>If you turn on “Delete original after compress,” the app attempts to remove the source video after the compressed copy is saved. This stays on the device and is never uploaded.</li>
+    <li>Optional Gemini API key, stored locally, used only when you ask Gemini to write extra FFmpeg arguments.</li>
+  </ul>
+  <h2>Permissions</h2>
+  <ul>
+    <li><strong>Internet</strong> — only for the optional Gemini extra-args generator. Encoding and recording stay on-device.</li>
+    <li><strong>Screen capture</strong> — Android MediaProjection consent, requested every recording session.</li>
+    <li><strong>Microphone</strong> — only if you record microphone or internal audio.</li>
+    <li><strong>Notifications</strong> — progress for recording and compression that continue when you leave the app.</li>
+  </ul>
+  <p>The app does not request broad photo or video library access. Imports use the system picker.</p>
+  <h2>Contact</h2>
+  <p>Replace this paragraph with a support email before publishing on Google Play.</p>
+</body>
+</html>
