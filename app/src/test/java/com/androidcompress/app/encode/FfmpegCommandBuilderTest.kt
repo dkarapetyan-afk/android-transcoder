@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
@@ -213,6 +214,56 @@ class FfmpegCommandBuilderTest {
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
         assertFalse(plan.args.contains("other.mp4"))
         assertEquals("out.mp4", plan.args.last())
+    }
+
+    @Test
+    fun audioOnlyDropsVideoAndWritesAac() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(output = OutputMode.AUDIO)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.m4a", settings, source, hardwareCaps)
+        assertTrue(plan.args.contains("-vn"))
+        assertFalse(plan.args.contains("-c:v"))
+        assertEquals("aac", plan.args[plan.args.indexOf("-c:a") + 1])
+        assertEquals("128k", plan.args[plan.args.indexOf("-b:a") + 1])
+        assertEquals("out.m4a", plan.args.last())
+        assertEquals("", plan.videoEncoder)
+        assertNull(FfmpegCommandBuilder.fallbackPlan(plan, "in.mp4", "out.m4a", settings, source, hardwareCaps))
+    }
+
+    @Test
+    fun audioOnlyFromAudioFile() {
+        val audio = source.copy(width = 0, height = 0, hasVideo = false, displayName = "song.m4a")
+        val plan = FfmpegCommandBuilder.build(
+            "in.m4a",
+            "out.m4a",
+            EncodeSettings.forPreset(Preset.BALANCED),
+            audio,
+            hardwareCaps,
+        )
+        assertTrue(plan.args.contains("-vn"))
+        assertFalse(plan.args.contains("-c:v"))
+    }
+
+    @Test
+    fun audioOnlyClipAddsSeekAndDuration() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            output = OutputMode.AUDIO,
+            clipStartMs = 5_000,
+            clipEndMs = 20_000,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.m4a", settings, source, hardwareCaps)
+        assertEquals("5.000", plan.args[plan.args.indexOf("-ss") + 1])
+        assertEquals("15.000", plan.args[plan.args.indexOf("-t") + 1])
+    }
+
+    @Test
+    fun audioEstimateOmitsVideoBitrate() {
+        val video = FfmpegCommandBuilder.estimateOutputBytes(source, EncodeSettings.forPreset(Preset.BALANCED))
+        val audio = FfmpegCommandBuilder.estimateOutputBytes(
+            source,
+            EncodeSettings.forPreset(Preset.BALANCED).copy(output = OutputMode.AUDIO),
+        )
+        assertTrue(audio < video)
+        assertTrue(audio > 10_000)
     }
 
     @Test

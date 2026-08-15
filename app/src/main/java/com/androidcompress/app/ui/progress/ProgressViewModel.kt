@@ -5,9 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.EncodeProgress
+import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.di.AppContainer
 import com.androidcompress.app.encode.CompressService
 import com.androidcompress.app.encode.EncodeQueue
+import com.androidcompress.app.encode.Media3EncodePlanner
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -18,6 +20,7 @@ data class ProgressUi(
     val active: List<CompressJob> = emptyList(),
     val position: Int = 0,
     val total: Int = 0,
+    val durationMs: Long = 0,
 )
 
 class ProgressViewModel(
@@ -37,6 +40,13 @@ class ProgressViewModel(
             active = ordered,
             position = position,
             total = total,
+            durationMs = job?.let {
+                Media3EncodePlanner.outputDurationMs(
+                    SettingsJson.decode(it.settingsJson),
+                    it.durationMs,
+                    it.width > 0 && it.height > 0,
+                )
+            } ?: 0L,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProgressUi())
 

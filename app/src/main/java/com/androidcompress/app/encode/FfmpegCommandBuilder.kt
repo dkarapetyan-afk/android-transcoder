@@ -11,7 +11,10 @@ import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.util.even
+import java.util.Locale
 import kotlin.math.roundToInt
 
 data class EncodePlan(
@@ -93,8 +96,9 @@ object FfmpegCommandBuilder {
         (settings.audioVolumePercent.coerceIn(10, 400) / 100f)
 
     fun estimateOutputBytes(source: SourceVideo, settings: EncodeSettings): Long {
-        val video = scaledVideoBitrate(source, settings)
-        val audio = when (settings.audio) {
+        val audioOnly = settings.audioOutput(source.hasVideo)
+        val video = if (audioOnly) 0 else scaledVideoBitrate(source, settings)
+        val audio = when (settings.effectiveAudio(source.hasVideo)) {
             AudioOption.MUTE -> 0
             AudioOption.COPY -> 128
             AudioOption.AAC_64 -> 64
@@ -133,6 +137,9 @@ object FfmpegCommandBuilder {
         pixFmtOverride: String? = null,
         encoderOverride: String? = null,
     ): EncodePlan {
+        if (settings.audioOutput(source.hasVideo)) {
+            return buildAudio(input, output, settings, source)
+        }
         val encoder = encoderOverride ?: selectVideoEncoder(settings, capabilities)
         val outH = outputHeight(source, settings)
         val outW = outputWidth(source, outH)
@@ -227,6 +234,7 @@ object FfmpegCommandBuilder {
     }
 
     fun fallbackPlan(previous: EncodePlan, input: String, output: String, settings: EncodeSettings, source: SourceVideo, capabilities: EncoderCapabilities): EncodePlan? {
+        if (settings.audioOutput(source.hasVideo) || previous.videoEncoder.isBlank()) return null
         return when {
             previous.pixFmt == "nv12" -> build(
                 input, output, settings, source, capabilities,
@@ -244,4 +252,71 @@ object FfmpegCommandBuilder {
             else -> null
         }
     }
+
+    private fun buildAudio(
+        input: String,
+        output: String,
+        settings: EncodeSettings,
+        source: SourceVideo,
+    ): EncodePlan {
+        val audio = settings.effectiveAudio(source.hasVideo)
+        val volume = audioVolume(settings)
+        val changeVolume = volume != 1f && source.hasAudio
+        val args = mutableListOf("-y", "-hide_banner", "-i", input, "-vn")
+        appendClip(args, settings, source)
+        if (changeVolume) {
+            args += listOf("-filter:a", "volume=$volume")
+        }
+        when (audio) {
+            AudioOption.MUTE -> args += "-an"
+            AudioOption.COPY -> {
+                if (!source.hasAudio) {
+                    args += "-an"
+                } else if (changeVolume) {
+                    args += listOf("-c:a", "aac", "-b:a", "128k")
+                } else if (source.audioCodec?.contains("aac", ignoreCase = true) == true) {
+                    args += listOf("-c:a", "copy")
+                } else {
+                    args += listOf("-c:a", "aac", "-b:a", "128k")
+                }
+            }
+            AudioOption.AAC_64, AudioOption.AAC_96, AudioOption.AAC_128, AudioOption.AAC_192 -> {
+                if (source.hasAudio) {
+                    args += listOf("-c:a", "aac", "-b:a", "${audioBitrateKbps(settings.copy(audio = audio))}k")
+                } else {
+                    args += "-an"
+                }
+            }
+        }
+        if (settings.fastStart) {
+            args += listOf("-movflags", "+faststart")
+        }
+        args += output
+        return EncodePlan(
+            args = ExtraArgsSanitizer.insert(args, settings.ffmpegExtraArgs),
+            videoEncoder = "",
+            pixFmt = null,
+            outputHeight = 0,
+            outputWidth = 0,
+            videoBitrateKbps = 0,
+            audioBitrateKbps = if (audio == AudioOption.COPY) 128 else audioBitrateKbps(settings.copy(audio = audio)),
+        )
+    }
+
+    private fun appendClip(args: MutableList<String>, settings: EncodeSettings, source: SourceVideo) {
+        val start = settings.clipStartMs.coerceAtLeast(0L)
+        val end = settings.clipEndMs?.takeIf { it > start }
+        val duration = source.durationMs
+        if (start <= 0L && (end == null || (duration > 0L && end >= duration))) return
+        if (start > 0L) args += listOf("-ss", formatFfmpegSeconds(start))
+        val span = when {
+            end != null -> end - start
+            duration > start -> duration - start
+            else -> 0L
+        }
+        if (span > 0L) args += listOf("-t", formatFfmpegSeconds(span))
+    }
+
+    private fun formatFfmpegSeconds(ms: Long): String =
+        String.format(Locale.US, "%.3f", ms / 1000.0)
 }

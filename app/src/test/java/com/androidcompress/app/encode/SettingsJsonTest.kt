@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
@@ -37,6 +38,9 @@ class SettingsJsonTest {
             bFrames = BFrameSetting.TWO,
             ffmpegExtraArgs = "-vf hflip",
             ffmpegCommandOverride = "-y -hide_banner -i INPUT -c:v h264_mediacodec -b:v 900k OUTPUT",
+            clipStartMs = 5_000,
+            clipEndMs = 20_000,
+            output = OutputMode.AUDIO,
         )
         val decoded = SettingsJson.decode(SettingsJson.encode(original))
         assertEquals(original, decoded)
@@ -63,5 +67,8 @@ class SettingsJsonTest {
         assertEquals(KeyframeInterval.AUTO, decoded.keyframeInterval)
         assertEquals(100, decoded.audioVolumePercent)
         assertTrue(decoded.fastStart)
+        assertEquals(0L, decoded.clipStartMs)
+        assertNull(decoded.clipEndMs)
+        assertEquals(OutputMode.VIDEO, decoded.output)
     }
 }

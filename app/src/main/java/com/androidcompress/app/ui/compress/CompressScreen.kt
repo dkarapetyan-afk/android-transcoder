@@ -27,6 +27,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,17 +40,22 @@ import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
+import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.OutputMode
+import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.encode.Media3EncodePlanner
 import com.androidcompress.app.ui.components.AppTopBar
 import com.androidcompress.app.ui.components.StatLine
 import com.androidcompress.app.ui.components.VideoThumbnail
 import com.androidcompress.app.util.formatBytes
 import com.androidcompress.app.util.formatDuration
 import com.androidcompress.app.util.formatResolution
+import com.androidcompress.app.util.parseDurationMs
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -81,6 +89,17 @@ fun CompressScreen(
             if (job != null) {
                 Text(job.displayName, style = MaterialTheme.typography.titleMedium)
                 StatLine("Source", "${formatResolution(job.width, job.height)} · ${formatDuration(job.durationMs)} · ${formatBytes(job.sourceBytes)}")
+                val sourceHasVideo = job.width > 0 && job.height > 0
+                if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo)) {
+                    val clip = Media3EncodePlanner.clipWindow(settings, job.durationMs)
+                    if (clip.active) {
+                        val endLabel = clip.endMs?.let { formatDuration(it) } ?: formatDuration(job.durationMs)
+                        StatLine(
+                            "Clip",
+                            "${formatDuration(clip.startMs)} – $endLabel · ${formatDuration(clip.durationMs(job.durationMs))}",
+                        )
+                    }
+                }
                 StatLine("Estimated output", "${formatBytes(ui.estimateBytes)} (estimate)")
                 if (ui.encoderLabel.isNotBlank()) {
                     StatLine("Encoder", ui.encoderLabel)
@@ -118,10 +137,47 @@ fun CompressScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val sourceHasVideo = job == null || job.width > 0 || job.height > 0
+            Text("Output", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (sourceHasVideo) {
+                    FilterChip(
+                        selected = settings.output == OutputMode.VIDEO,
+                        onClick = { viewModel.setOutput(OutputMode.VIDEO) },
+                        label = { Text("Video") },
+                    )
+                }
+                FilterChip(
+                    selected = settings.output == OutputMode.AUDIO || !sourceHasVideo,
+                    onClick = { viewModel.setOutput(OutputMode.AUDIO) },
+                    label = { Text("Audio only") },
+                )
+            }
+            Text(
+                if (settings.audioOutput(sourceHasVideo)) {
+                    "Writes an AAC .m4a. From a video this extracts the soundtrack; from audio this re-encodes it."
+                } else {
+                    "Writes a compressed MP4 with video and audio."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo)) {
+                Media3ClipControls(
+                    durationMs = job?.durationMs ?: 0L,
+                    startMs = settings.clipStartMs,
+                    endMs = settings.clipEndMs,
+                    onStart = viewModel::setClipStartMs,
+                    onEnd = viewModel::setClipEndMs,
+                    onClear = viewModel::clearClip,
+                )
+            }
             TextButton(onClick = viewModel::toggleAdvanced) {
                 Text(if (ui.advancedOpen) "Hide advanced" else "Advanced")
             }
             if (ui.advancedOpen) {
+                val audioOnly = settings.audioOutput(sourceHasVideo)
+                if (!audioOnly) {
                 Text("Resolution cap")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(null, 2160, 1440, 1080, 720, 480, 360).forEach { height ->
@@ -283,9 +339,12 @@ fun CompressScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                }
                 Text("Audio")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AudioOption.entries.forEach { option ->
+                    AudioOption.entries
+                        .filter { option -> !audioOnly || option != AudioOption.MUTE }
+                        .forEach { option ->
                         FilterChip(
                             selected = settings.audio == option,
                             onClick = { viewModel.update { it.copy(audio = option) } },
@@ -310,11 +369,13 @@ fun CompressScreen(
                         onClick = { viewModel.update { it.copy(fastStart = !it.fastStart) } },
                         label = { Text(if (settings.fastStart) "Fast start on" else "Fast start off") },
                     )
-                    FilterChip(
-                        selected = settings.preferHardware,
-                        onClick = { viewModel.update { it.copy(preferHardware = !it.preferHardware) } },
-                        label = { Text(if (settings.preferHardware) "Hardware encoder on" else "Hardware encoder off") },
-                    )
+                    if (!audioOnly) {
+                        FilterChip(
+                            selected = settings.preferHardware,
+                            onClick = { viewModel.update { it.copy(preferHardware = !it.preferHardware) } },
+                            label = { Text(if (settings.preferHardware) "Hardware encoder on" else "Hardware encoder off") },
+                        )
+                    }
                     Text("Extra FFmpeg args")
                     Text(
                         "Appended after the built-in flags. Type them yourself or describe what you want and let Gemini write the flags. Video stays on this device.",
@@ -412,6 +473,86 @@ fun CompressScreen(
             ) {
                 Text(if (ui.queueBusy) "Add to queue" else "Start compression")
             }
+        }
+    }
+}
+
+@Composable
+private fun Media3ClipControls(
+    durationMs: Long,
+    startMs: Long,
+    endMs: Long?,
+    onStart: (Long) -> Unit,
+    onEnd: (Long?) -> Unit,
+    onClear: () -> Unit,
+) {
+    val window = Media3EncodePlanner.clipWindow(
+        EncodeSettings(clipStartMs = startMs, clipEndMs = endMs),
+        durationMs,
+    )
+    val start = window.startMs
+    val end = window.endMs ?: durationMs
+    Text("Clip", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Exports only this range. Leave both ends at the edges for the whole video.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (durationMs > 0L) {
+        Text("Start  ${formatDuration(start)}")
+        Slider(
+            value = start.toFloat().coerceIn(0f, durationMs.toFloat()),
+            onValueChange = { value -> onStart(value.toLong().coerceIn(0L, durationMs)) },
+            valueRange = 0f..durationMs.toFloat(),
+        )
+        Text("End  ${formatDuration(if (window.endMs == null) durationMs else end)}")
+        Slider(
+            value = end.toFloat().coerceIn(0f, durationMs.toFloat()),
+            onValueChange = { value ->
+                val next = value.toLong().coerceIn(0L, durationMs)
+                onEnd(if (next >= durationMs) null else next)
+            },
+            valueRange = 0f..durationMs.toFloat(),
+        )
+        if (window.active) {
+            Text(
+                "Keeps ${formatDuration(window.durationMs(durationMs))} of ${formatDuration(durationMs)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onClear) { Text("Use whole video") }
+        }
+    } else {
+        var startText by rememberSaveable { mutableStateOf(if (startMs > 0) formatDuration(startMs) else "") }
+        var endText by rememberSaveable { mutableStateOf(endMs?.let { formatDuration(it) }.orEmpty()) }
+        OutlinedTextField(
+            value = startText,
+            onValueChange = { value ->
+                startText = value
+                if (value.isBlank()) onStart(0L) else parseDurationMs(value)?.let(onStart)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Start") },
+            placeholder = { Text("0:00") },
+        )
+        OutlinedTextField(
+            value = endText,
+            onValueChange = { value ->
+                endText = value
+                if (value.isBlank()) onEnd(null) else parseDurationMs(value)?.let(onEnd)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("End") },
+            placeholder = { Text("End of video") },
+        )
+        if (startMs > 0L || endMs != null) {
+            TextButton(onClick = {
+                startText = ""
+                endText = ""
+                onClear()
+            }) { Text("Use whole video") }
         }
     }
 }

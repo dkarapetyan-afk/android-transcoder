@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
@@ -129,5 +130,159 @@ class Media3EncodePlannerTest {
         assertEquals(1, spec.maxBFrames)
         assertFalse(spec.remuxAudio)
         assertEquals(128_000, spec.audioBitrateBps)
+    }
+
+    @Test
+    fun defaultHasNoClip() {
+        val spec = Media3EncodePlanner.plan(EncodeSettings.forPreset(Preset.BALANCED), source)
+        assertFalse(spec.clipActive)
+        assertEquals(0L, spec.clipStartMs)
+        assertNull(spec.clipEndMs)
+        assertEquals(60_000L, spec.clipDurationMs(source.durationMs))
+    }
+
+    @Test
+    fun clipStartAndEndMap() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                engine = EncodeEngine.MEDIA3,
+                clipStartMs = 5_000,
+                clipEndMs = 20_000,
+            ),
+            source,
+        )
+        assertTrue(spec.clipActive)
+        assertEquals(5_000L, spec.clipStartMs)
+        assertEquals(20_000L, spec.clipEndMs)
+        assertEquals(15_000L, spec.clipDurationMs(source.durationMs))
+    }
+
+    @Test
+    fun clipStartOnlyRunsToEnd() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(clipStartMs = 10_000),
+            source,
+        )
+        assertTrue(spec.clipActive)
+        assertEquals(10_000L, spec.clipStartMs)
+        assertNull(spec.clipEndMs)
+        assertEquals(50_000L, spec.clipDurationMs(source.durationMs))
+    }
+
+    @Test
+    fun clipEndAtDurationIsWholeFromStart() {
+        val window = Media3EncodePlanner.clipWindow(
+            EncodeSettings(clipStartMs = 0, clipEndMs = 60_000),
+            60_000,
+        )
+        assertFalse(window.active)
+        assertEquals(0L, window.startMs)
+        assertNull(window.endMs)
+    }
+
+    @Test
+    fun invalidClipFallsBackToFullVideo() {
+        val window = Media3EncodePlanner.clipWindow(
+            EncodeSettings(clipStartMs = 40_000, clipEndMs = 10_000),
+            60_000,
+        )
+        assertFalse(window.active)
+        assertEquals(0L, window.startMs)
+        assertNull(window.endMs)
+    }
+
+    @Test
+    fun clipPastDurationFallsBackToFullVideo() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                clipStartMs = 90_000,
+                clipEndMs = 120_000,
+            ),
+            source,
+        )
+        assertFalse(spec.clipActive)
+        assertEquals(0L, spec.clipStartMs)
+        assertNull(spec.clipEndMs)
+    }
+
+    @Test
+    fun outputDurationIgnoresClipOnFfmpeg() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            engine = EncodeEngine.FFMPEG,
+            clipStartMs = 5_000,
+            clipEndMs = 15_000,
+        )
+        assertEquals(60_000L, Media3EncodePlanner.outputDurationMs(settings, 60_000))
+        assertEquals(
+            10_000L,
+            Media3EncodePlanner.outputDurationMs(settings.copy(engine = EncodeEngine.MEDIA3), 60_000),
+        )
+    }
+
+    @Test
+    fun h264FallbackKeepsClip() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                codec = VideoCodec.HEVC,
+                clipStartMs = 2_000,
+                clipEndMs = 8_000,
+            ),
+            source,
+        )
+        val fallback = Media3EncodePlanner.h264Fallback(spec)
+        assertEquals(2_000L, fallback?.clipStartMs)
+        assertEquals(8_000L, fallback?.clipEndMs)
+    }
+
+    @Test
+    fun audioOnlyRemovesVideo() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                engine = EncodeEngine.MEDIA3,
+                output = OutputMode.AUDIO,
+                audio = AudioOption.AAC_96,
+            ),
+            source,
+        )
+        assertTrue(spec.removeVideo)
+        assertFalse(spec.removeAudio)
+        assertEquals(96_000, spec.audioBitrateBps)
+        assertEquals(0, spec.outputHeight)
+        assertEquals("Media3 · AAC", spec.encoderLabel)
+        assertNull(Media3EncodePlanner.h264Fallback(spec))
+    }
+
+    @Test
+    fun audioOnlyCopyRemuxes() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                output = OutputMode.AUDIO,
+                audio = AudioOption.COPY,
+            ),
+            source,
+        )
+        assertTrue(spec.removeVideo)
+        assertTrue(spec.remuxAudio)
+        assertEquals("Media3 · audio copy", spec.encoderLabel)
+    }
+
+    @Test
+    fun sourceWithoutVideoForcesAudio() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED),
+            source.copy(width = 0, height = 0, hasVideo = false),
+        )
+        assertTrue(spec.removeVideo)
+    }
+
+    @Test
+    fun ffmpegAudioUsesClipDuration() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            engine = EncodeEngine.FFMPEG,
+            output = OutputMode.AUDIO,
+            clipStartMs = 5_000,
+            clipEndMs = 15_000,
+        )
+        assertEquals(10_000L, Media3EncodePlanner.outputDurationMs(settings, 60_000, true))
     }
 }

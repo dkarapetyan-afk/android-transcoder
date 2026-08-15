@@ -76,7 +76,7 @@ fun ProgressScreen(
             )
             Text("${(fraction * 100).roundToInt()}%")
             if (progress != null && job != null && job.status == JobStatus.RUNNING) {
-                Text("${formatDuration(progress.timeMs)} / ${formatDuration(job.durationMs)}")
+                Text("${formatDuration(progress.timeMs)} / ${formatDuration(ui.durationMs)}")
             }
             if (ui.active.size > 1) {
                 Text("Queue", style = MaterialTheme.typography.titleSmall)

@@ -40,14 +40,15 @@ class InputResolver(private val context: Context) {
         val out = File(dir, "$jobId.src")
         context.contentResolver.openInputStream(uri)?.use { input ->
             out.outputStream().use { input.copyTo(it) }
-        } ?: error("Unable to open the selected video")
+        } ?: error("Unable to open the selected file")
         out
     }
 
-    fun encodeOutputFile(jobId: String): File {
+    fun encodeOutputFile(jobId: String, audioOnly: Boolean = false): File {
         val dir = File(context.cacheDir, "encode")
         if (!dir.exists()) dir.mkdirs()
-        return File(dir, "$jobId.mp4")
+        val ext = if (audioOnly) "m4a" else "mp4"
+        return File(dir, "$jobId.$ext")
     }
 
     fun recordOutputFile(jobId: String): File {

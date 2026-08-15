@@ -5,6 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.data.OutputMode
+import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.data.mimeType
 import com.androidcompress.app.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -41,21 +44,28 @@ class ResultViewModel(
     }
 
     fun share(context: Context) {
-        val uri = job.value?.outputUri?.let(Uri::parse) ?: return
+        val current = job.value ?: return
+        val uri = current.outputUri?.let(Uri::parse) ?: return
+        val mime = outputMime(current.settingsJson)
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "video/mp4"
+            type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Share video"))
+        context.startActivity(Intent.createChooser(intent, if (mime.startsWith("audio")) "Share audio" else "Share video"))
     }
 
     fun open(context: Context) {
-        val uri = job.value?.outputUri?.let(Uri::parse) ?: return
+        val current = job.value ?: return
+        val uri = current.outputUri?.let(Uri::parse) ?: return
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "video/mp4")
+            setDataAndType(uri, outputMime(current.settingsJson))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
     }
+
+    fun outputMode(settingsJson: String): OutputMode = SettingsJson.decode(settingsJson).output
+
+    private fun outputMime(settingsJson: String): String = outputMode(settingsJson).mimeType()
 }

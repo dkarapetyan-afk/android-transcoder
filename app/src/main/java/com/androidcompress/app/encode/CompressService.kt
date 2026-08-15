@@ -17,6 +17,7 @@ import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.SourceVideo
+import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.util.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,19 +112,25 @@ class CompressService : Service() {
             frameRate = probed?.frameRate ?: 30f,
             audioCodec = probed?.audioCodec,
             hasAudio = probed?.hasAudio ?: true,
+            hasVideo = probed?.hasVideo ?: (job.width > 0 && job.height > 0),
         )
         currentJobId = jobId
         app.jobs.updateStatus(jobId, JobStatus.RUNNING)
-        val output = app.inputs.encodeOutputFile(jobId)
+        val audioOnly = settings.audioOutput(source.hasVideo)
+        val output = app.inputs.encodeOutputFile(jobId, audioOnly)
         output.delete()
         val log = StringBuilder()
         log.appendLine("jobId=$jobId")
         log.appendLine("name=${job.displayName}")
         log.appendLine("engine=${settings.engine}")
+        log.appendLine("output=${if (audioOnly) "audio" else "video"}")
         log.appendLine("source=${job.sourceUri}")
         try {
+            if (audioOnly && !source.hasAudio) {
+                error("This file has no audio to extract or transcode.")
+            }
             if (!app.inputs.hasSpaceFor(job.sourceBytes)) {
-                error("Not enough free storage to compress this video (need about 2× the source size).")
+                error("Not enough free storage to compress this file (need about 2× the source size).")
             }
             val result = when (settings.engine) {
                 EncodeEngine.MEDIA3 -> runMedia3(jobId, source, settings, sourceUri, output, log)
@@ -138,7 +145,11 @@ class CompressService : Service() {
                     app.encodeProgress.update(null)
                 }
                 result.success && output.exists() && output.length() > 0 -> {
-                    val published = app.exporter.publish(output, compressedName(job.displayName))
+                    val published = app.exporter.publish(
+                        output,
+                        compressedName(job.displayName, audioOnly),
+                        audioOnly,
+                    )
                     val bytes = output.length()
                     output.delete()
                     log.appendLine("published=$published")
@@ -155,7 +166,8 @@ class CompressService : Service() {
                         app.jobs.markSourceDeleted(jobId, removed.deleted)
                     }
                     app.inputs.deleteImportCopy(jobId)
-                    app.encodeProgress.update(EncodeProgress(jobId, 1f, source.durationMs))
+                    val doneMs = Media3EncodePlanner.outputDurationMs(settings, source.durationMs, source.hasVideo)
+                    app.encodeProgress.update(EncodeProgress(jobId, 1f, doneMs))
                 }
                 else -> {
                     output.delete()
@@ -203,9 +215,9 @@ class CompressService : Service() {
                 output.absolutePath,
             ).getOrThrow()
             log.appendLine("using edited command template")
-            return executePlan(jobId, source, plan.copy(args = args), log)
+            return executePlan(jobId, source, settings, plan.copy(args = args), log)
         }
-        var result = executePlan(jobId, source, plan, log)
+        var result = executePlan(jobId, source, settings, plan, log)
         while (!result.success && !result.cancelled) {
             val next = FfmpegCommandBuilder.fallbackPlan(
                 plan, ffmpegInput, output.absolutePath, settings, source, caps,
@@ -213,7 +225,7 @@ class CompressService : Service() {
             log.appendLine("retrying with fallback encoder/pix_fmt")
             output.delete()
             plan = next
-            result = executePlan(jobId, source, plan, log)
+            result = executePlan(jobId, source, settings, plan, log)
         }
         return result
     }
@@ -247,14 +259,21 @@ class CompressService : Service() {
         log: StringBuilder,
     ): EncodeResult {
         log.appendLine("Media3 encoder=${spec.encoderLabel}")
+        if (spec.removeVideo) {
+            log.appendLine("audio only")
+        }
+        if (spec.clipActive) {
+            log.appendLine("clip start=${spec.clipStartMs}ms end=${spec.clipEndMs ?: "eos"}")
+        }
+        val clipDurationMs = spec.clipDurationMs(source.durationMs)
         val current = container().media3.encode(
             input = sourceUri,
             outputPath = output.absolutePath,
             spec = spec,
-            durationMs = source.durationMs,
+            durationMs = clipDurationMs,
             onStats = { stats ->
-                val fraction = if (source.durationMs > 0) {
-                    (stats.timeMs.toFloat() / source.durationMs).coerceIn(0f, 0.99f)
+                val fraction = if (clipDurationMs > 0) {
+                    (stats.timeMs.toFloat() / clipDurationMs).coerceIn(0f, 0.99f)
                 } else {
                     0f
                 }
@@ -271,6 +290,7 @@ class CompressService : Service() {
     private suspend fun executePlan(
         jobId: String,
         source: SourceVideo,
+        settings: EncodeSettings,
         plan: EncodePlan,
         log: StringBuilder,
     ): EncodeResult {
@@ -279,8 +299,9 @@ class CompressService : Service() {
             args = plan.args,
             onLog = { line -> if (line.isNotBlank()) log.appendLine(line) },
             onStats = { stats ->
-                val fraction = if (source.durationMs > 0) {
-                    (stats.timeMs.toFloat() / source.durationMs).coerceIn(0f, 0.99f)
+                val durationMs = Media3EncodePlanner.outputDurationMs(settings, source.durationMs, source.hasVideo)
+                val fraction = if (durationMs > 0) {
+                    (stats.timeMs.toFloat() / durationMs).coerceIn(0f, 0.99f)
                 } else {
                     0f
                 }
@@ -303,9 +324,9 @@ class CompressService : Service() {
         }
     }
 
-    private fun compressedName(original: String): String {
-        val base = original.substringBeforeLast('.').ifBlank { "video" }
-        return "${base}-compressed.mp4"
+    private fun compressedName(original: String, audioOnly: Boolean): String {
+        val base = original.substringBeforeLast('.').ifBlank { if (audioOnly) "audio" else "video" }
+        return "${base}-compressed.${if (audioOnly) "m4a" else "mp4"}"
     }
 
     private fun startAsForeground(jobId: String, percent: Int) {

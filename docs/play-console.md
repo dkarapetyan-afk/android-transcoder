@@ -42,6 +42,6 @@ Declare both types and attach a short screen recording that shows:
 
 ## Demo script for reviewers
 
-1. Open the app → Compress a video → pick any short MP4 → Balanced → Start.
+1. Open the app → Compress a file → pick any short MP4 → Balanced → Start.
 2. Confirm the notification and the result file in Movies/RecordingCompressor.
 3. Record screen → grant capture → stop → compress the result.

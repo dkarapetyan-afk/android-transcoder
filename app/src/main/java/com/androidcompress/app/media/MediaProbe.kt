@@ -21,6 +21,7 @@ class MediaProbe(private val context: Context) {
             val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
             val mime = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
             val hasAudio = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
+            val flaggedVideo = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO) == "yes"
             val frameRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
                 ?.toFloatOrNull()
                 ?: inferFps(retriever, duration)
@@ -35,6 +36,7 @@ class MediaProbe(private val context: Context) {
                 frameRate = frameRate,
                 audioCodec = if (hasAudio) mime else null,
                 hasAudio = hasAudio,
+                hasVideo = flaggedVideo || (w > 0 && h > 0),
             )
         } finally {
             runCatching { retriever.release() }

@@ -9,10 +9,13 @@ import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.di.AppContainer
 import com.androidcompress.app.encode.CompressService
 import com.androidcompress.app.encode.ExtraArgsSanitizer
@@ -89,6 +92,8 @@ class CompressViewModel(
         val encoderLabel = when {
             job == null || job.sourceUri.isBlank() -> ""
             enc.engine == EncodeEngine.MEDIA3 -> Media3EncodePlanner.plan(enc, source).encoderLabel
+            enc.audioOutput(source.hasVideo) ->
+                if (enc.effectiveAudio(source.hasVideo) == AudioOption.COPY) "FFmpeg · audio copy" else "FFmpeg · AAC"
             else -> plan?.videoEncoder.orEmpty()
         }
         CompressUiState(
@@ -96,7 +101,16 @@ class CompressViewModel(
             settings = enc,
             capabilities = cap,
             advancedOpen = open,
-            estimateBytes = realSource?.let { FfmpegCommandBuilder.estimateOutputBytes(it, enc) } ?: 0,
+            estimateBytes = realSource?.let { src ->
+                val estimateSource = if (enc.engine == EncodeEngine.MEDIA3 || enc.audioOutput(src.hasVideo)) {
+                    src.copy(
+                        durationMs = Media3EncodePlanner.outputDurationMs(enc, src.durationMs, src.hasVideo),
+                    )
+                } else {
+                    src
+                }
+                FfmpegCommandBuilder.estimateOutputBytes(estimateSource, enc)
+            } ?: 0,
             encoderLabel = encoderLabel,
             queueBusy = active.any { it.id != jobId },
             deleteSourceAfter = deleteSource,
@@ -120,7 +134,14 @@ class CompressViewModel(
                 job != null -> SettingsJson.decode(job.settingsJson)
                 else -> EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine)
             }
-            settings.value = loaded
+            settings.value = if (job != null && job.width <= 0 && job.height <= 0) {
+                loaded.copy(
+                    output = OutputMode.AUDIO,
+                    audio = if (loaded.audio == AudioOption.MUTE) AudioOption.AAC_128 else loaded.audio,
+                )
+            } else {
+                loaded
+            }
             deleteSourceAfter.value = job?.deleteSourceAfter ?: prefs.deleteOriginalAfterEncode
             caps.value = container.encoderCapabilities()
         }
@@ -128,6 +149,49 @@ class CompressViewModel(
 
     fun setDeleteSourceAfter(value: Boolean) {
         deleteSourceAfter.value = value
+    }
+
+    fun setClipStartMs(startMs: Long) {
+        update { current ->
+            val start = startMs.coerceAtLeast(0L)
+            val end = current.clipEndMs
+            if (end != null && end <= start) {
+                current.copy(clipStartMs = start, clipEndMs = start + Media3EncodePlanner.MIN_CLIP_MS)
+            } else {
+                current.copy(clipStartMs = start)
+            }
+        }
+    }
+
+    fun setClipEndMs(endMs: Long?) {
+        update { current ->
+            val end = endMs?.takeIf { it > 0L }
+            if (end != null && end <= current.clipStartMs) {
+                current.copy(
+                    clipStartMs = (end - Media3EncodePlanner.MIN_CLIP_MS).coerceAtLeast(0L),
+                    clipEndMs = end,
+                )
+            } else {
+                current.copy(clipEndMs = end)
+            }
+        }
+    }
+
+    fun clearClip() {
+        update { it.copy(clipStartMs = 0L, clipEndMs = null) }
+    }
+
+    fun setOutput(mode: OutputMode) {
+        update { current ->
+            current.copy(
+                output = mode,
+                audio = if (mode == OutputMode.AUDIO && current.audio == AudioOption.MUTE) {
+                    AudioOption.AAC_128
+                } else {
+                    current.audio
+                },
+            )
+        }
     }
 
     fun applyPreset(preset: Preset) {
@@ -142,6 +206,9 @@ class CompressViewModel(
             bFrames = previous.bFrames,
             ffmpegExtraArgs = previous.ffmpegExtraArgs,
             ffmpegCommandOverride = previous.ffmpegCommandOverride,
+            clipStartMs = previous.clipStartMs,
+            clipEndMs = previous.clipEndMs,
+            output = previous.output,
         )
         persist()
     }
@@ -180,10 +247,10 @@ class CompressViewModel(
             val enc = settings.value
             val job = container.jobs.get(jobId)
             val source = job.toSource()
-            val encoder = if (source != null) {
-                FfmpegCommandBuilder.selectVideoEncoder(enc, caps.value)
-            } else {
-                ""
+            val encoder = when {
+                enc.audioOutput(source?.hasVideo ?: true) -> "aac"
+                source != null -> FfmpegCommandBuilder.selectVideoEncoder(enc, caps.value)
+                else -> ""
             }
             val command = currentFfmpegCommand(enc, source, caps.value)
             val result = gemini.suggest(key, aiPrompt.value, enc, source, encoder, command)
@@ -307,6 +374,7 @@ private fun CompressJob?.toSource(): SourceVideo? {
         frameRate = 30f,
         audioCodec = null,
         hasAudio = true,
+        hasVideo = job.width > 0 && job.height > 0,
     )
 }
 

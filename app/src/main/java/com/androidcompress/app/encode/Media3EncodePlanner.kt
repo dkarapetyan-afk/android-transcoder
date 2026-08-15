@@ -2,11 +2,14 @@ package com.androidcompress.app.encode
 
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.BitrateMode
+import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.effectiveAudio
 
 data class Media3EncodeSpec(
     val videoMimeType: String,
@@ -25,7 +28,33 @@ data class Media3EncodeSpec(
     val toneMapHdr: Boolean,
     val audioVolume: Float,
     val maxBFrames: Int?,
-)
+    val clipStartMs: Long = 0,
+    val clipEndMs: Long? = null,
+    val removeVideo: Boolean = false,
+) {
+    val clipActive: Boolean get() = clipStartMs > 0 || clipEndMs != null
+
+    fun clipDurationMs(sourceDurationMs: Long): Long =
+        Media3ClipWindow(clipStartMs, clipEndMs).durationMs(sourceDurationMs)
+}
+
+data class Media3ClipWindow(
+    val startMs: Long,
+    val endMs: Long?,
+) {
+    val active: Boolean get() = startMs > 0 || endMs != null
+
+    fun durationMs(sourceDurationMs: Long): Long {
+        val resolvedEnd = endMs
+        val end = when {
+            resolvedEnd != null -> resolvedEnd
+            sourceDurationMs > 0 -> sourceDurationMs
+            else -> startMs
+        }
+        val span = end - startMs
+        return if (span > 0) span else sourceDurationMs.coerceAtLeast(0)
+    }
+}
 
 /**
  * Maps app [EncodeSettings] onto Media3 Transformer parameters.
@@ -36,22 +65,56 @@ object Media3EncodePlanner {
     const val MIME_H264 = "video/avc"
     const val MIME_HEVC = "video/hevc"
     const val MIME_AAC = "audio/mp4a-latm"
+    const val MIN_CLIP_MS = 100L
+
+    fun clipWindow(settings: EncodeSettings, sourceDurationMs: Long): Media3ClipWindow {
+        val duration = sourceDurationMs.coerceAtLeast(0L)
+        var start = settings.clipStartMs.coerceAtLeast(0L)
+        var end = settings.clipEndMs?.takeIf { it > 0L }
+        if (end != null && end <= start) {
+            return Media3ClipWindow(0L, null)
+        }
+        if (duration > 0L) {
+            if (start >= duration) return Media3ClipWindow(0L, null)
+            start = start.coerceAtMost((duration - MIN_CLIP_MS).coerceAtLeast(0L))
+            if (end != null) {
+                if (end <= start) return Media3ClipWindow(0L, null)
+                end = end.coerceAtMost(duration)
+                if (end - start < MIN_CLIP_MS) {
+                    end = (start + MIN_CLIP_MS).coerceAtMost(duration)
+                }
+                if (end >= duration) end = null
+            }
+            if (start <= 0L) start = 0L
+        }
+        if (start <= 0L && end == null) return Media3ClipWindow(0L, null)
+        return Media3ClipWindow(start, end)
+    }
+
+    fun outputDurationMs(settings: EncodeSettings, sourceDurationMs: Long, hasVideo: Boolean = true): Long {
+        val useClip = settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(hasVideo)
+        if (!useClip) return sourceDurationMs
+        return clipWindow(settings, sourceDurationMs).durationMs(sourceDurationMs)
+    }
 
     fun plan(settings: EncodeSettings, source: SourceVideo): Media3EncodeSpec {
-        val outH = FfmpegCommandBuilder.outputHeight(source, settings)
-        val outW = FfmpegCommandBuilder.outputWidth(source, outH)
-        val videoKbps = FfmpegCommandBuilder.scaledVideoBitrate(source, settings)
+        val audioOnly = settings.audioOutput(source.hasVideo)
+        val audio = settings.effectiveAudio(source.hasVideo)
+        val outH = if (audioOnly) 0 else FfmpegCommandBuilder.outputHeight(source, settings)
+        val outW = if (audioOnly) 0 else FfmpegCommandBuilder.outputWidth(source, outH)
+        val videoKbps = if (audioOnly) 0 else FfmpegCommandBuilder.scaledVideoBitrate(source, settings)
         val hevc = settings.codec == VideoCodec.HEVC
         val fpsCap = settings.fpsCap
-        val outputFps = if (fpsCap != null && source.frameRate > fpsCap + 0.1f) fpsCap else 0
+        val outputFps = if (!audioOnly && fpsCap != null && source.frameRate > fpsCap + 0.1f) fpsCap else 0
         val volume = FfmpegCommandBuilder.audioVolume(settings)
-        val removeAudio = settings.audio == AudioOption.MUTE || !source.hasAudio
-        val remuxAudio = !removeAudio && settings.audio == AudioOption.COPY && volume == 1f
+        val removeAudio = !audioOnly && (audio == AudioOption.MUTE || !source.hasAudio)
+        val remuxAudio = !removeAudio && audio == AudioOption.COPY && volume == 1f
         val audioKbps = when {
             removeAudio || remuxAudio -> 0
-            settings.audio == AudioOption.COPY -> 128
-            else -> FfmpegCommandBuilder.audioBitrateKbps(settings).coerceAtLeast(64)
+            audio == AudioOption.COPY -> 128
+            else -> FfmpegCommandBuilder.audioBitrateKbps(settings.copy(audio = audio)).coerceAtLeast(64)
         }
+        val clip = clipWindow(settings, source.durationMs)
         return Media3EncodeSpec(
             videoMimeType = if (hevc) MIME_HEVC else MIME_H264,
             outputHeight = outH,
@@ -62,18 +125,26 @@ object Media3EncodePlanner {
             audioBitrateBps = audioKbps * 1000,
             removeAudio = removeAudio,
             remuxAudio = remuxAudio,
-            encoderLabel = if (hevc) "Media3 · HEVC" else "Media3 · H.264",
+            encoderLabel = when {
+                audioOnly && remuxAudio -> "Media3 · audio copy"
+                audioOnly -> "Media3 · AAC"
+                hevc -> "Media3 · HEVC"
+                else -> "Media3 · H.264"
+            },
             preferCbr = settings.bitrateMode == BitrateMode.CBR,
             iFrameIntervalSeconds = FfmpegCommandBuilder.keyframeSeconds(settings),
             h264Profile = settings.h264Profile,
-            toneMapHdr = settings.hdrMode == HdrMode.TONE_MAP,
+            toneMapHdr = !audioOnly && settings.hdrMode == HdrMode.TONE_MAP,
             audioVolume = volume,
             maxBFrames = FfmpegCommandBuilder.maxBFrames(settings),
+            clipStartMs = clip.startMs,
+            clipEndMs = clip.endMs,
+            removeVideo = audioOnly,
         )
     }
 
     fun h264Fallback(spec: Media3EncodeSpec): Media3EncodeSpec? {
-        if (spec.videoMimeType == MIME_H264) return null
+        if (spec.removeVideo || spec.videoMimeType == MIME_H264) return null
         return spec.copy(videoMimeType = MIME_H264, encoderLabel = "Media3 · H.264")
     }
 }

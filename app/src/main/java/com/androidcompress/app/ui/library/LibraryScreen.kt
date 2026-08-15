@@ -42,7 +42,7 @@ fun LibraryScreen(
         if (jobs.isEmpty()) {
             EmptyState(
                 "No jobs yet",
-                "Recorded and imported videos will show up here.",
+                "Recorded and imported videos and audio will show up here.",
                 modifier = Modifier.padding(padding),
             )
         } else {

@@ -13,6 +13,8 @@ enum class VideoCodec { H264, HEVC }
 
 enum class EncodeEngine { FFMPEG, MEDIA3 }
 
+enum class OutputMode { VIDEO, AUDIO }
+
 enum class AudioOption { COPY, AAC_64, AAC_96, AAC_128, AAC_192, MUTE }
 
 enum class BitrateMode { CBR, VBR }
@@ -47,6 +49,9 @@ data class EncodeSettings(
     val bFrames: BFrameSetting = BFrameSetting.AUTO,
     val ffmpegExtraArgs: String = "",
     val ffmpegCommandOverride: String = "",
+    val clipStartMs: Long = 0,
+    val clipEndMs: Long? = null,
+    val output: OutputMode = OutputMode.VIDEO,
 ) {
     companion object {
         fun forPreset(preset: Preset, engine: EncodeEngine = EncodeEngine.FFMPEG): EncodeSettings = when (preset) {
@@ -94,7 +99,21 @@ data class SourceVideo(
     val frameRate: Float,
     val audioCodec: String?,
     val hasAudio: Boolean,
+    val hasVideo: Boolean = width > 0 && height > 0,
 )
+
+fun EncodeSettings.audioOutput(hasVideo: Boolean = true): Boolean =
+    output == OutputMode.AUDIO || !hasVideo
+
+fun EncodeSettings.effectiveAudio(hasVideo: Boolean = true): AudioOption =
+    if (audioOutput(hasVideo) && audio == AudioOption.MUTE) AudioOption.AAC_128 else audio
+
+fun OutputMode.fileExtension(): String = if (this == OutputMode.AUDIO) "m4a" else "mp4"
+
+fun OutputMode.mimeType(): String = if (this == OutputMode.AUDIO) "audio/mp4" else "video/mp4"
+
+fun OutputMode.galleryFolder(): String =
+    if (this == OutputMode.AUDIO) "Music/RecordingCompressor" else "Movies/RecordingCompressor"
 
 data class EncoderCapabilities(
     val hasH264MediaCodec: Boolean = false,

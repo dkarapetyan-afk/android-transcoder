@@ -3,7 +3,8 @@
 Android app that records the screen and compresses recordings on-device with FFmpeg or the device encoder (Media3 Transformer).
 
 - Kotlin, Jetpack Compose, Material 3
-- Import via the system photo picker or Storage Access Framework
+- Import a video or audio file via the system file picker
+- Audio-only output: extract a video soundtrack or transcode audio to AAC (.m4a) with FFmpeg or Media3
 - Screen recording via MediaProjection (microphone or internal audio)
 - Presets plus advanced encoder settings
 - Two encode engines: FFmpeg (default, with software fallback) or Device / Media3 (hardware MediaCodec, same approach as Compressor Edge)

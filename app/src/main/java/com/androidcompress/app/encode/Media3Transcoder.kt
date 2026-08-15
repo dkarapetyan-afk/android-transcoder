@@ -210,11 +210,11 @@ class Media3Transcoder(context: Context) {
             }
 
             override fun audioNeedsEncoding(): Boolean = primary.audioNeedsEncoding()
-            override fun videoNeedsEncoding(): Boolean = primary.videoNeedsEncoding()
+            override fun videoNeedsEncoding(): Boolean =
+                !spec.removeVideo && primary.videoNeedsEncoding()
         }
 
         val builder = Transformer.Builder(appContext)
-            .setVideoMimeType(spec.videoMimeType)
             .setAssetLoaderFactory(DefaultAssetLoaderFactory(appContext, decoderFactory, Clock.DEFAULT, null))
             .setEncoderFactory(encoderFactory)
             .addListener(
@@ -232,6 +232,9 @@ class Media3Transcoder(context: Context) {
                     }
                 },
             )
+        if (!spec.removeVideo) {
+            builder.setVideoMimeType(spec.videoMimeType)
+        }
         if (!spec.removeAudio && !spec.remuxAudio) {
             builder.setAudioMimeType(MimeTypes.AUDIO_AAC)
         }
@@ -240,15 +243,17 @@ class Media3Transcoder(context: Context) {
 
     private fun composition(input: Uri, spec: Media3EncodeSpec): Composition {
         val effects = mutableListOf<Effect>()
-        if (spec.outputHeight > 0) {
-            val width = spec.outputWidth
-            val height = spec.outputHeight
-            if (width > 0 && height > 0) {
-                effects.add(Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_SCALE_TO_FIT))
+        if (!spec.removeVideo) {
+            if (spec.outputHeight > 0) {
+                val width = spec.outputWidth
+                val height = spec.outputHeight
+                if (width > 0 && height > 0) {
+                    effects.add(Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_SCALE_TO_FIT))
+                }
             }
-        }
-        if (spec.outputFps > 0 && spec.outputFps.toFloat() < spec.originalFps) {
-            effects.add(FrameDropEffect.createSimpleFrameDropEffect(spec.originalFps, spec.outputFps.toFloat()))
+            if (spec.outputFps > 0 && spec.outputFps.toFloat() < spec.originalFps) {
+                effects.add(FrameDropEffect.createSimpleFrameDropEffect(spec.originalFps, spec.outputFps.toFloat()))
+            }
         }
 
         val audioProcessors: List<AudioProcessor> = if (!spec.removeAudio && !spec.remuxAudio) {
@@ -262,16 +267,20 @@ class Media3Transcoder(context: Context) {
             emptyList()
         }
 
-        val edited = EditedMediaItem.Builder(MediaItem.fromUri(input))
+        val editedItem = EditedMediaItem.Builder(mediaItem(input, spec))
             .setEffects(Effects(audioProcessors, effects))
             .setRemoveAudio(spec.removeAudio)
-            .build()
+        if (spec.removeVideo) {
+            editedItem.setRemoveVideo(true)
+        }
+        val edited = editedItem.build()
 
         var hdrMode = Composition.HDR_MODE_KEEP_HDR
-        val forcePixel10 = isPixel10() &&
+        val forcePixel10 = !spec.removeVideo &&
+            isPixel10() &&
             (spec.videoMimeType == MimeTypes.VIDEO_H265 || spec.videoMimeType == MimeTypes.VIDEO_H264) &&
             isHdr(input)
-        if (spec.toneMapHdr || forcePixel10) {
+        if (!spec.removeVideo && (spec.toneMapHdr || forcePixel10)) {
             hdrMode = Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
         }
 
@@ -281,6 +290,17 @@ class Media3Transcoder(context: Context) {
             composition.setTransmuxAudio(true)
         }
         return composition.build()
+    }
+
+    private fun mediaItem(input: Uri, spec: Media3EncodeSpec): MediaItem {
+        if (!spec.clipActive) return MediaItem.fromUri(input)
+        val clipping = MediaItem.ClippingConfiguration.Builder()
+            .setStartPositionMs(spec.clipStartMs)
+        spec.clipEndMs?.let { clipping.setEndPositionMs(it) }
+        return MediaItem.Builder()
+            .setUri(input)
+            .setClippingConfiguration(clipping.build())
+            .build()
     }
 
     private fun encoderFactory(spec: Media3EncodeSpec, bitrateMode: Int): DefaultEncoderFactory {

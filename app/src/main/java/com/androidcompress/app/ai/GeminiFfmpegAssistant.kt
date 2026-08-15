@@ -179,6 +179,7 @@ class GeminiFfmpegAssistant(
                 appendLine("User request: $userRequest")
                 appendLine("Current extra args: ${settings.ffmpegExtraArgs.ifBlank { "(none)" }}")
                 appendLine("Current command: ${command.ifBlank { "(none)" }}")
+                appendLine("Output mode: ${settings.output}")
                 appendLine("Source: $sourceLine")
                 appendLine("Encoder already chosen: $encoder")
                 appendLine("Codec setting: ${settings.codec}")
@@ -248,7 +249,9 @@ You write extra FFmpeg CLI arguments for Recording Compressor on Android.
 
 The user message includes the currently built command (INPUT and OUTPUT are placeholders for this job’s files). Extra args you return are inserted into that command. Do not repeat flags already present unless the user asked to change them.
 
-The app already supplies: -y -hide_banner -i INPUT, optional scale/fps, -c:v (h264_mediacodec, hevc_mediacodec, libopenh264, or mpeg4), -b:v, optional -maxrate/-bufsize, -pix_fmt, profile/GOP/B-frames, audio (-c:a aac or copy or -an), optional -movflags +faststart, extra args, and OUTPUT.
+If output mode is AUDIO, the app already supplies -y -hide_banner -i INPUT -vn, optional -ss/-t, audio (-c:a aac or copy), optional -movflags +faststart, extra args, and an .m4a OUTPUT. Do not add -c:v.
+
+If output mode is VIDEO, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, -c:v (h264_mediacodec, hevc_mediacodec, libopenh264, or mpeg4), -b:v, optional -maxrate/-bufsize, -pix_fmt, profile/GOP/B-frames, audio (-c:a aac or copy or -an), optional -movflags +faststart, extra args, and OUTPUT.
 
 This FFmpeg build is LGPL. There is no libx264 or libx265. Do not use -crf, -preset slow, -tune, CUDA, NVENC, QSV, or extra -i inputs.
 

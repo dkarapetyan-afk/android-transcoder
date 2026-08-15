@@ -28,6 +28,31 @@ fun formatDuration(ms: Long): String {
     }
 }
 
+fun parseDurationMs(raw: String): Long? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    val parts = trimmed.split(":")
+    val millis = when (parts.size) {
+        1 -> {
+            val seconds = parts[0].toDoubleOrNull() ?: return null
+            (seconds * 1000.0).toLong()
+        }
+        2 -> {
+            val minutes = parts[0].toLongOrNull() ?: return null
+            val seconds = parts[1].toDoubleOrNull() ?: return null
+            (((minutes * 60) + seconds) * 1000.0).toLong()
+        }
+        3 -> {
+            val hours = parts[0].toLongOrNull() ?: return null
+            val minutes = parts[1].toLongOrNull() ?: return null
+            val seconds = parts[2].toDoubleOrNull() ?: return null
+            (((hours * 3600) + (minutes * 60) + seconds) * 1000.0).toLong()
+        }
+        else -> return null
+    }
+    return millis.coerceAtLeast(0L)
+}
+
 fun formatResolution(width: Int, height: Int): String {
     if (width <= 0 || height <= 0) return "Unknown"
     return "${width}×$height"

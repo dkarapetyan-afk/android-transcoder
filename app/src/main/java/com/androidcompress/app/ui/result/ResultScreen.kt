@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.data.JobStatus
+import com.androidcompress.app.data.OutputMode
+import com.androidcompress.app.data.galleryFolder
 import com.androidcompress.app.ui.components.AppTopBar
 import com.androidcompress.app.ui.components.StatLine
 import com.androidcompress.app.ui.components.VideoThumbnail
@@ -44,10 +46,13 @@ fun ResultScreen(
                 Text("Job not found")
                 return@Column
             }
-            VideoThumbnail(
-                uri = (current.outputUri ?: current.sourceUri).takeIf { it.isNotBlank() }?.let(Uri::parse),
-                modifier = Modifier.fillMaxWidth().height(180.dp),
-            )
+            val audioOnly = viewModel.outputMode(current.settingsJson) == OutputMode.AUDIO
+            if (!audioOnly) {
+                VideoThumbnail(
+                    uri = (current.outputUri ?: current.sourceUri).takeIf { it.isNotBlank() }?.let(Uri::parse),
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                )
+            }
             Text(current.displayName, style = MaterialTheme.typography.titleMedium)
             when (current.status) {
                 JobStatus.SUCCEEDED -> {
@@ -70,7 +75,7 @@ fun ResultScreen(
                     }
                     deleteMessage?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Text(
-                        "Saved to Movies/RecordingCompressor in your gallery.",
+                        "Saved to ${viewModel.outputMode(current.settingsJson).galleryFolder()} on this device.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

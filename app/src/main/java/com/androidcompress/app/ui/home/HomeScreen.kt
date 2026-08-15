@@ -2,7 +2,6 @@ package com.androidcompress.app.ui.home
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -71,13 +70,8 @@ fun HomeScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) viewModel.createImportJob(uri, onCompress) { msg ->
-            scope.launch { snackbar.showSnackbar(msg) }
-        }
-    }
-    val safPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.createImportJob(uri, onCompress) { msg ->
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.createImportJob(uri, onReady = onCompress) { msg ->
             scope.launch { snackbar.showSnackbar(msg) }
         }
     }
@@ -121,16 +115,11 @@ fun HomeScreen(
             }
             item {
                 ActionCard(
-                    title = "Compress a video",
-                    body = "Pick a screen recording from your gallery or files.",
+                    title = "Compress a file",
+                    body = "Pick a video or audio file. You can switch to audio-only on the next screen.",
                     icon = Icons.Default.FolderOpen,
-                    onClick = {
-                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                    },
+                    onClick = { filePicker.launch(arrayOf("video/*", "audio/*")) },
                 )
-                TextButton(onClick = { safPicker.launch(arrayOf("video/*")) }) {
-                    Text("Browse files")
-                }
             }
             item {
                 Text("Recent", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
@@ -141,7 +130,7 @@ fun HomeScreen(
                 }
             }
             if (jobs.isEmpty()) {
-                item { EmptyState("Nothing yet", "Record or import a video to get started.") }
+                item { EmptyState("Nothing yet", "Record or import a video or audio file to get started.") }
             } else {
                 items(jobs.take(8), key = { it.id }) { job ->
                     JobRow(job, onClick = {

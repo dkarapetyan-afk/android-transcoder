@@ -3,9 +3,12 @@ package com.androidcompress.app.ui.home
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.CompressJob
+import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.JobType
+import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.di.AppContainer
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,16 +26,24 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         .map { !container.jobLogs.lastJobId().isNullOrBlank() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), !container.jobLogs.lastJobId().isNullOrBlank())
 
-    fun createImportJob(uri: Uri, onReady: (String) -> Unit, onError: (String) -> Unit) {
+    fun createImportJob(
+        uri: Uri,
+        onReady: (String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
         viewModelScope.launch {
             try {
                 container.inputs.takePersistableAccess(uri)
                 val info = container.probe.probe(uri)
                 val id = UUID.randomUUID().toString()
                 val prefs = container.prefs.current()
-                val settings = SettingsJson.encode(
-                    com.androidcompress.app.data.EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine),
+                val base = EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine)
+                val audioOut = !info.hasVideo
+                val prepared = base.copy(
+                    output = if (audioOut) OutputMode.AUDIO else OutputMode.VIDEO,
+                    audio = if (audioOut && base.audio == AudioOption.MUTE) AudioOption.AAC_128 else base.audio,
                 )
+                val settings = SettingsJson.encode(prepared)
                 container.jobs.upsert(
                     CompressJob(
                         id = id,
@@ -55,7 +66,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                 runCatching { container.history.prune() }
                 onReady(id)
             } catch (t: Throwable) {
-                onError(t.message ?: "Unable to read that video")
+                onError(t.message ?: "Unable to read that file")
             }
         }
     }

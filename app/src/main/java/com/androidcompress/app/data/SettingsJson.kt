@@ -21,6 +21,9 @@ object SettingsJson {
         put("bFrames", settings.bFrames.name)
         put("extraArgs", settings.ffmpegExtraArgs)
         put("commandOverride", settings.ffmpegCommandOverride)
+        put("clipStartMs", settings.clipStartMs)
+        put("clipEndMs", settings.clipEndMs ?: JSONObject.NULL)
+        put("output", settings.output.name)
     }.toString()
 
     fun decode(raw: String?): EncodeSettings {
@@ -45,6 +48,13 @@ object SettingsJson {
                 bFrames = enumOr(obj.optString("bFrames"), BFrameSetting.AUTO),
                 ffmpegExtraArgs = obj.optString("extraArgs", ""),
                 ffmpegCommandOverride = obj.optString("commandOverride", ""),
+                clipStartMs = obj.optLong("clipStartMs", 0L).coerceAtLeast(0L),
+                clipEndMs = if (!obj.has("clipEndMs") || obj.isNull("clipEndMs")) {
+                    null
+                } else {
+                    obj.getLong("clipEndMs").takeIf { it > 0L }
+                },
+                output = enumOr(obj.optString("output"), OutputMode.VIDEO),
             )
         }.getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }
     }
