@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Device transcode path used by Compressor Edge: Media3 Transformer + MediaCodec.
+ * Device transcode path: Media3 Transformer + MediaCodec.
  * No FFmpeg. CBR by default, VBR first on MediaTek, Pixel 10 HDR tone-map.
  */
 @OptIn(UnstableApi::class)
@@ -287,7 +287,12 @@ class Media3Transcoder(context: Context) {
             hdrMode = Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
         }
 
-        val composition = Composition.Builder(EditedMediaItemSequence.Builder(edited).build())
+        val sequence = when {
+            spec.removeVideo -> EditedMediaItemSequence.withAudioFrom(listOf(edited))
+            spec.removeAudio -> EditedMediaItemSequence.withVideoFrom(listOf(edited))
+            else -> EditedMediaItemSequence.withAudioAndVideoFrom(listOf(edited))
+        }
+        val composition = Composition.Builder(sequence)
             .setHdrMode(hdrMode)
         if (spec.remuxAudio) {
             composition.setTransmuxAudio(true)

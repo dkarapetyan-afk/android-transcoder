@@ -14,7 +14,7 @@ coroutines = "1.10.2"
 junit = "4.13.2"
 ffmpegKit = "6.1.7"
 smartException = "0.2.1"
-media3 = "1.8.0"
+media3 = "1.11.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
