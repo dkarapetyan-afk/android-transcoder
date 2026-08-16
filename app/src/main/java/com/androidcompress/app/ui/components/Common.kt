@@ -16,11 +16,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -85,6 +87,31 @@ fun VideoThumbnail(uri: Uri?, modifier: Modifier = Modifier) {
             Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+fun ConfirmClearJobsDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Clear all jobs?") },
+        text = {
+            Text(
+                "Removes every job from Recent and Library and deletes leftover cache files " +
+                    "(imports, encode temps, and recordings still in the app). " +
+                    "Compressed files already saved to Movies or Music stay. " +
+                    "In-progress encodes are cancelled. A screen recording in progress is left alone.",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Clear") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 @Composable

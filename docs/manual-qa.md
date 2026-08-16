@@ -8,6 +8,7 @@ These cannot be fully automated in this workspace.
 - Microphone recording has audible mic audio.
 - Internal audio (API 29+) captures media/game playback and muxes after stop.
 - Compress a file opens one system picker; a video and an audio file both reach the compress screen.
+- Share / Send a video or audio file from Photos, Files, or a messenger: Recording Compressor appears as Compress and opens the compress screen. Share two files at once creates two jobs; the first opens and the rest are in Recent.
 - Start compress on API 35+ (Pixel 10 / Android 16): must not crash with InvalidForegroundServiceTypeException.
 - Hardware encoder path and software fallback (toggle hardware off).
 - Device (Media3) engine: pick it on the compress screen, confirm progress, output, and cancel still work without FFmpeg.
@@ -23,6 +24,7 @@ These cannot be fully automated in this workspace.
 - Recorded files in app cache delete reliably; a gallery pick may be refused by the provider.
 - Cancel this job leaves later queued items running; Cancel all stops the whole queue.
 - Output appears in the gallery and can be opened/shared.
+- Clear all on Home or Library asks first, empties Recent, deletes import/encode/record cache files, and leaves Movies/Music outputs. A live screen recording stays.
 - Low-storage import shows a clear error instead of a native crash.
 - Rotation during recording does not crash the service.
 - Notification tap on an in-flight encode returns to the app.

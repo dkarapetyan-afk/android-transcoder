@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Recording Compressor</string>
+    <string name="share_compress">Compress</string>
     <string name="notif_record_channel">Screen recording</string>
     <string name="notif_encode_channel">Video compression</string>
     <string name="notif_recording">Recording screen</string>

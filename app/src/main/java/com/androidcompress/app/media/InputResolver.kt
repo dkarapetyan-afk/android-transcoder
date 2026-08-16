@@ -17,6 +17,9 @@ class InputResolver(private val context: Context) {
             .recoverCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
     }
 
+    fun hasPersistableRead(uri: Uri): Boolean =
+        context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
+
     fun hasSpaceFor(sourceBytes: Long): Boolean {
         val free = context.cacheDir.usableSpace
         val needed = (sourceBytes.coerceAtLeast(0) * 2) + 50_000_000
@@ -61,9 +64,33 @@ class InputResolver(private val context: Context) {
         File(context.cacheDir, "imports/$jobId.src").delete()
     }
 
+    fun deleteJobCache(jobId: String) {
+        deleteImportCopy(jobId)
+        File(context.cacheDir, "record/$jobId.mp4").delete()
+        File(context.cacheDir, "record/$jobId.wav").delete()
+        File(context.cacheDir, "encode").listFiles()
+            ?.filter { cacheJobId(it.name) == jobId }
+            ?.forEach { it.delete() }
+    }
+
+    fun clearCacheExcept(keepJobIds: Set<String>) {
+        for (dirName in CACHE_DIRS) {
+            val dir = File(context.cacheDir, dirName)
+            dir.listFiles()?.forEach { file ->
+                if (cacheJobId(file.name) !in keepJobIds) file.delete()
+            }
+        }
+    }
+
     fun recordAudioFile(jobId: String): File {
         val dir = File(context.cacheDir, "record")
         if (!dir.exists()) dir.mkdirs()
         return File(dir, "$jobId.wav")
+    }
+
+    companion object {
+        private val CACHE_DIRS = listOf("imports", "encode", "record")
+
+        fun cacheJobId(fileName: String): String = fileName.substringBeforeLast('.')
     }
 }

@@ -10,6 +10,14 @@ object JobHistoryPolicy {
         else -> false
     }
 
+    fun idsToKeepOnClear(jobs: List<CompressJob>): Set<String> =
+        jobs.filter { it.status == JobStatus.RECORDING }.map { it.id }.toSet()
+
+    fun idsToClear(jobs: List<CompressJob>): Set<String> {
+        val keep = idsToKeepOnClear(jobs)
+        return jobs.map { it.id }.filterNotTo(mutableSetOf()) { it in keep }
+    }
+
     fun idsToDelete(jobs: List<CompressJob>, now: Long = System.currentTimeMillis()): Set<String> {
         val protectedIds = jobs.filter { isProtected(it.status) }.map { it.id }.toSet()
         val deletable = jobs.filter { it.id !in protectedIds }.sortedByDescending { it.createdAt }

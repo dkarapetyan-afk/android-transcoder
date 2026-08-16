@@ -10,11 +10,15 @@ import kotlinx.coroutines.withContext
 
 class MediaProbe(private val context: Context) {
 
+    fun displayName(uri: Uri): String = queryNameAndSize(uri).first
+
+    fun sizeBytes(uri: Uri): Long = queryNameAndSize(uri).second
+
     suspend fun probe(uri: Uri): SourceVideo = withContext(Dispatchers.IO) {
         val nameAndSize = queryNameAndSize(uri)
         val retriever = MediaMetadataRetriever()
         try {
-            retriever.setDataSource(context, uri)
+            openRetriever(retriever, uri)
             val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
             val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
@@ -40,6 +44,15 @@ class MediaProbe(private val context: Context) {
             )
         } finally {
             runCatching { retriever.release() }
+        }
+    }
+
+    private fun openRetriever(retriever: MediaMetadataRetriever, uri: Uri) {
+        if (uri.scheme == "file") {
+            val path = uri.path ?: error("Missing file path")
+            retriever.setDataSource(path)
+        } else {
+            retriever.setDataSource(context, uri)
         }
     }
 

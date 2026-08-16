@@ -11,14 +11,21 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -26,9 +33,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.label
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.components.ConfirmClearJobsDialog
 import com.androidcompress.app.ui.components.EmptyState
 import com.androidcompress.app.util.formatBytes
 import com.androidcompress.app.util.formatDuration
+import kotlinx.coroutines.launch
 
 @Composable
 fun LibraryScreen(
@@ -38,7 +47,25 @@ fun LibraryScreen(
 ) {
     val jobs by viewModel.jobs.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    Scaffold(topBar = { AppTopBar("Library", onBack = onBack) }) { padding ->
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var confirmClear by remember { mutableStateOf(false) }
+    Scaffold(
+        topBar = {
+            AppTopBar(
+                title = "Library",
+                onBack = onBack,
+                actions = {
+                    if (jobs.any { it.status != JobStatus.RECORDING }) {
+                        IconButton(onClick = { confirmClear = true }) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear all jobs")
+                        }
+                    }
+                },
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
         if (jobs.isEmpty()) {
             EmptyState(
                 "No jobs yet",
@@ -71,5 +98,16 @@ fun LibraryScreen(
                 }
             }
         }
+    }
+    if (confirmClear) {
+        ConfirmClearJobsDialog(
+            onConfirm = {
+                confirmClear = false
+                viewModel.clearHistory(context) { msg ->
+                    scope.launch { snackbar.showSnackbar(msg) }
+                }
+            },
+            onDismiss = { confirmClear = false },
+        )
     }
 }

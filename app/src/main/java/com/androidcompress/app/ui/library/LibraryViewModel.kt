@@ -20,8 +20,17 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             if (job?.status == JobStatus.RUNNING || job?.status == JobStatus.QUEUED) {
                 CompressService.cancelJob(context, id)
             }
-            container.jobLogs.delete(id)
-            container.jobs.delete(id)
+            container.history.deleteJob(id)
+        }
+    }
+
+    fun clearHistory(context: Context, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val active = container.jobs.listActive()
+            if (active.any { it.status == JobStatus.RUNNING || it.status == JobStatus.QUEUED }) {
+                CompressService.cancelAll(context)
+            }
+            onDone(container.history.clearHistory().message())
         }
     }
 }

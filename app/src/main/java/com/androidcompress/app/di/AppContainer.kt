@@ -15,6 +15,7 @@ import com.androidcompress.app.encode.JobLogStore
 import com.androidcompress.app.encode.Media3Transcoder
 import com.androidcompress.app.encode.MediaCodecEncoderCaps
 import com.androidcompress.app.media.InputResolver
+import com.androidcompress.app.media.JobImporter
 import com.androidcompress.app.media.MediaProbe
 import com.androidcompress.app.media.MediaStoreExporter
 import com.androidcompress.app.media.SourceFileDeleter
@@ -41,6 +42,7 @@ class AppContainer(context: Context) {
     val jobLogs = JobLogStore(appContext)
     val recording = RecordingStore()
     val history = HistoryJanitor(jobs, jobLogs, inputs)
+    val importer = JobImporter(jobs, prefs, probe, inputs, history)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {

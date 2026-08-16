@@ -50,6 +50,30 @@ class JobHistoryPolicyTest {
         assertTrue(JobHistoryPolicy.idsToDelete(jobs, now).isEmpty())
     }
 
+    @Test
+    fun clearAllRemovesHistoryButKeepsRecording() {
+        val jobs = listOf(
+            job("done", JobStatus.SUCCEEDED, createdAt = now),
+            job("ready", JobStatus.READY, createdAt = now),
+            job("run", JobStatus.RUNNING, createdAt = now),
+            job("queue", JobStatus.QUEUED, createdAt = now),
+            job("rec", JobStatus.RECORDING, createdAt = now),
+        )
+        assertEquals(setOf("rec"), JobHistoryPolicy.idsToKeepOnClear(jobs))
+        assertEquals(setOf("done", "ready", "run", "queue"), JobHistoryPolicy.idsToClear(jobs))
+    }
+
+    @Test
+    fun clearAllMessage() {
+        assertEquals("Nothing to clear.", ClearHistoryResult(0, 0).message())
+        assertEquals("Cleared 3 job(s) and cache files.", ClearHistoryResult(3, 0).message())
+        assertEquals("Cleared 2 job(s). Left a recording in progress.", ClearHistoryResult(2, 1).message())
+        assertEquals(
+            "Nothing to clear. A recording in progress was left alone.",
+            ClearHistoryResult(0, 1).message(),
+        )
+    }
+
     private fun job(id: String, status: JobStatus, createdAt: Long) = CompressJob(
         id = id,
         type = JobType.IMPORT,

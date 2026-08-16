@@ -36,16 +36,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.label
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.components.ConfirmClearJobsDialog
 import com.androidcompress.app.ui.components.EmptyState
 import com.androidcompress.app.util.formatBytes
 import com.androidcompress.app.util.formatDuration
@@ -69,6 +73,8 @@ fun HomeScreen(
     val hasLastLog by viewModel.hasLastLog.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var confirmClear by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.createImportJob(uri, onReady = onCompress) { msg ->
@@ -116,13 +122,23 @@ fun HomeScreen(
             item {
                 ActionCard(
                     title = "Compress a file",
-                    body = "Pick a video or audio file. You can switch to audio-only on the next screen.",
+                    body = "Pick a video or audio file, or share one to this app. You can switch to audio-only on the next screen.",
                     icon = Icons.Default.FolderOpen,
                     onClick = { filePicker.launch(arrayOf("video/*", "audio/*")) },
                 )
             }
             item {
-                Text("Recent", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Recent", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    if (jobs.any { it.status != JobStatus.RECORDING }) {
+                        TextButton(onClick = { confirmClear = true }) {
+                            Text("Clear all")
+                        }
+                    }
+                }
                 if (hasLastLog) {
                     TextButton(onClick = onLastLog) {
                         Text("View last encode log")
@@ -130,7 +146,7 @@ fun HomeScreen(
                 }
             }
             if (jobs.isEmpty()) {
-                item { EmptyState("Nothing yet", "Record or import a video or audio file to get started.") }
+                item { EmptyState("Nothing yet", "Record, import, or share a video or audio file to get started.") }
             } else {
                 items(jobs.take(8), key = { it.id }) { job ->
                     JobRow(job, onClick = {
@@ -144,6 +160,17 @@ fun HomeScreen(
                 }
             }
         }
+    }
+    if (confirmClear) {
+        ConfirmClearJobsDialog(
+            onConfirm = {
+                confirmClear = false
+                viewModel.clearHistory(context) { msg ->
+                    scope.launch { snackbar.showSnackbar(msg) }
+                }
+            },
+            onDismiss = { confirmClear = false },
+        )
     }
 }
 

@@ -37,6 +37,20 @@ class JobLogStore(context: Context) {
         if (lastJobId() == jobId) lastFile.delete()
     }
 
+    fun clearExcept(keepJobIds: Set<String>) {
+        val logs = dir.listFiles { candidate -> candidate.isFile && candidate.name.endsWith(".log") }.orEmpty()
+        for (log in logs) {
+            val id = log.name.removeSuffix(".log")
+            if (id !in keepJobIds) log.delete()
+        }
+        val last = lastJobId()
+        if (last == null || last !in keepJobIds || !file(last).exists()) {
+            val newest = dir.listFiles { candidate -> candidate.isFile && candidate.name.endsWith(".log") }
+                ?.maxByOrNull { it.lastModified() }
+            if (newest == null) lastFile.delete() else lastFile.writeText(newest.name.removeSuffix(".log"))
+        }
+    }
+
     fun prune(
         keepJobIds: Set<String>,
         now: Long = System.currentTimeMillis(),
