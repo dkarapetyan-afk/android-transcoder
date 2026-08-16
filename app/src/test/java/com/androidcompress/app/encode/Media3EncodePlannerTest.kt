@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
@@ -273,6 +274,80 @@ class Media3EncodePlannerTest {
             source.copy(width = 0, height = 0, hasVideo = false),
         )
         assertTrue(spec.removeVideo)
+    }
+
+    @Test
+    fun webmSelectsVp9AndOpus() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                engine = EncodeEngine.MEDIA3,
+                container = ContainerFormat.WEBM,
+                codec = VideoCodec.VP9,
+            ),
+            source,
+        )
+        assertEquals(Media3EncodePlanner.MIME_VP9, spec.videoMimeType)
+        assertEquals(Media3EncodePlanner.MIME_OPUS, spec.audioMimeType)
+        assertTrue(spec.webm)
+        assertFalse(spec.remuxAudio)
+        assertEquals("Media3 · VP9", spec.encoderLabel)
+        assertNull(Media3EncodePlanner.h264Fallback(spec))
+    }
+
+    @Test
+    fun webmCopyDoesNotRemuxAac() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                container = ContainerFormat.WEBM,
+                audio = AudioOption.COPY,
+            ),
+            source,
+        )
+        assertFalse(spec.remuxAudio)
+        assertEquals(128_000, spec.audioBitrateBps)
+        assertEquals(Media3EncodePlanner.MIME_OPUS, spec.audioMimeType)
+    }
+
+    @Test
+    fun webmCopyRemuxesOpus() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                container = ContainerFormat.WEBM,
+                audio = AudioOption.COPY,
+            ),
+            source.copy(audioCodec = "opus"),
+        )
+        assertTrue(spec.remuxAudio)
+        assertEquals("Media3 · VP9", spec.encoderLabel)
+    }
+
+    @Test
+    fun vp8FallbackFromVp9() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(container = ContainerFormat.WEBM),
+            source,
+        )
+        val fallback = Media3EncodePlanner.vp8Fallback(spec)
+        assertEquals(Media3EncodePlanner.MIME_VP8, fallback?.videoMimeType)
+        assertEquals("Media3 · VP8", fallback?.encoderLabel)
+        assertTrue(fallback!!.webm)
+        assertNull(Media3EncodePlanner.vp8Fallback(fallback))
+    }
+
+    @Test
+    fun webmAudioOnlyUsesOpus() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                output = OutputMode.AUDIO,
+                container = ContainerFormat.WEBM,
+            ),
+            source,
+        )
+        assertTrue(spec.removeVideo)
+        assertTrue(spec.webm)
+        assertEquals(Media3EncodePlanner.MIME_OPUS, spec.audioMimeType)
+        assertEquals("Media3 · Opus", spec.encoderLabel)
+        assertNull(Media3EncodePlanner.vp8Fallback(spec))
     }
 
     @Test

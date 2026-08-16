@@ -13,22 +13,30 @@ import java.io.File
 
 class MediaStoreExporter(private val context: Context) {
 
-    suspend fun publish(file: File, displayName: String, audioOnly: Boolean = false): Uri = withContext(Dispatchers.IO) {
-        val ext = if (audioOnly) ".m4a" else ".mp4"
-        val mime = if (audioOnly) "audio/mp4" else "video/mp4"
-        val folder = if (audioOnly) "Music/RecordingCompressor" else "Movies/RecordingCompressor"
+    suspend fun publish(
+        file: File,
+        displayName: String,
+        mime: String,
+        relativePath: String,
+    ): Uri = withContext(Dispatchers.IO) {
+        val audioOnly = mime.startsWith("audio/")
+        val ext = when {
+            mime.contains("webm") -> ".webm"
+            audioOnly -> ".m4a"
+            else -> ".mp4"
+        }
         val safeName = if (displayName.endsWith(ext, ignoreCase = true)) displayName else "$displayName$ext"
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
                 if (audioOnly) {
                     put(MediaStore.Audio.Media.DISPLAY_NAME, safeName)
                     put(MediaStore.Audio.Media.MIME_TYPE, mime)
-                    put(MediaStore.Audio.Media.RELATIVE_PATH, folder)
+                    put(MediaStore.Audio.Media.RELATIVE_PATH, relativePath)
                     put(MediaStore.Audio.Media.IS_PENDING, 1)
                 } else {
                     put(MediaStore.Video.Media.DISPLAY_NAME, safeName)
                     put(MediaStore.Video.Media.MIME_TYPE, mime)
-                    put(MediaStore.Video.Media.RELATIVE_PATH, folder)
+                    put(MediaStore.Video.Media.RELATIVE_PATH, relativePath)
                     put(MediaStore.Video.Media.IS_PENDING, 1)
                 }
             }
@@ -53,7 +61,8 @@ class MediaStoreExporter(private val context: Context) {
             uri
         } else {
             val publicDir = if (audioOnly) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_MOVIES
-            val dir = File(Environment.getExternalStoragePublicDirectory(publicDir), "RecordingCompressor")
+            val folderName = relativePath.substringAfterLast('/').ifBlank { "RecordingCompressor" }
+            val dir = File(Environment.getExternalStoragePublicDirectory(publicDir), folderName)
             if (!dir.exists()) dir.mkdirs()
             val dest = File(dir, safeName)
             file.copyTo(dest, overwrite = true)

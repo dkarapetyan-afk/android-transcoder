@@ -228,7 +228,7 @@ class Media3Transcoder(context: Context) {
                         exportResult: ExportResult,
                         exportException: ExportException,
                     ) {
-                        onError(humanError(exportException), exportException)
+                        onError(humanError(exportException, spec), exportException)
                     }
                 },
             )
@@ -236,7 +236,10 @@ class Media3Transcoder(context: Context) {
             builder.setVideoMimeType(spec.videoMimeType)
         }
         if (!spec.removeAudio && !spec.remuxAudio) {
-            builder.setAudioMimeType(MimeTypes.AUDIO_AAC)
+            builder.setAudioMimeType(spec.audioMimeType)
+        }
+        if (spec.webm) {
+            builder.setMuxerFactory(AndroidWebmMuxerFactory())
         }
         return builder.build()
     }
@@ -308,9 +311,11 @@ class Media3Transcoder(context: Context) {
             .setBitrate(spec.videoBitrateBps)
             .setBitrateMode(bitrateMode)
         spec.iFrameIntervalSeconds?.let { videoBuilder.setiFrameIntervalSeconds(it) }
-        spec.maxBFrames?.let { videoBuilder.setMaxBFrames(it) }
-        codecProfile(spec)?.let { profile ->
-            videoBuilder.setEncodingProfileLevel(profile, VideoEncoderSettings.NO_VALUE)
+        if (!spec.webm) {
+            spec.maxBFrames?.let { videoBuilder.setMaxBFrames(it) }
+            codecProfile(spec)?.let { profile ->
+                videoBuilder.setEncodingProfileLevel(profile, VideoEncoderSettings.NO_VALUE)
+            }
         }
         val video = videoBuilder.build()
         val audioBuilder = AudioEncoderSettings.Builder()
@@ -341,11 +346,13 @@ class Media3Transcoder(context: Context) {
         }
     }
 
-    private fun humanError(exception: ExportException): String {
+    private fun humanError(exception: ExportException, spec: Media3EncodeSpec): String {
         val muxer = exception.errorCode == ExportException.ERROR_CODE_MUXING_FAILED
         val decoder = exception.errorCode == ExportException.ERROR_CODE_DECODER_INIT_FAILED
         val encoder = exception.errorCode == ExportException.ERROR_CODE_ENCODER_INIT_FAILED
         return when {
+            muxer && spec.webm ->
+                "This device could not write a WebM file with Media3. Try FFmpeg."
             muxer && Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true) ->
                 "This Huawei device rejected the MP4 muxer. Try FFmpeg instead."
             decoder -> "This device cannot decode the source video with Media3."

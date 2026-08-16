@@ -12,7 +12,10 @@ import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.canCopyAudio
 import com.androidcompress.app.data.effectiveAudio
+import com.androidcompress.app.data.effectiveVideoCodec
+import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.util.even
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -114,19 +117,35 @@ object FfmpegCommandBuilder {
         settings: EncodeSettings,
         capabilities: EncoderCapabilities,
     ): String {
-        if (settings.codec == VideoCodec.HEVC &&
-            settings.preferHardware &&
-            capabilities.hasHevcMediaCodec
-        ) {
-            return "hevc_mediacodec"
+        return when (settings.effectiveVideoCodec()) {
+            VideoCodec.VP9 -> when {
+                settings.preferHardware && capabilities.hasVp9MediaCodec -> "vp9_mediacodec"
+                capabilities.hasLibvpxVp9 || capabilities.hasLibvpx -> "libvpx-vp9"
+                capabilities.hasVp9MediaCodec -> "vp9_mediacodec"
+                else -> "libvpx-vp9"
+            }
+            VideoCodec.VP8 -> when {
+                settings.preferHardware && capabilities.hasVp8MediaCodec -> "vp8_mediacodec"
+                capabilities.hasLibvpx -> "libvpx"
+                capabilities.hasVp8MediaCodec -> "vp8_mediacodec"
+                else -> "libvpx"
+            }
+            VideoCodec.HEVC -> when {
+                settings.preferHardware && capabilities.hasHevcMediaCodec -> "hevc_mediacodec"
+                settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
+                capabilities.hasOpenH264 -> "libopenh264"
+                else -> "mpeg4"
+            }
+            VideoCodec.H264 -> when {
+                settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
+                capabilities.hasOpenH264 -> "libopenh264"
+                else -> "mpeg4"
+            }
         }
-        if (settings.preferHardware && capabilities.hasH264MediaCodec) {
-            return "h264_mediacodec"
-        }
-        if (capabilities.hasOpenH264) return "libopenh264"
-        if (capabilities.hasMpeg4) return "mpeg4"
-        return "mpeg4"
     }
+
+    fun audioEncoderName(settings: EncodeSettings): String =
+        if (settings.usesWebm()) "libopus" else "aac"
 
     fun build(
         input: String,
@@ -167,8 +186,15 @@ object FfmpegCommandBuilder {
             args += listOf("-r", settings.fpsCap!!.toString())
         }
         args += listOf("-c:v", encoder, "-b:v", "${videoBitrate}k")
+        if (encoder == "libvpx" || encoder == "libvpx-vp9") {
+            args += listOf("-deadline", "good", "-cpu-used", "5", "-row-mt", "1")
+        }
         if (settings.bitrateMode == BitrateMode.CBR) {
-            args += listOf("-maxrate", "${videoBitrate}k", "-bufsize", "${videoBitrate * 2}k")
+            if (encoder == "libvpx" || encoder == "libvpx-vp9") {
+                args += listOf("-minrate", "${videoBitrate}k", "-maxrate", "${videoBitrate}k")
+            } else {
+                args += listOf("-maxrate", "${videoBitrate}k", "-bufsize", "${videoBitrate * 2}k")
+            }
         }
         if (pixFmt != null) {
             args += listOf("-pix_fmt", pixFmt)
@@ -176,7 +202,7 @@ object FfmpegCommandBuilder {
         if (encoder == "hevc_mediacodec") {
             args += listOf("-tag:v", "hvc1")
         }
-        if (settings.codec == VideoCodec.H264) {
+        if (settings.effectiveVideoCodec() == VideoCodec.H264) {
             when (settings.h264Profile) {
                 H264Profile.BASELINE -> args += listOf("-profile:v", "baseline")
                 H264Profile.MAIN -> args += listOf("-profile:v", "main")
@@ -188,8 +214,10 @@ object FfmpegCommandBuilder {
             val gop = (outputFrameRate(source, settings) * seconds).roundToInt().coerceAtLeast(1)
             args += listOf("-g", gop.toString())
         }
-        maxBFrames(settings)?.let { frames ->
-            args += listOf("-bf", frames.toString())
+        if (!settings.usesWebm()) {
+            maxBFrames(settings)?.let { frames ->
+                args += listOf("-bf", frames.toString())
+            }
         }
         if (toneMap) {
             args += listOf("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
@@ -197,28 +225,8 @@ object FfmpegCommandBuilder {
         if (changeVolume) {
             args += listOf("-filter:a", "volume=$volume")
         }
-        when (settings.audio) {
-            AudioOption.MUTE -> args += "-an"
-            AudioOption.COPY -> {
-                if (!source.hasAudio) {
-                    args += "-an"
-                } else if (changeVolume) {
-                    args += listOf("-c:a", "aac", "-b:a", "128k")
-                } else if (source.audioCodec?.contains("aac", ignoreCase = true) == true) {
-                    args += listOf("-c:a", "copy")
-                } else {
-                    args += listOf("-c:a", "aac", "-b:a", "128k")
-                }
-            }
-            AudioOption.AAC_64, AudioOption.AAC_96, AudioOption.AAC_128, AudioOption.AAC_192 -> {
-                if (source.hasAudio) {
-                    args += listOf("-c:a", "aac", "-b:a", "${audioBitrateKbps(settings)}k")
-                } else {
-                    args += "-an"
-                }
-            }
-        }
-        if (settings.fastStart) {
+        args += audioCodecArgs(settings, source, settings.audio, changeVolume)
+        if (settings.fastStart && !settings.usesWebm()) {
             args += listOf("-movflags", "+faststart")
         }
         args += output
@@ -235,6 +243,28 @@ object FfmpegCommandBuilder {
 
     fun fallbackPlan(previous: EncodePlan, input: String, output: String, settings: EncodeSettings, source: SourceVideo, capabilities: EncoderCapabilities): EncodePlan? {
         if (settings.audioOutput(source.hasVideo) || previous.videoEncoder.isBlank()) return null
+        if (settings.usesWebm()) {
+            return when {
+                previous.pixFmt == "nv12" -> build(
+                    input, output, settings, source, capabilities,
+                    pixFmtOverride = "yuv420p",
+                    encoderOverride = previous.videoEncoder,
+                )
+                previous.videoEncoder == "vp9_mediacodec" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libvpx-vp9",
+                )
+                previous.videoEncoder == "vp8_mediacodec" && capabilities.hasLibvpx -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libvpx",
+                )
+                previous.videoEncoder == "libvpx-vp9" && capabilities.hasLibvpx -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libvpx",
+                )
+                else -> null
+            }
+        }
         return when {
             previous.pixFmt == "nv12" -> build(
                 input, output, settings, source, capabilities,
@@ -267,28 +297,8 @@ object FfmpegCommandBuilder {
         if (changeVolume) {
             args += listOf("-filter:a", "volume=$volume")
         }
-        when (audio) {
-            AudioOption.MUTE -> args += "-an"
-            AudioOption.COPY -> {
-                if (!source.hasAudio) {
-                    args += "-an"
-                } else if (changeVolume) {
-                    args += listOf("-c:a", "aac", "-b:a", "128k")
-                } else if (source.audioCodec?.contains("aac", ignoreCase = true) == true) {
-                    args += listOf("-c:a", "copy")
-                } else {
-                    args += listOf("-c:a", "aac", "-b:a", "128k")
-                }
-            }
-            AudioOption.AAC_64, AudioOption.AAC_96, AudioOption.AAC_128, AudioOption.AAC_192 -> {
-                if (source.hasAudio) {
-                    args += listOf("-c:a", "aac", "-b:a", "${audioBitrateKbps(settings.copy(audio = audio))}k")
-                } else {
-                    args += "-an"
-                }
-            }
-        }
-        if (settings.fastStart) {
+        args += audioCodecArgs(settings, source, audio, changeVolume)
+        if (settings.fastStart && !settings.usesWebm()) {
             args += listOf("-movflags", "+faststart")
         }
         args += output
@@ -301,6 +311,30 @@ object FfmpegCommandBuilder {
             videoBitrateKbps = 0,
             audioBitrateKbps = if (audio == AudioOption.COPY) 128 else audioBitrateKbps(settings.copy(audio = audio)),
         )
+    }
+
+    private fun audioCodecArgs(
+        settings: EncodeSettings,
+        source: SourceVideo,
+        audio: AudioOption,
+        changeVolume: Boolean,
+    ): List<String> {
+        val encoder = audioEncoderName(settings)
+        return when (audio) {
+            AudioOption.MUTE -> listOf("-an")
+            AudioOption.COPY -> when {
+                !source.hasAudio -> listOf("-an")
+                changeVolume || !settings.canCopyAudio(source) -> listOf("-c:a", encoder, "-b:a", "128k")
+                else -> listOf("-c:a", "copy")
+            }
+            AudioOption.AAC_64, AudioOption.AAC_96, AudioOption.AAC_128, AudioOption.AAC_192 -> {
+                if (source.hasAudio) {
+                    listOf("-c:a", encoder, "-b:a", "${audioBitrateKbps(settings.copy(audio = audio))}k")
+                } else {
+                    listOf("-an")
+                }
+            }
+        }
     }
 
     private fun appendClip(args: MutableList<String>, settings: EncodeSettings, source: SourceVideo) {

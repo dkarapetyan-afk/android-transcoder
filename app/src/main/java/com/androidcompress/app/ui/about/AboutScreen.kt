@@ -32,7 +32,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 "The app does not collect accounts, analytics, or advertising identifiers. " +
                     "Screen recording uses Android’s MediaProjection consent dialog. " +
                     "Microphone and internal-audio capture are used only when you turn them on. " +
-                    "Compressed files are written to Movies/RecordingCompressor on this device. " +
+                    "Compressed files are written to Movies/RecordingCompressor (MP4 or WebM) or Music/RecordingCompressor (M4A or WebM audio) on this device. " +
                     "If you add a Gemini API key and tap Generate extra args, the text prompt and encode settings are sent to Google’s Gemini API. The video itself stays on the device.",
             )
             Text("Open source notices", style = MaterialTheme.typography.titleMedium)

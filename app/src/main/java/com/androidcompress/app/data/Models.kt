@@ -9,11 +9,13 @@ enum class JobStatus { DRAFT, RECORDING, READY, QUEUED, RUNNING, SUCCEEDED, FAIL
 
 enum class Preset { SMALLER, BALANCED, HIGHER }
 
-enum class VideoCodec { H264, HEVC }
+enum class VideoCodec { H264, HEVC, VP8, VP9 }
 
 enum class EncodeEngine { FFMPEG, MEDIA3 }
 
 enum class OutputMode { VIDEO, AUDIO }
+
+enum class ContainerFormat { MP4, WEBM }
 
 enum class AudioOption { COPY, AAC_64, AAC_96, AAC_128, AAC_192, MUTE }
 
@@ -52,6 +54,7 @@ data class EncodeSettings(
     val clipStartMs: Long = 0,
     val clipEndMs: Long? = null,
     val output: OutputMode = OutputMode.VIDEO,
+    val container: ContainerFormat = ContainerFormat.MP4,
 ) {
     companion object {
         fun forPreset(preset: Preset, engine: EncodeEngine = EncodeEngine.FFMPEG): EncodeSettings = when (preset) {
@@ -108,6 +111,49 @@ fun EncodeSettings.audioOutput(hasVideo: Boolean = true): Boolean =
 fun EncodeSettings.effectiveAudio(hasVideo: Boolean = true): AudioOption =
     if (audioOutput(hasVideo) && audio == AudioOption.MUTE) AudioOption.AAC_128 else audio
 
+fun EncodeSettings.usesWebm(): Boolean = container == ContainerFormat.WEBM
+
+fun EncodeSettings.effectiveVideoCodec(): VideoCodec =
+    if (usesWebm()) {
+        if (codec == VideoCodec.VP8) VideoCodec.VP8 else VideoCodec.VP9
+    } else {
+        if (codec == VideoCodec.HEVC) VideoCodec.HEVC else VideoCodec.H264
+    }
+
+fun EncodeSettings.withContainer(next: ContainerFormat): EncodeSettings {
+    val nextCodec = when {
+        next == ContainerFormat.WEBM && codec != VideoCodec.VP8 && codec != VideoCodec.VP9 -> VideoCodec.VP9
+        next == ContainerFormat.MP4 && codec != VideoCodec.H264 && codec != VideoCodec.HEVC -> VideoCodec.H264
+        else -> codec
+    }
+    return copy(container = next, codec = nextCodec)
+}
+
+fun EncodeSettings.outputExtension(): String = when {
+    usesWebm() -> "webm"
+    output == OutputMode.AUDIO -> "m4a"
+    else -> "mp4"
+}
+
+fun EncodeSettings.outputMime(): String = when {
+    usesWebm() && output == OutputMode.AUDIO -> "audio/webm"
+    usesWebm() -> "video/webm"
+    output == OutputMode.AUDIO -> "audio/mp4"
+    else -> "video/mp4"
+}
+
+fun EncodeSettings.galleryFolder(): String =
+    if (output == OutputMode.AUDIO) "Music/RecordingCompressor" else "Movies/RecordingCompressor"
+
+fun EncodeSettings.canCopyAudio(source: SourceVideo): Boolean {
+    val codec = source.audioCodec.orEmpty().lowercase()
+    return if (usesWebm()) {
+        codec.contains("opus") || codec.contains("vorbis")
+    } else {
+        codec.contains("aac")
+    }
+}
+
 fun OutputMode.fileExtension(): String = if (this == OutputMode.AUDIO) "m4a" else "mp4"
 
 fun OutputMode.mimeType(): String = if (this == OutputMode.AUDIO) "audio/mp4" else "video/mp4"
@@ -120,6 +166,11 @@ data class EncoderCapabilities(
     val hasHevcMediaCodec: Boolean = false,
     val hasOpenH264: Boolean = false,
     val hasMpeg4: Boolean = true,
+    val hasVp8MediaCodec: Boolean = false,
+    val hasVp9MediaCodec: Boolean = false,
+    val hasLibvpx: Boolean = false,
+    val hasLibvpxVp9: Boolean = false,
+    val hasLibOpus: Boolean = false,
 ) {
     val hardwareH264: Boolean get() = hasH264MediaCodec
     val hardwareHevc: Boolean get() = hasHevcMediaCodec

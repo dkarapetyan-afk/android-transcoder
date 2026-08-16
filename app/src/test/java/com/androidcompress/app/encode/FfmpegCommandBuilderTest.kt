@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
@@ -264,6 +265,88 @@ class FfmpegCommandBuilderTest {
         )
         assertTrue(audio < video)
         assertTrue(audio > 10_000)
+    }
+
+    @Test
+    fun webmUsesVp9AndOpus() {
+        val caps = hardwareCaps.copy(hasVp9MediaCodec = true, hasLibvpxVp9 = true, hasLibOpus = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            container = ContainerFormat.WEBM,
+            codec = VideoCodec.VP9,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("vp9_mediacodec", plan.videoEncoder)
+        assertEquals("libopus", plan.args[plan.args.indexOf("-c:a") + 1])
+        assertFalse(plan.args.contains("-movflags"))
+        assertFalse(plan.args.contains("-bf"))
+        assertEquals("out.webm", plan.args.last())
+    }
+
+    @Test
+    fun webmSoftwareUsesLibvpx() {
+        val caps = EncoderCapabilities(hasLibvpx = true, hasLibvpxVp9 = true, hasLibOpus = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            container = ContainerFormat.WEBM,
+            codec = VideoCodec.VP9,
+            preferHardware = false,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx-vp9", plan.videoEncoder)
+        assertEquals("good", plan.args[plan.args.indexOf("-deadline") + 1])
+        assertEquals("1", plan.args[plan.args.indexOf("-row-mt") + 1])
+    }
+
+    @Test
+    fun webmDoesNotCopyAacAudio() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            container = ContainerFormat.WEBM,
+            audio = AudioOption.COPY,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, hardwareCaps)
+        assertEquals("libopus", plan.args[plan.args.indexOf("-c:a") + 1])
+    }
+
+    @Test
+    fun webmFallbackStaysInWebmFamily() {
+        val caps = hardwareCaps.copy(hasVp9MediaCodec = true, hasLibvpx = true, hasLibvpxVp9 = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(container = ContainerFormat.WEBM)
+        val first = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        val second = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("yuv420p", second!!.pixFmt)
+        val third = FfmpegCommandBuilder.fallbackPlan(second, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx-vp9", third?.videoEncoder)
+        val last = FfmpegCommandBuilder.fallbackPlan(third!!, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx", last?.videoEncoder)
+        assertNull(FfmpegCommandBuilder.fallbackPlan(last!!, "in.mp4", "out.webm", settings, source, caps))
+    }
+
+    @Test
+    fun webmAudioOnlyWritesOpus() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            output = OutputMode.AUDIO,
+            container = ContainerFormat.WEBM,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, hardwareCaps)
+        assertTrue(plan.args.contains("-vn"))
+        assertEquals("libopus", plan.args[plan.args.indexOf("-c:a") + 1])
+        assertFalse(plan.args.contains("-movflags"))
+        assertEquals("out.webm", plan.args.last())
+    }
+
+    @Test
+    fun encoderListingParserReadsVpx() {
+        val listing = """
+            Encoders:
+             V..... vp9_mediacodec
+             V..... libvpx-vp9
+             A..... libopus
+        """.trimIndent()
+        val caps = EncoderListing.parse(listing)
+        assertTrue(caps.hasVp9MediaCodec)
+        assertTrue(caps.hasLibvpxVp9)
+        assertTrue(caps.hasLibvpx)
+        assertTrue(caps.hasLibOpus)
+        assertFalse(caps.hasH264MediaCodec)
     }
 
     @Test

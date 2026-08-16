@@ -40,9 +40,11 @@ import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
+import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
@@ -153,11 +155,29 @@ fun CompressScreen(
                     label = { Text("Audio only") },
                 )
             }
+            Text("Container", style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = settings.container == ContainerFormat.MP4,
+                    onClick = { viewModel.setContainer(ContainerFormat.MP4) },
+                    label = { Text(if (settings.audioOutput(sourceHasVideo)) "M4A" else "MP4") },
+                )
+                FilterChip(
+                    selected = settings.container == ContainerFormat.WEBM,
+                    onClick = { viewModel.setContainer(ContainerFormat.WEBM) },
+                    label = { Text("WebM") },
+                )
+            }
             Text(
-                if (settings.audioOutput(sourceHasVideo)) {
-                    "Writes an AAC .m4a. From a video this extracts the soundtrack; from audio this re-encodes it."
-                } else {
-                    "Writes a compressed MP4 with video and audio."
+                when {
+                    settings.audioOutput(sourceHasVideo) && settings.usesWebm() ->
+                        "Writes an Opus .webm. From a video this extracts the soundtrack; from audio this re-encodes it."
+                    settings.audioOutput(sourceHasVideo) ->
+                        "Writes an AAC .m4a. From a video this extracts the soundtrack; from audio this re-encodes it."
+                    settings.usesWebm() ->
+                        "Writes a VP8/VP9 + Opus WebM. Media3 uses the device encoder; FFmpeg can fall back to libvpx."
+                    else ->
+                        "Writes a compressed MP4 with video and audio."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -190,17 +210,30 @@ fun CompressScreen(
                 }
                 Text("Codec")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = settings.codec == VideoCodec.H264,
-                        onClick = { viewModel.update { it.copy(codec = VideoCodec.H264) } },
-                        label = { Text("H.264") },
-                    )
-                    if (ui.capabilities.hasHevcMediaCodec) {
+                    if (settings.usesWebm()) {
                         FilterChip(
-                            selected = settings.codec == VideoCodec.HEVC,
-                            onClick = { viewModel.update { it.copy(codec = VideoCodec.HEVC) } },
-                            label = { Text("HEVC") },
+                            selected = settings.codec == VideoCodec.VP9,
+                            onClick = { viewModel.update { it.copy(codec = VideoCodec.VP9) } },
+                            label = { Text("VP9") },
                         )
+                        FilterChip(
+                            selected = settings.codec == VideoCodec.VP8,
+                            onClick = { viewModel.update { it.copy(codec = VideoCodec.VP8) } },
+                            label = { Text("VP8") },
+                        )
+                    } else {
+                        FilterChip(
+                            selected = settings.codec == VideoCodec.H264,
+                            onClick = { viewModel.update { it.copy(codec = VideoCodec.H264) } },
+                            label = { Text("H.264") },
+                        )
+                        if (ui.capabilities.hasHevcMediaCodec) {
+                            FilterChip(
+                                selected = settings.codec == VideoCodec.HEVC,
+                                onClick = { viewModel.update { it.copy(codec = VideoCodec.HEVC) } },
+                                label = { Text("HEVC") },
+                            )
+                        }
                     }
                 }
                 Text("Quality  ${settings.videoBitrateKbps} kbps")
@@ -260,7 +293,7 @@ fun CompressScreen(
                         label = { Text("5 s") },
                     )
                 }
-                if (settings.codec == VideoCodec.H264) {
+                if (!settings.usesWebm() && settings.codec == VideoCodec.H264) {
                     Text("H.264 profile")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
@@ -294,6 +327,7 @@ fun CompressScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (!settings.usesWebm()) {
                 Text("B-frames")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
@@ -316,6 +350,7 @@ fun CompressScreen(
                         onClick = { viewModel.update { it.copy(bFrames = BFrameSetting.TWO) } },
                         label = { Text("2") },
                     )
+                }
                 }
                 Text("HDR")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -348,7 +383,7 @@ fun CompressScreen(
                         FilterChip(
                             selected = settings.audio == option,
                             onClick = { viewModel.update { it.copy(audio = option) } },
-                            label = { Text(audioLabel(option)) },
+                            label = { Text(audioLabel(option, settings.usesWebm())) },
                         )
                     }
                 }
@@ -364,11 +399,13 @@ fun CompressScreen(
                     )
                 }
                 if (settings.engine == EncodeEngine.FFMPEG) {
+                    if (!settings.usesWebm()) {
                     FilterChip(
                         selected = settings.fastStart,
                         onClick = { viewModel.update { it.copy(fastStart = !it.fastStart) } },
                         label = { Text(if (settings.fastStart) "Fast start on" else "Fast start off") },
                     )
+                    }
                     if (!audioOnly) {
                         FilterChip(
                             selected = settings.preferHardware,

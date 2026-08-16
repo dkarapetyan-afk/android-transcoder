@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
@@ -12,6 +13,9 @@ import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.outputExtension
+import com.androidcompress.app.data.outputMime
+import com.androidcompress.app.data.withContainer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -41,6 +45,7 @@ class SettingsJsonTest {
             clipStartMs = 5_000,
             clipEndMs = 20_000,
             output = OutputMode.AUDIO,
+            container = ContainerFormat.WEBM,
         )
         val decoded = SettingsJson.decode(SettingsJson.encode(original))
         assertEquals(original, decoded)
@@ -70,5 +75,20 @@ class SettingsJsonTest {
         assertEquals(0L, decoded.clipStartMs)
         assertNull(decoded.clipEndMs)
         assertEquals(OutputMode.VIDEO, decoded.output)
+        assertEquals(ContainerFormat.MP4, decoded.container)
+    }
+
+    @Test
+    fun webmContainerRemapsCodecAndNames() {
+        val webm = EncodeSettings.forPreset(Preset.BALANCED).withContainer(ContainerFormat.WEBM)
+        assertEquals(VideoCodec.VP9, webm.codec)
+        assertEquals("webm", webm.outputExtension())
+        assertEquals("video/webm", webm.outputMime())
+        val audio = webm.copy(output = OutputMode.AUDIO)
+        assertEquals("webm", audio.outputExtension())
+        assertEquals("audio/webm", audio.outputMime())
+        val back = webm.withContainer(ContainerFormat.MP4)
+        assertEquals(VideoCodec.H264, back.codec)
+        assertEquals("mp4", back.outputExtension())
     }
 }

@@ -18,6 +18,10 @@ import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.galleryFolder
+import com.androidcompress.app.data.outputExtension
+import com.androidcompress.app.data.outputMime
+import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.util.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -117,13 +121,14 @@ class CompressService : Service() {
         currentJobId = jobId
         app.jobs.updateStatus(jobId, JobStatus.RUNNING)
         val audioOnly = settings.audioOutput(source.hasVideo)
-        val output = app.inputs.encodeOutputFile(jobId, audioOnly)
+        val output = app.inputs.encodeOutputFile(jobId, settings.outputExtension())
         output.delete()
         val log = StringBuilder()
         log.appendLine("jobId=$jobId")
         log.appendLine("name=${job.displayName}")
         log.appendLine("engine=${settings.engine}")
         log.appendLine("output=${if (audioOnly) "audio" else "video"}")
+        log.appendLine("container=${settings.container}")
         log.appendLine("source=${job.sourceUri}")
         try {
             if (audioOnly && !source.hasAudio) {
@@ -147,8 +152,9 @@ class CompressService : Service() {
                 result.success && output.exists() && output.length() > 0 -> {
                     val published = app.exporter.publish(
                         output,
-                        compressedName(job.displayName, audioOnly),
-                        audioOnly,
+                        compressedName(job.displayName, settings),
+                        settings.outputMime(),
+                        settings.galleryFolder(),
                     )
                     val bytes = output.length()
                     output.delete()
@@ -240,9 +246,13 @@ class CompressService : Service() {
     ): EncodeResult {
         var spec = Media3EncodePlanner.plan(settings, source)
         var result = executeMedia3(jobId, source, spec, sourceUri, output, log)
-        val fallback = Media3EncodePlanner.h264Fallback(spec)
+        val fallback = if (settings.usesWebm()) {
+            Media3EncodePlanner.vp8Fallback(spec)
+        } else {
+            Media3EncodePlanner.h264Fallback(spec)
+        }
         if (!result.success && !result.cancelled && fallback != null) {
-            log.appendLine("retrying Media3 H.264 fallback")
+            log.appendLine("retrying Media3 ${if (settings.usesWebm()) "VP8" else "H.264"} fallback")
             output.delete()
             spec = fallback
             result = executeMedia3(jobId, source, spec, sourceUri, output, log)
@@ -324,9 +334,10 @@ class CompressService : Service() {
         }
     }
 
-    private fun compressedName(original: String, audioOnly: Boolean): String {
+    private fun compressedName(original: String, settings: EncodeSettings): String {
+        val audioOnly = settings.output == com.androidcompress.app.data.OutputMode.AUDIO
         val base = original.substringBeforeLast('.').ifBlank { if (audioOnly) "audio" else "video" }
-        return "${base}-compressed.${if (audioOnly) "m4a" else "mp4"}"
+        return "${base}-compressed.${settings.outputExtension()}"
     }
 
     private fun startAsForeground(jobId: String, percent: Int) {

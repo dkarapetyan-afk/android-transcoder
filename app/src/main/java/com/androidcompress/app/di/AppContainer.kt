@@ -60,6 +60,8 @@ class AppContainer(context: Context) {
                 val merged = cached.copy(
                     hasH264MediaCodec = cached.hasH264MediaCodec || device.hasH264MediaCodec,
                     hasHevcMediaCodec = cached.hasHevcMediaCodec || device.hasHevcMediaCodec,
+                    hasVp8MediaCodec = cached.hasVp8MediaCodec || device.hasVp8MediaCodec,
+                    hasVp9MediaCodec = cached.hasVp9MediaCodec || device.hasVp9MediaCodec,
                 )
                 caps = merged
                 return merged
@@ -70,6 +72,8 @@ class AppContainer(context: Context) {
             val merged = detected.copy(
                 hasH264MediaCodec = detected.hasH264MediaCodec || device.hasH264MediaCodec,
                 hasHevcMediaCodec = detected.hasHevcMediaCodec || device.hasHevcMediaCodec,
+                hasVp8MediaCodec = detected.hasVp8MediaCodec || device.hasVp8MediaCodec,
+                hasVp9MediaCodec = detected.hasVp9MediaCodec || device.hasVp9MediaCodec,
             )
             caps = merged
             merged

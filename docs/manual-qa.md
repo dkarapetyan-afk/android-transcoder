@@ -13,6 +13,8 @@ These cannot be fully automated in this workspace.
 - Device (Media3) engine: pick it on the compress screen, confirm progress, output, and cancel still work without FFmpeg.
 - Device (Media3) clip: set start/end on a known source, confirm the output is only that range and progress uses the clipped duration. Whole-video reset clears the clip.
 - Audio only from a video (both engines): output is an AAC .m4a in Music/RecordingCompressor; Open/Share use audio MIME.
+- WebM video (both engines): Container WebM, VP9 default; output is .webm in Movies/RecordingCompressor; Open/Share use video/webm. FFmpeg software fallback if hardware VP9 fails.
+- WebM audio only (both engines): Container WebM + Audio only; output is Opus .webm in Music/RecordingCompressor.
 - Pick an m4a/mp3 from the same picker; Audio only is locked if the source has no video.
 - Advanced: CBR vs VBR, keyframe 2s, H.264 High, volume 150%, tone-map, and B-frames Off — try once on FFmpeg and once on Media3.
 - Switching the Settings default engine applies to a newly imported or recorded job.

@@ -9,6 +9,7 @@ import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
@@ -16,6 +17,8 @@ import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.effectiveAudio
+import com.androidcompress.app.data.usesWebm
+import com.androidcompress.app.data.withContainer
 import com.androidcompress.app.di.AppContainer
 import com.androidcompress.app.encode.CompressService
 import com.androidcompress.app.encode.ExtraArgsSanitizer
@@ -92,8 +95,11 @@ class CompressViewModel(
         val encoderLabel = when {
             job == null || job.sourceUri.isBlank() -> ""
             enc.engine == EncodeEngine.MEDIA3 -> Media3EncodePlanner.plan(enc, source).encoderLabel
-            enc.audioOutput(source.hasVideo) ->
-                if (enc.effectiveAudio(source.hasVideo) == AudioOption.COPY) "FFmpeg · audio copy" else "FFmpeg · AAC"
+            enc.audioOutput(source.hasVideo) -> when {
+                enc.effectiveAudio(source.hasVideo) == AudioOption.COPY -> "FFmpeg · audio copy"
+                enc.usesWebm() -> "FFmpeg · Opus"
+                else -> "FFmpeg · AAC"
+            }
             else -> plan?.videoEncoder.orEmpty()
         }
         CompressUiState(
@@ -194,6 +200,10 @@ class CompressViewModel(
         }
     }
 
+    fun setContainer(format: ContainerFormat) {
+        update { it.withContainer(format) }
+    }
+
     fun applyPreset(preset: Preset) {
         val previous = settings.value
         settings.value = EncodeSettings.forPreset(preset, previous.engine).copy(
@@ -209,7 +219,7 @@ class CompressViewModel(
             clipStartMs = previous.clipStartMs,
             clipEndMs = previous.clipEndMs,
             output = previous.output,
-        )
+        ).withContainer(previous.container)
         persist()
     }
 
@@ -248,7 +258,8 @@ class CompressViewModel(
             val job = container.jobs.get(jobId)
             val source = job.toSource()
             val encoder = when {
-                enc.audioOutput(source?.hasVideo ?: true) -> "aac"
+                enc.audioOutput(source?.hasVideo ?: true) ->
+                    if (enc.usesWebm()) "libopus" else "aac"
                 source != null -> FfmpegCommandBuilder.selectVideoEncoder(enc, caps.value)
                 else -> ""
             }
@@ -389,13 +400,16 @@ fun heightLabel(value: Int?): String = when (value) {
     else -> "${value}p"
 }
 
-fun audioLabel(option: AudioOption): String = when (option) {
-    AudioOption.COPY -> "Keep original"
-    AudioOption.AAC_64 -> "AAC 64 kbps"
-    AudioOption.AAC_96 -> "AAC 96 kbps"
-    AudioOption.AAC_128 -> "AAC 128 kbps"
-    AudioOption.AAC_192 -> "AAC 192 kbps"
-    AudioOption.MUTE -> "Mute"
+fun audioLabel(option: AudioOption, webm: Boolean = false): String {
+    val codec = if (webm) "Opus" else "AAC"
+    return when (option) {
+        AudioOption.COPY -> "Keep original"
+        AudioOption.AAC_64 -> "$codec 64 kbps"
+        AudioOption.AAC_96 -> "$codec 96 kbps"
+        AudioOption.AAC_128 -> "$codec 128 kbps"
+        AudioOption.AAC_192 -> "$codec 192 kbps"
+        AudioOption.MUTE -> "Mute"
+    }
 }
 
 fun codecAllowed(codec: VideoCodec, caps: EncoderCapabilities): Boolean =

@@ -9,7 +9,10 @@ import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.canCopyAudio
 import com.androidcompress.app.data.effectiveAudio
+import com.androidcompress.app.data.effectiveVideoCodec
+import com.androidcompress.app.data.usesWebm
 
 data class Media3EncodeSpec(
     val videoMimeType: String,
@@ -31,6 +34,8 @@ data class Media3EncodeSpec(
     val clipStartMs: Long = 0,
     val clipEndMs: Long? = null,
     val removeVideo: Boolean = false,
+    val audioMimeType: String = Media3EncodePlanner.MIME_AAC,
+    val webm: Boolean = false,
 ) {
     val clipActive: Boolean get() = clipStartMs > 0 || clipEndMs != null
 
@@ -64,7 +69,10 @@ object Media3EncodePlanner {
 
     const val MIME_H264 = "video/avc"
     const val MIME_HEVC = "video/hevc"
+    const val MIME_VP8 = "video/x-vnd.on2.vp8"
+    const val MIME_VP9 = "video/x-vnd.on2.vp9"
     const val MIME_AAC = "audio/mp4a-latm"
+    const val MIME_OPUS = "audio/opus"
     const val MIN_CLIP_MS = 100L
 
     fun clipWindow(settings: EncodeSettings, sourceDurationMs: Long): Media3ClipWindow {
@@ -103,20 +111,28 @@ object Media3EncodePlanner {
         val outH = if (audioOnly) 0 else FfmpegCommandBuilder.outputHeight(source, settings)
         val outW = if (audioOnly) 0 else FfmpegCommandBuilder.outputWidth(source, outH)
         val videoKbps = if (audioOnly) 0 else FfmpegCommandBuilder.scaledVideoBitrate(source, settings)
-        val hevc = settings.codec == VideoCodec.HEVC
+        val codec = settings.effectiveVideoCodec()
+        val webm = settings.usesWebm()
         val fpsCap = settings.fpsCap
         val outputFps = if (!audioOnly && fpsCap != null && source.frameRate > fpsCap + 0.1f) fpsCap else 0
         val volume = FfmpegCommandBuilder.audioVolume(settings)
         val removeAudio = !audioOnly && (audio == AudioOption.MUTE || !source.hasAudio)
-        val remuxAudio = !removeAudio && audio == AudioOption.COPY && volume == 1f
+        val remuxAudio = !removeAudio && audio == AudioOption.COPY && volume == 1f && settings.canCopyAudio(source)
         val audioKbps = when {
             removeAudio || remuxAudio -> 0
             audio == AudioOption.COPY -> 128
             else -> FfmpegCommandBuilder.audioBitrateKbps(settings.copy(audio = audio)).coerceAtLeast(64)
         }
+        val videoMime = when (codec) {
+            VideoCodec.VP8 -> MIME_VP8
+            VideoCodec.VP9 -> MIME_VP9
+            VideoCodec.HEVC -> MIME_HEVC
+            VideoCodec.H264 -> MIME_H264
+        }
+        val audioMime = if (webm) MIME_OPUS else MIME_AAC
         val clip = clipWindow(settings, source.durationMs)
         return Media3EncodeSpec(
-            videoMimeType = if (hevc) MIME_HEVC else MIME_H264,
+            videoMimeType = videoMime,
             outputHeight = outH,
             outputWidth = outW,
             outputFps = outputFps,
@@ -127,8 +143,11 @@ object Media3EncodePlanner {
             remuxAudio = remuxAudio,
             encoderLabel = when {
                 audioOnly && remuxAudio -> "Media3 · audio copy"
+                audioOnly && webm -> "Media3 · Opus"
                 audioOnly -> "Media3 · AAC"
-                hevc -> "Media3 · HEVC"
+                codec == VideoCodec.VP8 -> "Media3 · VP8"
+                codec == VideoCodec.VP9 -> "Media3 · VP9"
+                codec == VideoCodec.HEVC -> "Media3 · HEVC"
                 else -> "Media3 · H.264"
             },
             preferCbr = settings.bitrateMode == BitrateMode.CBR,
@@ -140,11 +159,18 @@ object Media3EncodePlanner {
             clipStartMs = clip.startMs,
             clipEndMs = clip.endMs,
             removeVideo = audioOnly,
+            audioMimeType = audioMime,
+            webm = webm,
         )
     }
 
     fun h264Fallback(spec: Media3EncodeSpec): Media3EncodeSpec? {
-        if (spec.removeVideo || spec.videoMimeType == MIME_H264) return null
+        if (spec.removeVideo || spec.webm || spec.videoMimeType == MIME_H264) return null
         return spec.copy(videoMimeType = MIME_H264, encoderLabel = "Media3 · H.264")
+    }
+
+    fun vp8Fallback(spec: Media3EncodeSpec): Media3EncodeSpec? {
+        if (spec.removeVideo || !spec.webm || spec.videoMimeType == MIME_VP8) return null
+        return spec.copy(videoMimeType = MIME_VP8, encoderLabel = "Media3 · VP8")
     }
 }

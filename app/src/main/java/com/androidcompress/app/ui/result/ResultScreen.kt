@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.OutputMode
-import com.androidcompress.app.data.galleryFolder
+
 import com.androidcompress.app.ui.components.AppTopBar
 import com.androidcompress.app.ui.components.StatLine
 import com.androidcompress.app.ui.components.VideoThumbnail
@@ -75,7 +75,7 @@ fun ResultScreen(
                     }
                     deleteMessage?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     Text(
-                        "Saved to ${viewModel.outputMode(current.settingsJson).galleryFolder()} on this device.",
+                        "Saved to ${viewModel.galleryFolder(current.settingsJson)} on this device.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

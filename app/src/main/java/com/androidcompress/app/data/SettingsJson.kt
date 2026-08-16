@@ -24,6 +24,7 @@ object SettingsJson {
         put("clipStartMs", settings.clipStartMs)
         put("clipEndMs", settings.clipEndMs ?: JSONObject.NULL)
         put("output", settings.output.name)
+        put("container", settings.container.name)
     }.toString()
 
     fun decode(raw: String?): EncodeSettings {
@@ -55,6 +56,7 @@ object SettingsJson {
                     obj.getLong("clipEndMs").takeIf { it > 0L }
                 },
                 output = enumOr(obj.optString("output"), OutputMode.VIDEO),
+                container = enumOr(obj.optString("container"), ContainerFormat.MP4),
             )
         }.getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }
     }
@@ -64,17 +66,28 @@ object SettingsJson {
         put("hevcMc", caps.hasHevcMediaCodec)
         put("openh264", caps.hasOpenH264)
         put("mpeg4", caps.hasMpeg4)
+        put("vp8mc", caps.hasVp8MediaCodec)
+        put("vp9mc", caps.hasVp9MediaCodec)
+        put("libvpx", caps.hasLibvpx)
+        put("libvpxVp9", caps.hasLibvpxVp9)
+        put("libopus", caps.hasLibOpus)
     }.toString()
 
     fun decodeCaps(raw: String?): EncoderCapabilities? {
         if (raw.isNullOrBlank()) return null
         return runCatching {
             val obj = JSONObject(raw)
+            if (!obj.has("vp9mc")) return null
             EncoderCapabilities(
                 hasH264MediaCodec = obj.optBoolean("h264mc"),
                 hasHevcMediaCodec = obj.optBoolean("hevcMc"),
                 hasOpenH264 = obj.optBoolean("openh264"),
                 hasMpeg4 = obj.optBoolean("mpeg4", true),
+                hasVp8MediaCodec = obj.optBoolean("vp8mc"),
+                hasVp9MediaCodec = obj.optBoolean("vp9mc"),
+                hasLibvpx = obj.optBoolean("libvpx"),
+                hasLibvpxVp9 = obj.optBoolean("libvpxVp9"),
+                hasLibOpus = obj.optBoolean("libopus"),
             )
         }.getOrNull()
     }

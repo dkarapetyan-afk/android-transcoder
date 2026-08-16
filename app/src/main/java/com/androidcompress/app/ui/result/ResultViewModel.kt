@@ -5,9 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.SettingsJson
-import com.androidcompress.app.data.mimeType
+import com.androidcompress.app.data.galleryFolder
+import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -65,7 +67,11 @@ class ResultViewModel(
         context.startActivity(intent)
     }
 
-    fun outputMode(settingsJson: String): OutputMode = SettingsJson.decode(settingsJson).output
+    fun outputMode(settingsJson: String): OutputMode = settings(settingsJson).output
 
-    private fun outputMime(settingsJson: String): String = outputMode(settingsJson).mimeType()
+    fun galleryFolder(settingsJson: String): String = settings(settingsJson).galleryFolder()
+
+    private fun settings(settingsJson: String): EncodeSettings = SettingsJson.decode(settingsJson)
+
+    private fun outputMime(settingsJson: String): String = settings(settingsJson).outputMime()
 }

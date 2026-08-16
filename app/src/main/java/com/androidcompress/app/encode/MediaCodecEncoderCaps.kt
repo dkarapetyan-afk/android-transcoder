@@ -10,14 +10,23 @@ object MediaCodecEncoderCaps {
             val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
             var h264 = false
             var hevc = false
+            var vp8 = false
+            var vp9 = false
             for (info in list.codecInfos) {
                 if (!info.isEncoder) continue
                 for (type in info.supportedTypes) {
                     if (type.equals(MediaFormat.MIMETYPE_VIDEO_AVC, ignoreCase = true)) h264 = true
                     if (type.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, ignoreCase = true)) hevc = true
+                    if (type.equals(MediaFormat.MIMETYPE_VIDEO_VP8, ignoreCase = true)) vp8 = true
+                    if (type.equals(MediaFormat.MIMETYPE_VIDEO_VP9, ignoreCase = true)) vp9 = true
                 }
             }
-            EncoderCapabilities(hasH264MediaCodec = h264, hasHevcMediaCodec = hevc)
+            EncoderCapabilities(
+                hasH264MediaCodec = h264,
+                hasHevcMediaCodec = hevc,
+                hasVp8MediaCodec = vp8,
+                hasVp9MediaCodec = vp9,
+            )
         } catch (_: Throwable) {
             EncoderCapabilities()
         }

@@ -109,6 +109,7 @@ class GeminiFfmpegAssistantTest {
         assertTrue(text.contains("Current extra args: -vf hflip"))
         assertTrue(text.contains("User request: flip it"))
         assertTrue(text.contains("Output mode: VIDEO"))
+        assertTrue(text.contains("Container: MP4"))
     }
 
     @Test

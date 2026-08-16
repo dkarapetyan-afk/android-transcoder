@@ -44,10 +44,10 @@ class InputResolver(private val context: Context) {
         out
     }
 
-    fun encodeOutputFile(jobId: String, audioOnly: Boolean = false): File {
+    fun encodeOutputFile(jobId: String, extension: String = "mp4"): File {
         val dir = File(context.cacheDir, "encode")
         if (!dir.exists()) dir.mkdirs()
-        val ext = if (audioOnly) "m4a" else "mp4"
+        val ext = extension.removePrefix(".").ifBlank { "mp4" }
         return File(dir, "$jobId.$ext")
     }
 

@@ -4,7 +4,8 @@ Android app that records the screen and compresses recordings on-device with FFm
 
 - Kotlin, Jetpack Compose, Material 3
 - Import a video or audio file via the system file picker
-- Audio-only output: extract a video soundtrack or transcode audio to AAC (.m4a) with FFmpeg or Media3
+- Audio-only output: extract a video soundtrack or transcode audio to AAC (.m4a) or Opus (.webm) with FFmpeg or Media3
+- WebM output: VP8/VP9 + Opus video, or Opus-only audio, on both engines
 - Screen recording via MediaProjection (microphone or internal audio)
 - Presets plus advanced encoder settings
 - Two encode engines: FFmpeg (default, with software fallback) or Device / Media3 (hardware MediaCodec, same approach as Compressor Edge)
