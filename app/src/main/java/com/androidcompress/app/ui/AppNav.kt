@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -103,7 +104,13 @@ fun CompressApp(
     }
 
     Box(Modifier.fillMaxSize()) {
-        NavHost(navController = nav, startDestination = "home") {
+        NavHost(
+            navController = nav,
+            startDestination = "home",
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        ) {
         composable("home") {
             val vm: HomeViewModel = viewModel(factory = AppViewModelFactory(container))
             HomeScreen(
@@ -122,10 +129,10 @@ fun CompressApp(
             val vm: RecordViewModel = viewModel(factory = AppViewModelFactory(container))
             RecordScreen(
                 viewModel = vm,
-                onBack = { nav.popBackStack() },
+                onBack = { nav.safePop() },
                 onFinished = { id ->
-                    nav.popBackStack()
-                    nav.navigate("compress/$id")
+                    container.recording.consumeFinished()
+                    nav.openCompressKeepingHome(id)
                 },
             )
         }
@@ -137,8 +144,8 @@ fun CompressApp(
             val vm: CompressViewModel = viewModel(factory = AppViewModelFactory(container, id))
             CompressScreen(
                 viewModel = vm,
-                onBack = { nav.popBackStack() },
-                onStarted = { nav.navigate("progress/$it") { popUpTo("home") } },
+                onBack = { nav.safePop() },
+                onStarted = { nav.openProgress(it) },
             )
         }
         composable(
@@ -149,9 +156,9 @@ fun CompressApp(
             val vm: ProgressViewModel = viewModel(factory = AppViewModelFactory(container, id))
             ProgressScreen(
                 viewModel = vm,
-                onBack = { nav.popBackStack() },
-                onFinished = { nav.navigate("result/$it") { popUpTo("home") } },
-                onSwitch = { nav.navigate("progress/$it") { popUpTo("home") } },
+                onBack = { nav.popToHome() },
+                onFinished = { nav.openResult(it) },
+                onSwitch = { nav.openProgress(it) },
             )
         }
         composable(
@@ -162,7 +169,7 @@ fun CompressApp(
             val vm: ResultViewModel = viewModel(factory = AppViewModelFactory(container, id))
             ResultScreen(
                 viewModel = vm,
-                onBack = { nav.popBackStack() },
+                onBack = { nav.popToHome() },
                 onViewLog = { nav.navigate("log/$id") },
             )
         }
@@ -170,7 +177,7 @@ fun CompressApp(
             val vm: LibraryViewModel = viewModel(factory = AppViewModelFactory(container))
             LibraryScreen(
                 viewModel = vm,
-                onBack = { nav.popBackStack() },
+                onBack = { nav.safePop() },
                 onOpen = { id, status ->
                     when (status) {
                         JobStatus.RUNNING, JobStatus.QUEUED -> nav.navigate("progress/$id")
@@ -186,14 +193,14 @@ fun CompressApp(
         ) { entry ->
             val id = entry.arguments?.getString("jobId").orEmpty()
             val vm: JobLogViewModel = viewModel(factory = AppViewModelFactory(container, id))
-            JobLogScreen(viewModel = vm, onBack = { nav.popBackStack() })
+            JobLogScreen(viewModel = vm, onBack = { nav.safePop() })
         }
         composable("settings") {
             val vm: SettingsViewModel = viewModel(factory = AppViewModelFactory(container))
-            SettingsScreen(viewModel = vm, onBack = { nav.popBackStack() })
+            SettingsScreen(viewModel = vm, onBack = { nav.safePop() })
         }
         composable("about") {
-            AboutScreen(onBack = { nav.popBackStack() })
+            AboutScreen(onBack = { nav.safePop() })
         }
         }
         SnackbarHost(
@@ -226,5 +233,50 @@ fun CompressApp(
                 }
             }
         }
+    }
+}
+
+private const val ROUTE_HOME = "home"
+
+private fun NavHostController.openCompressKeepingHome(jobId: String) {
+    if (jobId.isBlank()) return
+    navigate(ROUTE_HOME) {
+        popUpTo(graph.id) { inclusive = true }
+        launchSingleTop = true
+    }
+    navigate("compress/$jobId") { launchSingleTop = true }
+}
+
+private fun NavHostController.openProgress(jobId: String) {
+    if (jobId.isBlank()) return
+    navigate("progress/$jobId") {
+        popUpTo(ROUTE_HOME) { inclusive = false }
+        launchSingleTop = true
+    }
+}
+
+private fun NavHostController.openResult(jobId: String) {
+    if (jobId.isBlank()) return
+    navigate("result/$jobId") {
+        popUpTo(ROUTE_HOME) { inclusive = false }
+        launchSingleTop = true
+    }
+}
+
+private fun NavHostController.popToHome() {
+    if (currentDestination?.route == ROUTE_HOME) return
+    if (!popBackStack(ROUTE_HOME, inclusive = false)) {
+        navigate(ROUTE_HOME) {
+            popUpTo(graph.id) { inclusive = true }
+            launchSingleTop = true
+        }
+    }
+}
+
+private fun NavHostController.safePop() {
+    if (previousBackStackEntry != null) {
+        popBackStack()
+    } else {
+        popToHome()
     }
 }

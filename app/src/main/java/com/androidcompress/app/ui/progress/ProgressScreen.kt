@@ -15,6 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -36,15 +39,19 @@ fun ProgressScreen(
     val job = ui.job
     val progress = ui.progress
     val context = LocalContext.current
+    var handedOff by remember { mutableStateOf(false) }
 
     LaunchedEffect(job?.status, ui.active.map { it.id + it.status }) {
+        if (handedOff) return@LaunchedEffect
         val status = job?.status
         val terminal = status == JobStatus.SUCCEEDED || status == JobStatus.FAILED || status == JobStatus.CANCELLED
         if (!terminal) return@LaunchedEffect
         val next = ui.active.firstOrNull { it.status == JobStatus.RUNNING || it.status == JobStatus.QUEUED }
         if (next != null && next.id != viewModel.jobId) {
+            handedOff = true
             onSwitch(next.id)
         } else if (next == null) {
+            handedOff = true
             onFinished(viewModel.jobId)
         }
     }

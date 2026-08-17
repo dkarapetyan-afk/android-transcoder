@@ -38,6 +38,15 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         container.recording.consumeFinished()
     }
 
+    fun openIfReadyToCompress(jobId: String, onReady: (String) -> Unit) {
+        viewModelScope.launch {
+            val job = container.jobs.get(jobId) ?: return@launch
+            if (job.status == JobStatus.READY || job.status == JobStatus.DRAFT) {
+                onReady(jobId)
+            }
+        }
+    }
+
     fun clearHistory(context: Context, onDone: (String) -> Unit) {
         viewModelScope.launch {
             val active = container.jobs.listActive()

@@ -3,6 +3,7 @@ package com.androidcompress.app.ui.components
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -40,6 +41,9 @@ import kotlinx.coroutines.withContext
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
+    if (onBack != null) {
+        BackHandler(onBack = onBack)
+    }
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {

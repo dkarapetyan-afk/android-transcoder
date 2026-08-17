@@ -83,9 +83,9 @@ fun HomeScreen(
     }
 
     LaunchedEffect(recording.finishedJobId, recording.error) {
-        recording.finishedJobId?.let {
+        recording.finishedJobId?.let { id ->
             viewModel.consumeRecordingEvent()
-            onCompress(it)
+            viewModel.openIfReadyToCompress(id, onCompress)
         }
         recording.error?.let {
             viewModel.consumeRecordingEvent()
