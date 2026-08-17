@@ -20,6 +20,8 @@ class InputResolver(private val context: Context) {
     fun hasPersistableRead(uri: Uri): Boolean =
         context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
 
+    fun canKeepWithoutCopy(uri: Uri): Boolean = DeviceMediaStore.canKeepWithoutCopy(context, uri)
+
     fun hasSpaceFor(sourceBytes: Long): Boolean {
         val free = context.cacheDir.usableSpace
         val needed = (sourceBytes.coerceAtLeast(0) * 2) + 50_000_000

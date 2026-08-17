@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppFunctionAppMetadata xmlns:appfn="http://schemas.android.com/apk/androidx.appfunctions"
+    appfn:description="Recording Compressor encodes video and audio on this device with FFmpeg or Media3 and can combine a picture or video with a soundtrack.
+    Operational Patterns:
+    - Call describeCapabilities first to learn allowed enum values and whether library access is granted.
+    - If library access is off, ask the user to enable Device library access in Settings and choose Allow all.
+    - Use listDeviceMedia then importDeviceMedia (content URI, path, or file name) to open a file already on the device.
+    - Use getJob, updateJobSettings, or applyPreset to customize a job that is not queued or running.
+    - Use previewEncode, then startJob or startReadyJobs.
+    - Use getQueue, getProgress, and getEncodeLog to monitor work. Use cancelJob or cancelQueue to stop it.
+    Constraints:
+    - Do not record the screen, delete gallery files, or wipe history.
+    - Do not return or request media bytes. Job records omit source and output URIs.
+    - Extra FFmpeg arguments cannot add inputs, paths, or filter_complex."
+    appfn:displayDescription="@string/app_functions_description" />

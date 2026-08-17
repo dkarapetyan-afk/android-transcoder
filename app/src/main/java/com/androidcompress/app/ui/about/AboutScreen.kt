@@ -33,7 +33,9 @@ fun AboutScreen(onBack: () -> Unit) {
                     "Screen recording uses Android’s MediaProjection consent dialog. " +
                     "Microphone and internal-audio capture are used only when you turn them on. " +
                     "Compressed files are written to Movies/RecordingCompressor (MP4 or WebM) or Music/RecordingCompressor (M4A or WebM audio) on this device. " +
-                    "If you add a Gemini API key and tap Generate extra args, the text prompt and encode settings are sent to Google’s Gemini API. The video itself stays on the device.",
+                    "If you add a Gemini API key and tap Generate extra args, the text prompt and encode settings are sent to Google’s Gemini API. The video itself stays on the device. " +
+                    "On Android 16+, a privileged system assistant can list jobs, change encode settings, start or cancel work, and read progress through App Functions. " +
+                    "If you grant Device library access in Settings (Allow all), that assistant can also list and import videos, audio, and photos already on this device. It does not receive the media files.",
             )
             Text("Open source notices", style = MaterialTheme.typography.titleMedium)
             Text(

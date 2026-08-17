@@ -18,7 +18,8 @@ Video processing is on-device. Optional Gemini extra-args generation sends text 
 - No analytics
 - Files: video files the user creates, stay on device
 - Optional: text prompts sent to Google Gemini when the user uses Generate extra args
-- Sensitive permissions: microphone (optional, user-initiated), notifications
+- Optional: job metadata (names, sizes, settings, progress, encode logs) may be read by a privileged on-device agent through App Functions on Android 16+. The assistant may send the user's spoken request to a server; this app still does not upload media.
+- Sensitive permissions: microphone (optional, user-initiated), notifications, optional photo/video/audio library access
 - Internet: optional Gemini API only
 
 ## Foreground services
@@ -39,7 +40,8 @@ Declare both types and attach a short screen recording that shows:
 - `POST_NOTIFICATIONS` — ongoing record/encode status.
 - `WRITE_EXTERNAL_STORAGE` maxSdk 28 — gallery export on Android 8–9 only.
 - `INTERNET` — optional Gemini extra-args generator only.
-- Do not add `READ_MEDIA_VIDEO` or `MANAGE_EXTERNAL_STORAGE`.
+- `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO`, `READ_MEDIA_IMAGES` (and `READ_EXTERNAL_STORAGE` maxSdk 32) — optional Device library access so App Functions can list and import media already on the device. Requested only from Settings. Do not add `MANAGE_EXTERNAL_STORAGE`.
+- Play Photo and video permissions: this is a media-editing app. Core use case is compressing user videos/audio. The system picker remains available; library access is an optional power-user / assistant path. Declare “Media files” and show the in-app Settings toggle plus a picker-only path in the review video.
 
 ## Demo script for reviewers
 

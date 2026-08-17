@@ -7,7 +7,7 @@
 </head>
 <body>
   <h1>Recording Compressor privacy policy</h1>
-  <p>Last updated: 14 August 2026</p>
+  <p>Last updated: 17 August 2026</p>
   <p>Recording Compressor processes video entirely on your device. The app does not create accounts, does not include advertising or analytics SDKs, and does not send recordings to a server. If you optionally paste a Google Gemini API key and use “Generate extra args,” only the text prompt and encode settings are sent to Google. The video file is not uploaded.</p>
   <h2>Data the app uses</h2>
   <ul>
@@ -17,6 +17,8 @@
     <li>Job history (file names, sizes, status) stored locally in an on-device database.</li>
     <li>If you turn on “Delete original after compress,” the app attempts to remove the source video after the compressed copy is saved. This stays on the device and is never uploaded.</li>
     <li>Optional Gemini API key, stored locally, used only when you ask Gemini to write extra FFmpeg arguments.</li>
+    <li>On Android 16 and later, a privileged system assistant (for example Gemini, when that integration is enabled) may call this app’s App Functions to list jobs, change encode settings, start or cancel encodes, and read progress or encode logs. Those functions return metadata only, not the media files. The assistant may process your spoken request on a server; this app still does not upload recordings.</li>
+    <li>Optional device library access (photos, videos, and audio). If you turn this on in Settings and choose Allow all, the app and a privileged assistant can list and open media already on the device without using the system picker. You can revoke this in Android Settings.</li>
   </ul>
   <h2>Permissions</h2>
   <ul>
@@ -24,8 +26,9 @@
     <li><strong>Screen capture</strong> — Android MediaProjection consent, requested every recording session.</li>
     <li><strong>Microphone</strong> — only if you record microphone or internal audio.</li>
     <li><strong>Notifications</strong> — progress for recording and compression that continue when you leave the app.</li>
+    <li><strong>Photos, videos, and audio</strong> — optional. Used only after you enable Device library access so the app or an assistant can open files already on the device. The system picker and Share still work without this.</li>
   </ul>
-  <p>The app does not request broad photo or video library access. Imports use the system picker.</p>
+  <p>You can keep using the system picker and Share without granting library access.</p>
   <h2>Contact</h2>
   <p>Replace this paragraph with a support email before publishing on Google Play.</p>
 </body>

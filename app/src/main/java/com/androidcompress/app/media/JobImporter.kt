@@ -36,7 +36,7 @@ class JobImporter(
     suspend fun import(uri: Uri): String {
         val id = UUID.randomUUID().toString()
         inputs.takePersistableAccess(uri)
-        val canKeepUri = uri.scheme == "file" || inputs.hasPersistableRead(uri)
+        val canKeepUri = inputs.canKeepWithoutCopy(uri)
         val originalName = runCatching { probe.displayName(uri) }.getOrNull()
         val stored = if (canKeepUri) {
             uri
@@ -181,7 +181,7 @@ class JobImporter(
 
     private suspend fun store(uri: Uri, jobId: String, role: String): Uri {
         inputs.takePersistableAccess(uri)
-        val canKeepUri = uri.scheme == "file" || inputs.hasPersistableRead(uri)
+        val canKeepUri = inputs.canKeepWithoutCopy(uri)
         return if (canKeepUri) {
             uri
         } else {

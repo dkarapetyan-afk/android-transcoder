@@ -1,5 +1,10 @@
 package com.androidcompress.app.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,16 +22,25 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.media.MediaLibraryAccess
 import com.androidcompress.app.ui.components.AppTopBar
 
 @Composable
@@ -36,6 +50,20 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var grantEpoch by remember { mutableIntStateOf(0) }
+    val libraryGranted = remember(grantEpoch) { MediaLibraryAccess.granted(context) }
+    val libraryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grantEpoch++ }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) grantEpoch++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     Scaffold(topBar = { AppTopBar("Settings", onBack = onBack) }) { padding ->
         Column(
             Modifier
@@ -113,6 +141,34 @@ fun SettingsScreen(
                     )
                 }
                 Switch(checked = settings.deleteOriginalAfterEncode, onCheckedChange = viewModel::setDeleteOriginal)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Device library access")
+                    Text(
+                        if (libraryGranted) {
+                            "Agents can list and import videos, audio, and photos already on this device. Choose Allow all if Android offers selected items."
+                        } else {
+                            "Needed so App Functions can open a file without the picker. Choose Allow all, not selected photos."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = libraryGranted,
+                    onCheckedChange = { enable ->
+                        if (enable) {
+                            libraryLauncher.launch(MediaLibraryAccess.requiredPermissions())
+                        } else {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(
+                                    Uri.fromParts("package", context.packageName, null),
+                                ),
+                            )
+                        }
+                    },
+                )
             }
             Text("Gemini extra args", style = MaterialTheme.typography.titleMedium)
             Text(

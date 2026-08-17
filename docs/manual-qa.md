@@ -30,5 +30,7 @@ These cannot be fully automated in this workspace.
 - Combine audio and video: pick a photo then an m4a; FFmpeg and Media3 both produce a playable video the length of the audio. Media3 still-image jobs (including WebM VP9) must start — they used to crash in ImageAssetLoader without a frame rate. Pick a video then an audio file; the picture stays and the soundtrack is replaced. Clip start/end applies. WebM still works.
 - Share pictures/videos plus audio files: one combine job for every picture-or-video × audio pair. The first opens and the rest are in Recent.
 - After record → compress → result, Back (system or toolbar) returns to Home, not a blank white screen.
+- App Functions (Android 16+): after install, `adb shell cmd app_function list-app-functions` includes `com.androidcompress.app` (or `.debug`). `describeCapabilities`, `listJobs`, `updateJobSettings`, `startJob`, and `getProgress` work on an imported READY job. Cancel one job leaves later queued items running.
+- Device library access: Settings toggle requests READ_MEDIA_*. Choose Allow all. Then `listDeviceMedia` returns on-device videos and `importDeviceMedia` with a display name or `/sdcard/Download/clip.mp4` creates a READY job without the picker. Denying the permission makes those functions return a Settings grant error. The picker and Share still work without the grant.
 - Rotation during recording does not crash the service.
 - Notification tap on an in-flight encode returns to the app.
