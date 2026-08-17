@@ -91,8 +91,18 @@ fun CompressScreen(
             if (job != null) {
                 Text(job.displayName, style = MaterialTheme.typography.titleMedium)
                 StatLine("Source", "${formatResolution(job.width, job.height)} · ${formatDuration(job.durationMs)} · ${formatBytes(job.sourceBytes)}")
-                val sourceHasVideo = job.width > 0 && job.height > 0
-                if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo)) {
+                if (job.isCombine) {
+                    StatLine(
+                        if (job.stillImage) "Picture + audio" else "Video + audio",
+                        if (job.stillImage) {
+                            "Still image held for ${formatDuration(job.durationMs)}"
+                        } else {
+                            "Picture from the video, soundtrack from the second file"
+                        },
+                    )
+                }
+                val sourceHasVideo = job.width > 0 && job.height > 0 || job.stillImage
+                if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo) || job.isCombine) {
                     val clip = Media3EncodePlanner.clipWindow(settings, job.durationMs)
                     if (clip.active) {
                         val endLabel = clip.endMs?.let { formatDuration(it) } ?: formatDuration(job.durationMs)
@@ -139,21 +149,24 @@ fun CompressScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            val sourceHasVideo = job == null || job.width > 0 || job.height > 0
+            val sourceHasVideo = job == null || job.width > 0 || job.height > 0 || job.stillImage
+            val combineJob = job?.isCombine == true
             Text("Output", style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (sourceHasVideo) {
                     FilterChip(
-                        selected = settings.output == OutputMode.VIDEO,
+                        selected = settings.output == OutputMode.VIDEO || combineJob,
                         onClick = { viewModel.setOutput(OutputMode.VIDEO) },
                         label = { Text("Video") },
                     )
                 }
-                FilterChip(
-                    selected = settings.output == OutputMode.AUDIO || !sourceHasVideo,
-                    onClick = { viewModel.setOutput(OutputMode.AUDIO) },
-                    label = { Text("Audio only") },
-                )
+                if (!combineJob) {
+                    FilterChip(
+                        selected = settings.output == OutputMode.AUDIO || !sourceHasVideo,
+                        onClick = { viewModel.setOutput(OutputMode.AUDIO) },
+                        label = { Text("Audio only") },
+                    )
+                }
             }
             Text("Container", style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -170,6 +183,14 @@ fun CompressScreen(
             }
             Text(
                 when {
+                    combineJob && job?.stillImage == true && settings.usesWebm() ->
+                        "Holds the picture as a VP8/VP9 + Opus WebM. Length matches the soundtrack."
+                    combineJob && job?.stillImage == true ->
+                        "Holds the picture as an MP4. Length matches the soundtrack."
+                    combineJob && settings.usesWebm() ->
+                        "Keeps the video picture and replaces the soundtrack in a WebM."
+                    combineJob ->
+                        "Keeps the video picture and replaces the soundtrack in an MP4."
                     settings.audioOutput(sourceHasVideo) && settings.usesWebm() ->
                         "Writes an Opus .webm. From a video this extracts the soundtrack; from audio this re-encodes it."
                     settings.audioOutput(sourceHasVideo) ->
@@ -182,7 +203,7 @@ fun CompressScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo)) {
+            if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo) || combineJob) {
                 Media3ClipControls(
                     durationMs = job?.durationMs ?: 0L,
                     startMs = settings.clipStartMs,
@@ -462,7 +483,11 @@ fun CompressScreen(
             if (settings.engine == EncodeEngine.FFMPEG) {
                 Text("FFmpeg command", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "This is the command that will run. INPUT and OUTPUT are this job’s files and cannot be pointed elsewhere. Edit anything else, then start.",
+                    if (combineJob) {
+                        "This is the command that will run. INPUT is the picture or video, AUDIO is the soundtrack, and OUTPUT is this job’s file. Edit anything else, then start."
+                    } else {
+                        "This is the command that will run. INPUT and OUTPUT are this job’s files and cannot be pointed elsewhere. Edit anything else, then start."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -505,7 +530,7 @@ fun CompressScreen(
             }
             Button(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = job != null && job.sourceUri.isNotBlank(),
+                enabled = job != null && job.sourceUri.isNotBlank() && (!job.isCombine || job.audioUri.isNotBlank()),
                 onClick = { viewModel.start(context) { onStarted(jobIdOr(job)) } },
             ) {
                 Text(if (ui.queueBusy) "Add to queue" else "Start compression")

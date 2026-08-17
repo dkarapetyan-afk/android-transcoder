@@ -258,6 +258,8 @@ If output mode is VIDEO and the container is MP4, the app already supplies: -y -
 
 If output mode is VIDEO and the container is WEBM, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, format=yuv420p, -c:v (libvpx-vp9 or libvpx), -b:v, libvpx deadline/cpu-used, -pix_fmt yuv420p, audio (-c:a libopus or copy or -an), extra args, and a .webm OUTPUT. Do not add -movflags. Do not switch the output to MP4. Do not use vp8_mediacodec or vp9_mediacodec.
 
+If the current command already has -i INPUT and -i AUDIO, this is a combine job (still image or video picture plus a separate soundtrack). Do not add another -i. Do not drop AUDIO. Do not use -filter_complex.
+
 This FFmpeg build is LGPL. There is no libx264 or libx265. Do not use -crf, -preset slow, -tune, CUDA, NVENC, QSV, or extra -i inputs.
 
 Reply with JSON only: {"args":"<space-separated extra flags>","note":"<one short sentence>"}

@@ -67,7 +67,23 @@ class FfmpegCommandTemplateTest {
             "-i INPUT -i other.mp4 -c:v h264_mediacodec OUTPUT",
         )
         assertFalse(parsed.isValid)
-        assertTrue(parsed.error!!.contains("-i"))
+        assertTrue(parsed.error!!.contains("AUDIO") || parsed.error!!.contains("INPUT"))
+    }
+
+    @Test
+    fun allowsAudioPlaceholder() {
+        val parsed = FfmpegCommandTemplate.parse(
+            "-loop 1 -framerate 30 -i INPUT -i AUDIO -map 0:v:0 -map 1:a:0 -c:v h264_mediacodec OUTPUT",
+        )
+        assertTrue(parsed.error ?: "", parsed.isValid)
+        val args = FfmpegCommandTemplate.materialize(
+            parsed.canonical,
+            "cover.jpg",
+            "out.mp4",
+            "song.m4a",
+        ).getOrThrow()
+        assertEquals("cover.jpg", args[args.indexOf("-i") + 1])
+        assertEquals("song.m4a", args[args.lastIndexOf("-i") + 1])
     }
 
     @Test

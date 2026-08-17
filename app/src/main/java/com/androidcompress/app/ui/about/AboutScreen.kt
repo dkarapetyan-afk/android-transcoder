@@ -26,7 +26,7 @@ fun AboutScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Recording Compressor", style = MaterialTheme.typography.headlineSmall)
-            Text("Compress screen recordings on this device with FFmpeg or the device encoder (Media3). Video files are not uploaded.")
+            Text("Compress screen recordings on this device with FFmpeg or the device encoder (Media3). Combine a picture or video with a separate soundtrack. Files are not uploaded.")
             Text("Privacy", style = MaterialTheme.typography.titleMedium)
             Text(
                 "The app does not collect accounts, analytics, or advertising identifiers. " +

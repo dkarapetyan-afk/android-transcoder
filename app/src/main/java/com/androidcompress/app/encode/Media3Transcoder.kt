@@ -272,14 +272,20 @@ class Media3Transcoder(context: Context) {
 
         val editedItem = EditedMediaItem.Builder(mediaItem(input, spec))
             .setEffects(Effects(audioProcessors, effects))
-            .setRemoveAudio(spec.removeAudio)
+            .setRemoveAudio(spec.removeAudio || spec.companionAudioUri != null)
         if (spec.removeVideo) {
             editedItem.setRemoveVideo(true)
+        }
+        if (spec.stillImage) {
+            val durationMs = spec.imageDurationMs.coerceAtLeast(Media3EncodePlanner.MIN_CLIP_MS)
+            editedItem.setDurationUs(durationMs * 1_000L)
+            editedItem.setFrameRate(stillFrameRate(spec))
         }
         val edited = editedItem.build()
 
         var hdrMode = Composition.HDR_MODE_KEEP_HDR
         val forcePixel10 = !spec.removeVideo &&
+            !spec.stillImage &&
             isPixel10() &&
             (spec.videoMimeType == MimeTypes.VIDEO_H265 || spec.videoMimeType == MimeTypes.VIDEO_H264) &&
             isHdr(input)
@@ -287,28 +293,48 @@ class Media3Transcoder(context: Context) {
             hdrMode = Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
         }
 
-        val sequence = when {
-            spec.removeVideo -> EditedMediaItemSequence.withAudioFrom(listOf(edited))
-            spec.removeAudio -> EditedMediaItemSequence.withVideoFrom(listOf(edited))
-            else -> EditedMediaItemSequence.withAudioAndVideoFrom(listOf(edited))
+        val companion = spec.companionAudioUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
+        val composition = if (companion != null && !spec.removeVideo) {
+            val audioEdited = EditedMediaItem.Builder(mediaItem(companion, spec, image = false))
+                .setRemoveVideo(true)
+                .setEffects(Effects(audioProcessors, emptyList()))
+                .build()
+            val videoSeq = EditedMediaItemSequence.withVideoFrom(listOf(edited))
+            val builder = if (spec.removeAudio) {
+                Composition.Builder(videoSeq)
+            } else {
+                Composition.Builder(
+                    videoSeq,
+                    EditedMediaItemSequence.withAudioFrom(listOf(audioEdited)),
+                )
+            }
+            builder.setHdrMode(hdrMode)
+        } else {
+            val sequence = when {
+                spec.removeVideo -> EditedMediaItemSequence.withAudioFrom(listOf(edited))
+                spec.removeAudio -> EditedMediaItemSequence.withVideoFrom(listOf(edited))
+                else -> EditedMediaItemSequence.withAudioAndVideoFrom(listOf(edited))
+            }
+            Composition.Builder(sequence).setHdrMode(hdrMode)
         }
-        val composition = Composition.Builder(sequence)
-            .setHdrMode(hdrMode)
         if (spec.remuxAudio) {
             composition.setTransmuxAudio(true)
         }
         return composition.build()
     }
 
-    private fun mediaItem(input: Uri, spec: Media3EncodeSpec): MediaItem {
-        if (!spec.clipActive) return MediaItem.fromUri(input)
-        val clipping = MediaItem.ClippingConfiguration.Builder()
-            .setStartPositionMs(spec.clipStartMs)
-        spec.clipEndMs?.let { clipping.setEndPositionMs(it) }
-        return MediaItem.Builder()
-            .setUri(input)
-            .setClippingConfiguration(clipping.build())
-            .build()
+    private fun mediaItem(input: Uri, spec: Media3EncodeSpec, image: Boolean = spec.stillImage): MediaItem {
+        val builder = MediaItem.Builder().setUri(input)
+        if (image) {
+            builder.setImageDurationMs(spec.imageDurationMs.coerceAtLeast(Media3EncodePlanner.MIN_CLIP_MS))
+        }
+        if (!image && spec.clipActive) {
+            val clipping = MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(spec.clipStartMs)
+            spec.clipEndMs?.let { clipping.setEndPositionMs(it) }
+            builder.setClippingConfiguration(clipping.build())
+        }
+        return builder.build()
     }
 
     private fun encoderFactory(spec: Media3EncodeSpec, bitrateMode: Int): DefaultEncoderFactory {
@@ -364,6 +390,11 @@ class Media3Transcoder(context: Context) {
             encoder -> "This device cannot encode that codec or resolution with Media3."
             else -> exception.localizedMessage ?: "Device encoder failed"
         }
+    }
+
+    private fun stillFrameRate(spec: Media3EncodeSpec): Int {
+        val fps = spec.originalFps.toInt()
+        return if (fps in 1..60) fps else 30
     }
 
     private fun isMediaTekDeviceOrEncoder(mimeType: String): Boolean {

@@ -14,6 +14,7 @@ data class CommandTemplateParse(
  */
 object FfmpegCommandTemplate {
     const val INPUT = "INPUT"
+    const val AUDIO = "AUDIO"
     const val OUTPUT = "OUTPUT"
 
     private val blockedFlags = setOf(
@@ -36,9 +37,12 @@ object FfmpegCommandTemplate {
     fun fromArgs(args: List<String>): String {
         if (args.isEmpty()) return ""
         val tokens = args.toMutableList()
-        val inputAt = tokens.indexOfFirst { it == "-i" || it == "-input" }
-        if (inputAt >= 0 && inputAt + 1 < tokens.size) {
-            tokens[inputAt + 1] = INPUT
+        val inputAts = tokens.indices.filter { tokens[it] == "-i" || tokens[it] == "-input" }
+        if (inputAts.isNotEmpty() && inputAts[0] + 1 < tokens.size) {
+            tokens[inputAts[0] + 1] = INPUT
+        }
+        if (inputAts.size > 1 && inputAts[1] + 1 < tokens.size) {
+            tokens[inputAts[1] + 1] = AUDIO
         }
         tokens[tokens.lastIndex] = OUTPUT
         return quoteArgs(tokens)
@@ -66,23 +70,39 @@ object FfmpegCommandTemplate {
         return CommandTemplateParse(cleaned, quoteArgs(cleaned))
     }
 
-    fun materialize(raw: String, input: String, output: String): Result<List<String>> = runCatching {
+    fun materialize(raw: String, input: String, output: String, audio: String? = null): Result<List<String>> = runCatching {
         val parsed = parse(raw)
         if (!parsed.isValid) error(parsed.error ?: "Invalid command template.")
-        applyPaths(parsed.tokens.toMutableList(), input, output)
+        applyPaths(parsed.tokens.toMutableList(), input, output, audio)
     }
 
-    private fun applyPaths(tokens: MutableList<String>, input: String, output: String): List<String> {
+    private fun applyPaths(
+        tokens: MutableList<String>,
+        input: String,
+        output: String,
+        audio: String?,
+    ): List<String> {
         val inputFlags = tokens.withIndex().filter { (_, token) ->
             token == "-i" || token == "-input"
         }
-        if (inputFlags.size > 1) error("Only one input (-i) is allowed.")
+        if (inputFlags.size > 2) error("At most two inputs (-i) are allowed.")
         if (inputFlags.isEmpty()) {
             tokens.addAll(0, listOf("-y", "-hide_banner", "-i", input))
         } else {
-            val index = inputFlags.first().index
-            if (index == tokens.lastIndex) error("-i needs a file value.")
-            tokens[index + 1] = input
+            val first = inputFlags[0].index
+            if (first == tokens.lastIndex) error("-i needs a file value.")
+            tokens[first + 1] = input
+            if (inputFlags.size > 1) {
+                val second = inputFlags[1].index
+                if (second == tokens.lastIndex) error("-i needs a file value.")
+                val path = audio?.takeIf { it.isNotBlank() } ?: error("This command needs the AUDIO file.")
+                tokens[second + 1] = path
+            }
+        }
+        if (audio != null) {
+            for (index in tokens.indices) {
+                if (tokens[index] == AUDIO) tokens[index] = audio
+            }
         }
         val last = tokens.last()
         if (last.startsWith("-") && last != "-" && last != "--") {
@@ -121,22 +141,29 @@ object FfmpegCommandTemplate {
             if (isInputFlag(token)) inputFlags += 1
             if (takesValue(name)) expectingValueFor = token
         }
-        if (inputFlags > 1) return "Only one input (-i) is allowed."
+        if (inputFlags > 2) return "At most two inputs (-i) are allowed."
         return null
     }
 
     private fun validateFlag(token: String, inputFlags: Int): String? {
         val name = flagName(token) ?: return "Invalid flag \"$token\"."
-        if (isInputFlag(token) && inputFlags >= 1) return "Only one input (-i) is allowed."
-        if (name in blockedFlags || name.startsWith("i:") || name == "map") {
+        if (isInputFlag(token) && inputFlags >= 2) return "At most two inputs (-i) are allowed."
+        if (name in blockedFlags || name.startsWith("i:")) {
             return "Flag -$name is not allowed in the command template."
         }
         return null
     }
 
     private fun validateValue(flag: String, value: String, isLast: Boolean): String? {
-        if (value == INPUT || value == OUTPUT) return null
-        if (isInputFlag(flag) || isLast) return null
+        if (value == INPUT || value == OUTPUT || value == AUDIO) return null
+        val name = flagName(flag)
+        if (name == "map") {
+            return if (value.matches(Regex("""\d+:[av](?::\d+)?"""))) null else "Invalid -map value."
+        }
+        if (isInputFlag(flag)) {
+            return "Use INPUT or AUDIO for -i values."
+        }
+        if (isLast) return null
         val lower = value.lowercase()
         if (value.contains("://") || value.contains('/') || value.contains('\\')) {
             return "Command template cannot include extra file paths or URLs."
@@ -144,7 +171,6 @@ object FfmpegCommandTemplate {
         if (blockedValueHints.any { lower.contains(it) }) {
             return "Command template cannot read other files (blocked value for $flag)."
         }
-        val name = flagName(flag)
         if (name == "f" && (lower == "concat" || lower == "lavfi")) {
             return "Format $value is not allowed in the command template."
         }

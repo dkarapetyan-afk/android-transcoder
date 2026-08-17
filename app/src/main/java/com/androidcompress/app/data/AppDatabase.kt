@@ -56,7 +56,7 @@ interface JobDao {
     suspend fun cancelAllQueued(now: Long)
 }
 
-@Database(entities = [CompressJob::class], version = 3, exportSchema = false)
+@Database(entities = [CompressJob::class], version = 4, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun jobDao(): JobDao

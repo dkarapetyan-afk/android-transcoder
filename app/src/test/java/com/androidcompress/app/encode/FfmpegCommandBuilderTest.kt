@@ -392,4 +392,51 @@ class FfmpegCommandBuilderTest {
         assertTrue(plan.args.contains("format=yuv420p"))
         assertEquals("bt709", plan.args[plan.args.indexOf("-colorspace") + 1])
     }
+
+    @Test
+    fun stillImageLoopsAndUsesCompanionAudio() {
+        val still = source.copy(
+            displayName = "cover.jpg",
+            durationMs = 45_000,
+            frameRate = 30f,
+            stillImage = true,
+            audioUri = "content://audio",
+            hasAudio = true,
+        )
+        val plan = FfmpegCommandBuilder.build(
+            "cover.jpg",
+            "out.mp4",
+            EncodeSettings.forPreset(Preset.BALANCED),
+            still,
+            hardwareCaps,
+            audioInput = "song.m4a",
+        )
+        assertEquals("1", plan.args[plan.args.indexOf("-loop") + 1])
+        assertEquals("30", plan.args[plan.args.indexOf("-framerate") + 1])
+        val inputs = plan.args.withIndex().filter { it.value == "-i" }.map { plan.args[it.index + 1] }
+        assertEquals(listOf("cover.jpg", "song.m4a"), inputs)
+        assertEquals("0:v:0", plan.args[plan.args.indexOf("-map") + 1])
+        assertTrue(plan.args.contains("1:a:0"))
+        assertTrue(plan.args.contains("-shortest"))
+        assertEquals("45.000", plan.args[plan.args.lastIndexOf("-t") + 1])
+    }
+
+    @Test
+    fun videoPlusAudioMapsCompanionSoundtrack() {
+        val mixed = source.copy(audioUri = "content://audio", hasAudio = true)
+        val plan = FfmpegCommandBuilder.build(
+            "clip.mp4",
+            "out.mp4",
+            EncodeSettings.forPreset(Preset.BALANCED),
+            mixed,
+            hardwareCaps,
+            audioInput = "song.m4a",
+        )
+        val inputs = plan.args.withIndex().filter { it.value == "-i" }.map { plan.args[it.index + 1] }
+        assertEquals(listOf("clip.mp4", "song.m4a"), inputs)
+        assertFalse(plan.args.contains("-loop"))
+        assertEquals("0:v:0", plan.args[plan.args.indexOf("-map") + 1])
+        assertTrue(plan.args.contains("1:a:0"))
+        assertTrue(plan.args.contains("-shortest"))
+    }
 }

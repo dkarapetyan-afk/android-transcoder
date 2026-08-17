@@ -27,6 +27,8 @@ These cannot be fully automated in this workspace.
 - Output appears in the gallery and can be opened/shared.
 - Clear all on Home or Library asks first, empties Recent, deletes import/encode/record cache files, and leaves Movies/Music outputs. A live screen recording stays.
 - Low-storage import shows a clear error instead of a native crash.
+- Combine audio and video: pick a photo then an m4a; FFmpeg and Media3 both produce a playable video the length of the audio. Media3 still-image jobs (including WebM VP9) must start — they used to crash in ImageAssetLoader without a frame rate. Pick a video then an audio file; the picture stays and the soundtrack is replaced. Clip start/end applies. WebM still works.
+- Share pictures/videos plus audio files: one combine job for every picture-or-video × audio pair. The first opens and the rest are in Recent.
 - After record → compress → result, Back (system or toolbar) returns to Home, not a blank white screen.
 - Rotation during recording does not crash the service.
 - Notification tap on an in-flight encode returns to the app.

@@ -24,6 +24,21 @@ object SourceDeletePolicy {
 
 class SourceFileDeleter(private val context: Context) {
 
+    suspend fun deleteSources(uris: List<String>, outputUri: String?): DeleteSourceResult {
+        val targets = uris.filter { it.isNotBlank() }
+        if (targets.isEmpty()) return DeleteSourceResult(false, "Nothing to delete")
+        var deletedAll = true
+        var lastError: String? = null
+        for (uri in targets) {
+            val result = delete(uri, outputUri)
+            if (!result.deleted) {
+                deletedAll = false
+                lastError = result.error
+            }
+        }
+        return DeleteSourceResult(deletedAll, lastError)
+    }
+
     suspend fun delete(sourceUri: String, outputUri: String?): DeleteSourceResult = withContext(Dispatchers.IO) {
         if (SourceDeletePolicy.shouldSkip(sourceUri, outputUri)) {
             return@withContext DeleteSourceResult(false, "Refusing to delete the compressed output.")

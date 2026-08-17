@@ -26,21 +26,22 @@ class InputResolver(private val context: Context) {
         return free >= needed
     }
 
-    suspend fun resolveForFfmpeg(uri: Uri, jobId: String): String = withContext(Dispatchers.IO) {
+    suspend fun resolveForFfmpeg(uri: Uri, jobId: String, role: String = "src"): String = withContext(Dispatchers.IO) {
         when (uri.scheme) {
             "file" -> uri.path ?: error("Missing file path")
             else -> {
                 val saf = runCatching { FFmpegKitConfig.getSafParameterForRead(context, uri) }.getOrNull()
                 if (!saf.isNullOrBlank()) return@withContext saf
-                copyToCache(uri, jobId).absolutePath
+                copyToCache(uri, jobId, role).absolutePath
             }
         }
     }
 
-    suspend fun copyToCache(uri: Uri, jobId: String): File = withContext(Dispatchers.IO) {
+    suspend fun copyToCache(uri: Uri, jobId: String, role: String = "src"): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "imports")
         if (!dir.exists()) dir.mkdirs()
-        val out = File(dir, "$jobId.src")
+        val suffix = role.ifBlank { "src" }
+        val out = File(dir, "$jobId.$suffix")
         context.contentResolver.openInputStream(uri)?.use { input ->
             out.outputStream().use { input.copyTo(it) }
         } ?: error("Unable to open the selected file")
@@ -62,6 +63,7 @@ class InputResolver(private val context: Context) {
 
     fun deleteImportCopy(jobId: String) {
         File(context.cacheDir, "imports/$jobId.src").delete()
+        File(context.cacheDir, "imports/$jobId.audio").delete()
     }
 
     fun deleteJobCache(jobId: String) {

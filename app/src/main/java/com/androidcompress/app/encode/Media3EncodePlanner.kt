@@ -36,6 +36,9 @@ data class Media3EncodeSpec(
     val removeVideo: Boolean = false,
     val audioMimeType: String = Media3EncodePlanner.MIME_AAC,
     val webm: Boolean = false,
+    val companionAudioUri: String? = null,
+    val stillImage: Boolean = false,
+    val imageDurationMs: Long = 0L,
 ) {
     val clipActive: Boolean get() = clipStartMs > 0 || clipEndMs != null
 
@@ -105,6 +108,14 @@ object Media3EncodePlanner {
         return clipWindow(settings, sourceDurationMs).durationMs(sourceDurationMs)
     }
 
+    fun outputDurationMs(settings: EncodeSettings, source: SourceVideo): Long {
+        val useClip = settings.engine == EncodeEngine.MEDIA3 ||
+            settings.audioOutput(source.hasVideo) ||
+            source.isCombine
+        if (!useClip) return source.durationMs
+        return clipWindow(settings, source.durationMs).durationMs(source.durationMs)
+    }
+
     fun plan(settings: EncodeSettings, source: SourceVideo): Media3EncodeSpec {
         val audioOnly = settings.audioOutput(source.hasVideo)
         val audio = settings.effectiveAudio(source.hasVideo)
@@ -131,20 +142,36 @@ object Media3EncodePlanner {
         }
         val audioMime = if (webm) MIME_OPUS else MIME_AAC
         val clip = clipWindow(settings, source.durationMs)
+        val combine = source.isCombine
+        val companion = source.audioUri.takeIf { it.isNotBlank() }
+        val combineRemoveAudio = combine && audio == AudioOption.MUTE
+        val combineRemux = combine && !combineRemoveAudio && audio == AudioOption.COPY && volume == 1f && settings.canCopyAudio(source)
         return Media3EncodeSpec(
             videoMimeType = videoMime,
             outputHeight = outH,
             outputWidth = outW,
-            outputFps = outputFps,
+            outputFps = if (source.stillImage) 0 else outputFps,
             originalFps = source.frameRate.coerceAtLeast(1f),
             videoBitrateBps = videoKbps * 1000,
-            audioBitrateBps = audioKbps * 1000,
-            removeAudio = removeAudio,
-            remuxAudio = remuxAudio,
+            audioBitrateBps = if (combine) {
+                when {
+                    combineRemoveAudio || combineRemux -> 0
+                    audio == AudioOption.COPY -> 128_000
+                    else -> FfmpegCommandBuilder.audioBitrateKbps(settings.copy(audio = audio)).coerceAtLeast(64) * 1000
+                }
+            } else {
+                audioKbps * 1000
+            },
+            removeAudio = if (combine) combineRemoveAudio else removeAudio,
+            remuxAudio = if (combine) combineRemux else remuxAudio,
             encoderLabel = when {
                 audioOnly && remuxAudio -> "Media3 · audio copy"
                 audioOnly && webm -> "Media3 · Opus"
                 audioOnly -> "Media3 · AAC"
+                source.stillImage && codec == VideoCodec.VP8 -> "Media3 · still VP8"
+                source.stillImage && codec == VideoCodec.VP9 -> "Media3 · still VP9"
+                source.stillImage && codec == VideoCodec.HEVC -> "Media3 · still HEVC"
+                source.stillImage -> "Media3 · still H.264"
                 codec == VideoCodec.VP8 -> "Media3 · VP8"
                 codec == VideoCodec.VP9 -> "Media3 · VP9"
                 codec == VideoCodec.HEVC -> "Media3 · HEVC"
@@ -153,7 +180,7 @@ object Media3EncodePlanner {
             preferCbr = settings.bitrateMode == BitrateMode.CBR,
             iFrameIntervalSeconds = FfmpegCommandBuilder.keyframeSeconds(settings),
             h264Profile = settings.h264Profile,
-            toneMapHdr = !audioOnly && settings.hdrMode == HdrMode.TONE_MAP,
+            toneMapHdr = !audioOnly && !source.stillImage && settings.hdrMode == HdrMode.TONE_MAP,
             audioVolume = volume,
             maxBFrames = FfmpegCommandBuilder.maxBFrames(settings),
             clipStartMs = clip.startMs,
@@ -161,6 +188,9 @@ object Media3EncodePlanner {
             removeVideo = audioOnly,
             audioMimeType = audioMime,
             webm = webm,
+            companionAudioUri = companion,
+            stillImage = source.stillImage,
+            imageDurationMs = if (source.stillImage) clip.durationMs(source.durationMs).coerceAtLeast(MIN_CLIP_MS) else 0L,
         )
     }
 

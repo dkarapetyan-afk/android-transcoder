@@ -22,6 +22,7 @@ import com.androidcompress.app.data.galleryFolder
 import com.androidcompress.app.data.outputExtension
 import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.usesWebm
+import com.androidcompress.app.media.CombinePairing
 import com.androidcompress.app.util.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -106,17 +107,31 @@ class CompressService : Service() {
         val settings = SettingsJson.decode(job.settingsJson)
         val sourceUri = Uri.parse(job.sourceUri)
         val probed = runCatching { app.probe.probe(sourceUri) }.getOrNull()
+        val audioProbed = job.audioUri.takeIf { it.isNotBlank() }?.let { uri ->
+            runCatching { app.probe.probe(Uri.parse(uri)) }.getOrNull()
+        }
+        val stillImage = job.stillImage || probed?.stillImage == true
         val source = SourceVideo(
             uri = job.sourceUri,
             displayName = job.displayName,
             width = if (job.width > 0) job.width else probed?.width ?: 0,
             height = if (job.height > 0) job.height else probed?.height ?: 0,
-            durationMs = if (job.durationMs > 0) job.durationMs else probed?.durationMs ?: 0L,
+            durationMs = when {
+                job.durationMs > 0 -> job.durationMs
+                audioProbed != null -> CombinePairing.outputDurationMs(
+                    probed?.durationMs ?: 0L,
+                    audioProbed.durationMs,
+                    stillImage,
+                )
+                else -> probed?.durationMs ?: 0L
+            },
             bytes = job.sourceBytes,
-            frameRate = probed?.frameRate ?: 30f,
-            audioCodec = probed?.audioCodec,
-            hasAudio = probed?.hasAudio ?: true,
-            hasVideo = probed?.hasVideo ?: (job.width > 0 && job.height > 0),
+            frameRate = if (stillImage) 30f else probed?.frameRate ?: 30f,
+            audioCodec = audioProbed?.audioCodec ?: probed?.audioCodec,
+            hasAudio = audioProbed?.hasAudio ?: probed?.hasAudio ?: true,
+            hasVideo = probed?.hasVideo ?: (job.width > 0 && job.height > 0) || stillImage,
+            stillImage = stillImage,
+            audioUri = job.audioUri,
         )
         currentJobId = jobId
         app.jobs.updateStatus(jobId, JobStatus.RUNNING)
@@ -130,6 +145,10 @@ class CompressService : Service() {
         log.appendLine("output=${if (audioOnly) "audio" else "video"}")
         log.appendLine("container=${settings.container}")
         log.appendLine("source=${job.sourceUri}")
+        if (job.audioUri.isNotBlank()) {
+            log.appendLine("audio=${job.audioUri}")
+            log.appendLine("stillImage=$stillImage")
+        }
         try {
             if (audioOnly && !source.hasAudio) {
                 error("This file has no audio to extract or transcode.")
@@ -168,11 +187,14 @@ class CompressService : Service() {
                         finished = true,
                     )
                     if (job.deleteSourceAfter) {
-                        val removed = app.sourceDeleter.delete(job.sourceUri, published.toString())
+                        val removed = app.sourceDeleter.deleteSources(
+                            listOf(job.sourceUri, job.audioUri),
+                            published.toString(),
+                        )
                         app.jobs.markSourceDeleted(jobId, removed.deleted)
                     }
                     app.inputs.deleteImportCopy(jobId)
-                    val doneMs = Media3EncodePlanner.outputDurationMs(settings, source.durationMs, source.hasVideo)
+                    val doneMs = Media3EncodePlanner.outputDurationMs(settings, source)
                     app.encodeProgress.update(EncodeProgress(jobId, 1f, doneMs))
                 }
                 else -> {
@@ -212,13 +234,19 @@ class CompressService : Service() {
     ): EncodeResult {
         val app = container()
         val ffmpegInput = app.inputs.resolveForFfmpeg(sourceUri, jobId)
+        val ffmpegAudio = source.audioUri.takeIf { it.isNotBlank() }?.let { uri ->
+            app.inputs.resolveForFfmpeg(Uri.parse(uri), jobId, "audio")
+        }
         val caps = app.encoderCapabilities()
-        var plan = FfmpegCommandBuilder.build(ffmpegInput, output.absolutePath, settings, source, caps)
+        var plan = FfmpegCommandBuilder.build(
+            ffmpegInput, output.absolutePath, settings, source, caps, audioInput = ffmpegAudio,
+        )
         if (settings.ffmpegCommandOverride.isNotBlank()) {
             val args = FfmpegCommandTemplate.materialize(
                 settings.ffmpegCommandOverride,
                 ffmpegInput,
                 output.absolutePath,
+                ffmpegAudio,
             ).getOrThrow()
             log.appendLine("using edited command template")
             return executePlan(jobId, source, settings, plan.copy(args = args), log)
@@ -226,7 +254,7 @@ class CompressService : Service() {
         var result = executePlan(jobId, source, settings, plan, log)
         while (!result.success && !result.cancelled) {
             val next = FfmpegCommandBuilder.fallbackPlan(
-                plan, ffmpegInput, output.absolutePath, settings, source, caps,
+                plan, ffmpegInput, output.absolutePath, settings, source, caps, ffmpegAudio,
             ) ?: break
             log.appendLine("retrying with fallback encoder/pix_fmt")
             output.delete()
@@ -272,6 +300,9 @@ class CompressService : Service() {
         if (spec.removeVideo) {
             log.appendLine("audio only")
         }
+        if (spec.stillImage) {
+            log.appendLine("still image durationMs=${spec.imageDurationMs} fps=${spec.originalFps}")
+        }
         if (spec.clipActive) {
             log.appendLine("clip start=${spec.clipStartMs}ms end=${spec.clipEndMs ?: "eos"}")
         }
@@ -309,7 +340,7 @@ class CompressService : Service() {
             args = plan.args,
             onLog = { line -> if (line.isNotBlank()) log.appendLine(line) },
             onStats = { stats ->
-                val durationMs = Media3EncodePlanner.outputDurationMs(settings, source.durationMs, source.hasVideo)
+                val durationMs = Media3EncodePlanner.outputDurationMs(settings, source)
                 val fraction = if (durationMs > 0) {
                     (stats.timeMs.toFloat() / durationMs).coerceIn(0f, 0.99f)
                 } else {

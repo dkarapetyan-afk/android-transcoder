@@ -74,16 +74,18 @@ fun CompressApp(
     LaunchedEffect(shareRequest?.nonce) {
         val request = shareRequest ?: return@LaunchedEffect
         val accepted = request.uris.filter { uri ->
-            ShareIntents.isLikelyMedia(context.contentResolver.getType(uri) ?: request.mimeType)
+            ShareIntents.isLikelyShareItem(context.contentResolver.getType(uri) ?: request.mimeType)
         }
         if (accepted.isEmpty()) {
-            snackbar.showSnackbar("That share is not a video or audio file.")
+            snackbar.showSnackbar("That share is not a video, audio, or picture file.")
             onShareConsumed(request.nonce)
             return@LaunchedEffect
         }
         importing = true
         try {
-            val batch = container.importer.importAll(accepted)
+            val batch = container.importer.importShared(accepted) { uri ->
+                context.contentResolver.getType(uri)
+            }
             when {
                 batch.jobIds.isNotEmpty() -> {
                     nav.navigate("compress/${batch.jobIds.first()}")

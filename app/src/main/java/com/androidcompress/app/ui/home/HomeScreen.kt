@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicVideo
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Card
@@ -76,9 +77,25 @@ fun HomeScreen(
     val context = LocalContext.current
     var confirmClear by remember { mutableStateOf(false) }
 
+    var pendingVisual by remember { mutableStateOf<Uri?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.createImportJob(uri, onReady = onCompress) { msg ->
             scope.launch { snackbar.showSnackbar(msg) }
+        }
+    }
+    val combineAudioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { audio ->
+        val visual = pendingVisual
+        pendingVisual = null
+        if (audio != null && visual != null) {
+            viewModel.createCombineJob(visual, audio, onReady = onCompress) { msg ->
+                scope.launch { snackbar.showSnackbar(msg) }
+            }
+        }
+    }
+    val combineVisualPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { visual ->
+        if (visual != null) {
+            pendingVisual = visual
+            combineAudioPicker.launch(arrayOf("audio/*", "video/*"))
         }
     }
 
@@ -128,6 +145,14 @@ fun HomeScreen(
                 )
             }
             item {
+                ActionCard(
+                    title = "Combine audio and video",
+                    body = "Pick a picture or video, then a soundtrack. The output is one video. A still image lasts as long as the audio.",
+                    icon = Icons.Default.MusicVideo,
+                    onClick = { combineVisualPicker.launch(arrayOf("image/*", "video/*")) },
+                )
+            }
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -146,7 +171,7 @@ fun HomeScreen(
                 }
             }
             if (jobs.isEmpty()) {
-                item { EmptyState("Nothing yet", "Record, import, or share a video or audio file to get started.") }
+                item { EmptyState("Nothing yet", "Record, import, share, or combine a picture with audio to get started.") }
             } else {
                 items(jobs.take(8), key = { it.id }) { job ->
                     JobRow(job, onClick = {

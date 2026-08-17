@@ -34,6 +34,19 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun createCombineJob(
+        visual: Uri,
+        audio: Uri,
+        onReady: (String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        viewModelScope.launch {
+            runCatching { container.importer.importCombine(visual, audio) }
+                .onSuccess(onReady)
+                .onFailure { onError(it.message ?: "Unable to combine those files") }
+        }
+    }
+
     fun consumeRecordingEvent() {
         container.recording.consumeFinished()
     }

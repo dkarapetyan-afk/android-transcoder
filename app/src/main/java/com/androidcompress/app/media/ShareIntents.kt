@@ -29,6 +29,13 @@ object ShareIntents {
             type == "application/octet-stream"
     }
 
+    fun isLikelyImage(mime: String?): Boolean {
+        val type = mime?.lowercase().orEmpty()
+        return type.startsWith("image/")
+    }
+
+    fun isLikelyShareItem(mime: String?): Boolean = isLikelyMedia(mime) || isLikelyImage(mime)
+
     fun collectUriStrings(
         action: String?,
         stream: String?,

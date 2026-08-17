@@ -155,8 +155,12 @@ object FfmpegCommandBuilder {
         capabilities: EncoderCapabilities,
         pixFmtOverride: String? = null,
         encoderOverride: String? = null,
+        audioInput: String? = null,
     ): EncodePlan {
-        if (settings.audioOutput(source.hasVideo)) {
+        val companion = audioInput?.takeIf { it.isNotBlank() }
+            ?: source.audioUri.takeIf { it.isNotBlank() }
+        val combine = source.isCombine && !companion.isNullOrBlank()
+        if (settings.audioOutput(source.hasVideo) && !combine) {
             return buildAudio(input, output, settings, source)
         }
         val encoder = encoderOverride ?: selectVideoEncoder(settings, capabilities)
@@ -164,7 +168,7 @@ object FfmpegCommandBuilder {
         val outW = outputWidth(source, outH)
         val videoBitrate = scaledVideoBitrate(source, settings)
         val needsScale = outH != source.height || even(source.width) != source.width
-        val needsFps = settings.fpsCap != null && source.frameRate > settings.fpsCap + 0.1f
+        val needsFps = !source.stillImage && settings.fpsCap != null && source.frameRate > settings.fpsCap + 0.1f
         val toneMap = settings.hdrMode == HdrMode.TONE_MAP
         val isHardware = encoder.endsWith("_mediacodec")
         val isLibvpx = encoder == "libvpx" || encoder == "libvpx-vp9"
@@ -177,8 +181,15 @@ object FfmpegCommandBuilder {
         }
         val volume = audioVolume(settings)
         val changeVolume = volume != 1f && settings.audio != AudioOption.MUTE && source.hasAudio
+        val clip = Media3EncodePlanner.clipWindow(settings, source.durationMs)
+        val outputDurationMs = if (combine) clip.durationMs(source.durationMs) else 0L
 
-        val args = mutableListOf("-y", "-hide_banner", "-i", input)
+        val args = mutableListOf("-y", "-hide_banner")
+        if (combine) {
+            appendCombineInputs(args, input, companion!!, source, clip, outputDurationMs)
+        } else {
+            args += listOf("-i", input)
+        }
         val vf = mutableListOf<String>()
         if (needsScale) vf += "scale=$outW:$outH"
         if (toneMap || settings.usesWebm()) vf += "format=yuv420p"
@@ -231,6 +242,16 @@ object FfmpegCommandBuilder {
         if (changeVolume) {
             args += listOf("-filter:a", "volume=$volume")
         }
+        if (combine) {
+            args += listOf("-map", "0:v:0")
+            if (settings.audio != AudioOption.MUTE) {
+                args += listOf("-map", "1:a:0")
+            }
+            if (outputDurationMs > 0L) {
+                args += listOf("-t", formatFfmpegSeconds(outputDurationMs))
+            }
+            args += "-shortest"
+        }
         args += audioCodecArgs(settings, source, settings.audio, changeVolume)
         if (settings.fastStart && !settings.usesWebm()) {
             args += listOf("-movflags", "+faststart")
@@ -247,21 +268,32 @@ object FfmpegCommandBuilder {
         )
     }
 
-    fun fallbackPlan(previous: EncodePlan, input: String, output: String, settings: EncodeSettings, source: SourceVideo, capabilities: EncoderCapabilities): EncodePlan? {
+    fun fallbackPlan(
+        previous: EncodePlan,
+        input: String,
+        output: String,
+        settings: EncodeSettings,
+        source: SourceVideo,
+        capabilities: EncoderCapabilities,
+        audioInput: String? = null,
+    ): EncodePlan? {
         if (settings.audioOutput(source.hasVideo) || previous.videoEncoder.isBlank()) return null
         if (settings.usesWebm()) {
             return when {
                 previous.videoEncoder == "vp9_mediacodec" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
                     input, output, settings, source, capabilities,
                     encoderOverride = "libvpx-vp9",
+                    audioInput = audioInput,
                 )
                 previous.videoEncoder == "vp8_mediacodec" && capabilities.hasLibvpx -> build(
                     input, output, settings, source, capabilities,
                     encoderOverride = "libvpx",
+                    audioInput = audioInput,
                 )
                 previous.videoEncoder == "libvpx-vp9" && capabilities.hasLibvpx -> build(
                     input, output, settings, source, capabilities,
                     encoderOverride = "libvpx",
+                    audioInput = audioInput,
                 )
                 else -> null
             }
@@ -271,14 +303,17 @@ object FfmpegCommandBuilder {
                 input, output, settings, source, capabilities,
                 pixFmtOverride = "yuv420p",
                 encoderOverride = previous.videoEncoder,
+                audioInput = audioInput,
             )
             previous.videoEncoder.endsWith("_mediacodec") && capabilities.hasOpenH264 -> build(
                 input, output, settings, source, capabilities,
                 encoderOverride = "libopenh264",
+                audioInput = audioInput,
             )
             previous.videoEncoder != "mpeg4" && capabilities.hasMpeg4 -> build(
                 input, output, settings, source, capabilities,
                 encoderOverride = "mpeg4",
+                audioInput = audioInput,
             )
             else -> null
         }
@@ -336,6 +371,37 @@ object FfmpegCommandBuilder {
                 }
             }
         }
+    }
+
+    private fun appendCombineInputs(
+        args: MutableList<String>,
+        visual: String,
+        audio: String,
+        source: SourceVideo,
+        clip: Media3ClipWindow,
+        outputDurationMs: Long,
+    ) {
+        val duration = if (outputDurationMs > 0L) formatFfmpegSeconds(outputDurationMs) else null
+        if (source.stillImage) {
+            val fps = stillFrameRate(source)
+            args += listOf("-loop", "1", "-framerate", fps)
+            if (duration != null) args += listOf("-t", duration)
+            args += listOf("-i", visual)
+            if (clip.startMs > 0L) args += listOf("-ss", formatFfmpegSeconds(clip.startMs))
+            args += listOf("-i", audio)
+        } else {
+            if (clip.startMs > 0L) args += listOf("-ss", formatFfmpegSeconds(clip.startMs))
+            if (duration != null) args += listOf("-t", duration)
+            args += listOf("-i", visual)
+            if (clip.startMs > 0L) args += listOf("-ss", formatFfmpegSeconds(clip.startMs))
+            if (duration != null) args += listOf("-t", duration)
+            args += listOf("-i", audio)
+        }
+    }
+
+    private fun stillFrameRate(source: SourceVideo): String {
+        val fps = source.frameRate.takeIf { it >= 1f } ?: 30f
+        return fps.roundToInt().coerceIn(1, 60).toString()
     }
 
     private fun appendClip(args: MutableList<String>, settings: EncodeSettings, source: SourceVideo) {

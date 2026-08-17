@@ -35,7 +35,10 @@ class ResultViewModel(
         viewModelScope.launch {
             val current = container.jobs.get(jobId) ?: return@launch
             if (current.sourceDeleted) return@launch
-            val result = container.sourceDeleter.delete(current.sourceUri, current.outputUri)
+            val result = container.sourceDeleter.deleteSources(
+                listOf(current.sourceUri, current.audioUri),
+                current.outputUri,
+            )
             container.jobs.markSourceDeleted(jobId, result.deleted)
             _deleteMessage.value = if (result.deleted) {
                 "Original file deleted."

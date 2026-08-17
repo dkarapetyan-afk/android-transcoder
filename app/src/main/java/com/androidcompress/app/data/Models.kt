@@ -3,7 +3,7 @@ package com.androidcompress.app.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-enum class JobType { RECORD, IMPORT, COMPRESS }
+enum class JobType { RECORD, IMPORT, COMPRESS, COMBINE }
 
 enum class JobStatus { DRAFT, RECORDING, READY, QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED }
 
@@ -103,7 +103,11 @@ data class SourceVideo(
     val audioCodec: String?,
     val hasAudio: Boolean,
     val hasVideo: Boolean = width > 0 && height > 0,
-)
+    val stillImage: Boolean = false,
+    val audioUri: String = "",
+) {
+    val isCombine: Boolean get() = audioUri.isNotBlank() || stillImage
+}
 
 fun EncodeSettings.audioOutput(hasVideo: Boolean = true): Boolean =
     output == OutputMode.AUDIO || !hasVideo
@@ -217,7 +221,11 @@ data class CompressJob(
     val queuedAt: Long? = null,
     val deleteSourceAfter: Boolean = false,
     val sourceDeleted: Boolean = false,
-)
+    val audioUri: String = "",
+    val stillImage: Boolean = false,
+) {
+    val isCombine: Boolean get() = type == JobType.COMBINE || audioUri.isNotBlank()
+}
 
 fun JobStatus.label(): String = when (this) {
     JobStatus.DRAFT -> "Draft"

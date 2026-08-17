@@ -4,6 +4,7 @@ Android app that records the screen and compresses recordings on-device with FFm
 
 - Kotlin, Jetpack Compose, Material 3
 - Import a video or audio file via the system file picker, or share / send one (or several) from another app
+- Combine a picture or video with a separate soundtrack (FFmpeg or Media3). A still image lasts as long as the audio. Sharing several pictures/videos with several audio files creates one job per pair.
 - Clear all Recent / Library jobs and leftover cache files (gallery outputs stay)
 - Audio-only output: extract a video soundtrack or transcode audio to AAC (.m4a) or Opus (.webm) with FFmpeg or Media3
 - WebM output: VP8/VP9 + Opus video, or Opus-only audio, on both engines

@@ -85,7 +85,14 @@ class CompressViewModel(
         val realSource = job.toSource()
         val source = realSource ?: previewSource()
         val plan = if (enc.engine == EncodeEngine.FFMPEG) {
-            FfmpegCommandBuilder.build(FfmpegCommandTemplate.INPUT, FfmpegCommandTemplate.OUTPUT, enc, source, cap)
+            FfmpegCommandBuilder.build(
+                FfmpegCommandTemplate.INPUT,
+                FfmpegCommandTemplate.OUTPUT,
+                enc,
+                source,
+                cap,
+                audioInput = if (source.isCombine) FfmpegCommandTemplate.AUDIO else null,
+            )
         } else {
             null
         }
@@ -108,9 +115,9 @@ class CompressViewModel(
             capabilities = cap,
             advancedOpen = open,
             estimateBytes = realSource?.let { src ->
-                val estimateSource = if (enc.engine == EncodeEngine.MEDIA3 || enc.audioOutput(src.hasVideo)) {
+                val estimateSource = if (enc.engine == EncodeEngine.MEDIA3 || enc.audioOutput(src.hasVideo) || src.isCombine) {
                     src.copy(
-                        durationMs = Media3EncodePlanner.outputDurationMs(enc, src.durationMs, src.hasVideo),
+                        durationMs = Media3EncodePlanner.outputDurationMs(enc, src),
                     )
                 } else {
                     src
@@ -140,13 +147,16 @@ class CompressViewModel(
                 job != null -> SettingsJson.decode(job.settingsJson)
                 else -> EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine)
             }
-            settings.value = if (job != null && job.width <= 0 && job.height <= 0) {
-                loaded.copy(
+            settings.value = when {
+                job != null && job.isCombine -> loaded.copy(
+                    output = OutputMode.VIDEO,
+                    audio = if (loaded.audio == AudioOption.MUTE) AudioOption.AAC_128 else loaded.audio,
+                )
+                job != null && job.width <= 0 && job.height <= 0 -> loaded.copy(
                     output = OutputMode.AUDIO,
                     audio = if (loaded.audio == AudioOption.MUTE) AudioOption.AAC_128 else loaded.audio,
                 )
-            } else {
-                loaded
+                else -> loaded
             }
             deleteSourceAfter.value = job?.deleteSourceAfter ?: prefs.deleteOriginalAfterEncode
             caps.value = container.encoderCapabilities()
@@ -188,6 +198,7 @@ class CompressViewModel(
     }
 
     fun setOutput(mode: OutputMode) {
+        if (ui.value.job?.isCombine == true && mode != OutputMode.VIDEO) return
         update { current ->
             current.copy(
                 output = mode,
@@ -340,12 +351,14 @@ class CompressViewModel(
         source: SourceVideo?,
         capabilities: EncoderCapabilities,
     ): String {
+        val preview = source ?: previewSource()
         val plan = FfmpegCommandBuilder.build(
             FfmpegCommandTemplate.INPUT,
             FfmpegCommandTemplate.OUTPUT,
             enc,
-            source ?: previewSource(),
+            preview,
             capabilities,
+            audioInput = if (preview.isCombine) FfmpegCommandTemplate.AUDIO else null,
         )
         val generated = FfmpegCommandTemplate.fromArgs(plan.args)
         val override = enc.ffmpegCommandOverride
@@ -384,8 +397,10 @@ private fun CompressJob?.toSource(): SourceVideo? {
         bytes = job.sourceBytes,
         frameRate = 30f,
         audioCodec = null,
-        hasAudio = true,
-        hasVideo = job.width > 0 && job.height > 0,
+        hasAudio = !job.isCombine || job.audioUri.isNotBlank(),
+        hasVideo = job.width > 0 && job.height > 0 || job.stillImage,
+        stillImage = job.stillImage,
+        audioUri = job.audioUri,
     )
 }
 

@@ -70,7 +70,7 @@ fun ResultScreen(
                         Text("Original file deleted.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else if (current.sourceUri.isNotBlank()) {
                         OutlinedButton(onClick = { viewModel.deleteOriginal() }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Delete original")
+                            Text(if (current.isCombine) "Delete original files" else "Delete original")
                         }
                     }
                     deleteMessage?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }

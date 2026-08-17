@@ -1,8 +1,11 @@
 package com.androidcompress.app.media
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import com.androidcompress.app.data.SourceVideo
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +19,10 @@ class MediaProbe(private val context: Context) {
 
     suspend fun probe(uri: Uri): SourceVideo = withContext(Dispatchers.IO) {
         val nameAndSize = queryNameAndSize(uri)
+        val resolverMime = context.contentResolver.getType(uri)
+        if (CombinePairing.kind(resolverMime, nameAndSize.first) == MediaKind.IMAGE) {
+            return@withContext probeStillImage(uri, nameAndSize)
+        }
         val retriever = MediaMetadataRetriever()
         try {
             openRetriever(retriever, uri)
@@ -30,6 +37,10 @@ class MediaProbe(private val context: Context) {
                 ?.toFloatOrNull()
                 ?: inferFps(retriever, duration)
             val (w, h) = if (rotation == 90 || rotation == 270) height to width else width to height
+            val hasVideo = flaggedVideo || (w > 0 && h > 0)
+            if (!hasVideo && !hasAudio) {
+                return@withContext probeStillImage(uri, nameAndSize)
+            }
             SourceVideo(
                 uri = uri.toString(),
                 displayName = nameAndSize.first,
@@ -40,10 +51,88 @@ class MediaProbe(private val context: Context) {
                 frameRate = frameRate,
                 audioCodec = if (hasAudio) mime else null,
                 hasAudio = hasAudio,
-                hasVideo = flaggedVideo || (w > 0 && h > 0),
+                hasVideo = hasVideo,
             )
         } finally {
             runCatching { retriever.release() }
+        }
+    }
+
+    private fun probeStillImage(uri: Uri, nameAndSize: Pair<String, Long>): SourceVideo {
+        var width = 0
+        var height = 0
+        runCatching {
+            val retriever = MediaMetadataRetriever()
+            try {
+                openRetriever(retriever, uri)
+                width = imageWidth(retriever)
+                height = imageHeight(retriever)
+                val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                if (rotation == 90 || rotation == 270) {
+                    val swapped = width
+                    width = height
+                    height = swapped
+                }
+            } finally {
+                retriever.release()
+            }
+        }
+        if (width <= 0 || height <= 0) {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeStream(input, null, opts)
+                width = opts.outWidth
+                height = opts.outHeight
+            }
+        }
+        if (width <= 0 || height <= 0) error("Unable to read that image")
+        val oriented = applyExifOrientation(uri, width, height)
+        return SourceVideo(
+            uri = uri.toString(),
+            displayName = nameAndSize.first,
+            width = oriented.first,
+            height = oriented.second,
+            durationMs = 0L,
+            bytes = nameAndSize.second,
+            frameRate = 30f,
+            audioCodec = null,
+            hasAudio = false,
+            hasVideo = true,
+            stillImage = true,
+        )
+    }
+
+    private fun imageWidth(retriever: MediaMetadataRetriever): Int {
+        if (Build.VERSION.SDK_INT >= 28) {
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_IMAGE_WIDTH)?.toIntOrNull()?.let {
+                if (it > 0) return it
+            }
+        }
+        return retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+    }
+
+    private fun imageHeight(retriever: MediaMetadataRetriever): Int {
+        if (Build.VERSION.SDK_INT >= 28) {
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_IMAGE_HEIGHT)?.toIntOrNull()?.let {
+                if (it > 0) return it
+            }
+        }
+        return retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+    }
+
+    private fun applyExifOrientation(uri: Uri, width: Int, height: Int): Pair<Int, Int> {
+        val orientation = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            }
+        }.getOrNull() ?: return width to height
+        return if (
+            orientation == ExifInterface.ORIENTATION_ROTATE_90 ||
+            orientation == ExifInterface.ORIENTATION_ROTATE_270
+        ) {
+            height to width
+        } else {
+            width to height
         }
     }
 

@@ -59,6 +59,31 @@ class Media3EncodePlannerTest {
     }
 
     @Test
+    fun stillImageCombineSetsDurationAndCompanionAudio() {
+        val still = source.copy(
+            stillImage = true,
+            audioUri = "content://audio/1",
+            durationMs = 12_000,
+            hasAudio = true,
+        )
+        val spec = Media3EncodePlanner.plan(EncodeSettings.forPreset(Preset.BALANCED), still)
+        assertTrue(spec.stillImage)
+        assertEquals("content://audio/1", spec.companionAudioUri)
+        assertEquals(12_000L, spec.imageDurationMs)
+        assertFalse(spec.removeVideo)
+        assertFalse(spec.removeAudio)
+        assertTrue(spec.encoderLabel.contains("still"))
+        assertTrue(spec.imageDurationMs >= Media3EncodePlanner.MIN_CLIP_MS)
+    }
+
+    @Test
+    fun stillImageWithoutDurationGetsMinimumHold() {
+        val still = source.copy(stillImage = true, durationMs = 0, audioUri = "content://a")
+        val spec = Media3EncodePlanner.plan(EncodeSettings.forPreset(Preset.BALANCED), still)
+        assertEquals(Media3EncodePlanner.MIN_CLIP_MS, spec.imageDurationMs)
+    }
+
+    @Test
     fun muteRemovesAudio() {
         val spec = Media3EncodePlanner.plan(
             EncodeSettings.forPreset(Preset.BALANCED).copy(audio = AudioOption.MUTE),

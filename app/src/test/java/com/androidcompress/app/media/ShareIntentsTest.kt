@@ -66,5 +66,8 @@ class ShareIntentsTest {
         assertTrue(ShareIntents.isLikelyMedia(null))
         assertFalse(ShareIntents.isLikelyMedia("image/jpeg"))
         assertFalse(ShareIntents.isLikelyMedia("text/plain"))
+        assertTrue(ShareIntents.isLikelyImage("image/jpeg"))
+        assertTrue(ShareIntents.isLikelyShareItem("image/png"))
+        assertFalse(ShareIntents.isLikelyImage("video/mp4"))
     }
 }

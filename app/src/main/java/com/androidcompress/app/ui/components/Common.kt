@@ -1,6 +1,7 @@
 package com.androidcompress.app.ui.components
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -69,6 +70,20 @@ fun VideoThumbnail(uri: Uri?, modifier: Modifier = Modifier) {
                     retriever.getFrameAtTime(0)
                 } finally {
                     retriever.release()
+                }
+            }.getOrNull() ?: runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeStream(input, null, bounds)
+                    val longest = maxOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
+                    val sample = (longest / 512).coerceAtLeast(1)
+                    context.contentResolver.openInputStream(uri)?.use { again ->
+                        BitmapFactory.decodeStream(
+                            again,
+                            null,
+                            BitmapFactory.Options().apply { inSampleSize = sample },
+                        )
+                    }
                 }
             }.getOrNull()
         }
