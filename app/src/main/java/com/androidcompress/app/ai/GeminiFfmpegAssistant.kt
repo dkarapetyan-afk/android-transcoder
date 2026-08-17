@@ -256,7 +256,7 @@ If output mode is AUDIO and the container is WEBM, the app already supplies -y -
 
 If output mode is VIDEO and the container is MP4, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, -c:v (h264_mediacodec, hevc_mediacodec, libopenh264, or mpeg4), -b:v, optional -maxrate/-bufsize, -pix_fmt, profile/GOP/B-frames, audio (-c:a aac or copy or -an), optional -movflags +faststart, extra args, and OUTPUT.
 
-If output mode is VIDEO and the container is WEBM, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, -c:v (vp9_mediacodec, vp8_mediacodec, libvpx-vp9, or libvpx), -b:v, libvpx deadline/cpu-used when software, audio (-c:a libopus or copy or -an), extra args, and a .webm OUTPUT. Do not add -movflags. Do not switch the output to MP4.
+If output mode is VIDEO and the container is WEBM, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, format=yuv420p, -c:v (libvpx-vp9 or libvpx), -b:v, libvpx deadline/cpu-used, -pix_fmt yuv420p, audio (-c:a libopus or copy or -an), extra args, and a .webm OUTPUT. Do not add -movflags. Do not switch the output to MP4. Do not use vp8_mediacodec or vp9_mediacodec.
 
 This FFmpeg build is LGPL. There is no libx264 or libx265. Do not use -crf, -preset slow, -tune, CUDA, NVENC, QSV, or extra -i inputs.
 

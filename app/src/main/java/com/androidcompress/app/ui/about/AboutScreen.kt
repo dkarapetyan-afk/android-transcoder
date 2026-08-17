@@ -38,10 +38,11 @@ fun AboutScreen(onBack: () -> Unit) {
             Text("Open source notices", style = MaterialTheme.typography.titleMedium)
             Text(
                 "This software uses libraries from the FFmpeg project under the LGPLv3. " +
-                    "FFmpeg is a trademark of Fabrice Bellard. The bundled FFmpegKit-compatible " +
-                    "binary is licensed under LGPL-3.0. Source for those libraries is available " +
-                    "from the upstream projects; see docs/ffmpeg-build.md in the application source " +
-                    "for how a Play Store build should be produced from FFmpegKitNext without GPL encoders.",
+                    "FFmpeg is a trademark of Fabrice Bellard. Debug builds ship " +
+                    "dev.ffmpegkit-maintained:ffmpeg-kit-full 8.1.7 (FFmpeg 8.1.2, LGPL-3.0). " +
+                    "Source for those libraries is available from the upstream projects; see " +
+                    "docs/ffmpeg-build.md in the application source for how a Play Store build " +
+                    "should be produced from FFmpegKitNext without GPL encoders.",
             )
             Text(
                 "The Device (Media3) engine uses AndroidX Media3 Transformer and the platform " +

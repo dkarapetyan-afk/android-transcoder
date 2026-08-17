@@ -10,7 +10,8 @@ These cannot be fully automated in this workspace.
 - Compress a file opens one system picker; a video and an audio file both reach the compress screen.
 - Share / Send a video or audio file from Photos, Files, or a messenger: Recording Compressor appears as Compress and opens the compress screen. Share two files at once creates two jobs; the first opens and the rest are in Recent.
 - Start compress on API 35+ (Pixel 10 / Android 16): must not crash with InvalidForegroundServiceTypeException.
-- Hardware encoder path and software fallback (toggle hardware off).
+- Hardware encoder path and software fallback (toggle hardware off). After the FFmpeg 8.1 AAR swap, confirm FFmpeg still lists h264_mediacodec / libvpx / libopus.
+- FFmpeg WebM video looks correct (not scrambled). Command should use libvpx-vp9 or libvpx and yuv420p, not vp9_mediacodec.
 - Device (Media3) engine: pick it on the compress screen, confirm progress, output, and cancel still work without FFmpeg.
 - Device (Media3) clip: set start/end on a known source, confirm the output is only that range and progress uses the clipped duration. Whole-video reset clears the clip.
 - Audio only from a video (both engines): output is an AAC .m4a in Music/RecordingCompressor; Open/Share use audio MIME.

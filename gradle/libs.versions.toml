@@ -12,7 +12,7 @@ datastore = "1.1.7"
 window = "1.4.0"
 coroutines = "1.10.2"
 junit = "4.13.2"
-ffmpegKit = "6.1.7"
+ffmpegKit = "8.1.7"
 smartException = "0.2.1"
 media3 = "1.11.0"
 
@@ -38,7 +38,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-window = { group = "androidx.window", name = "window", version.ref = "window" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
-ffmpeg-kit = { group = "io.github.jamaismagic.ffmpeg", name = "ffmpeg-kit-lts-16kb", version.ref = "ffmpegKit" }
+ffmpeg-kit = { group = "dev.ffmpegkit-maintained", name = "ffmpeg-kit-full", version.ref = "ffmpegKit" }
 smart-exception = { group = "com.arthenica", name = "smart-exception-java", version.ref = "smartException" }
 androidx-media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
 androidx-media3-effect = { group = "androidx.media3", name = "media3-effect", version.ref = "media3" }

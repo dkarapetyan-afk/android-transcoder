@@ -175,7 +175,7 @@ fun CompressScreen(
                     settings.audioOutput(sourceHasVideo) ->
                         "Writes an AAC .m4a. From a video this extracts the soundtrack; from audio this re-encodes it."
                     settings.usesWebm() ->
-                        "Writes a VP8/VP9 + Opus WebM. Media3 uses the device encoder; FFmpeg can fall back to libvpx."
+                        "Writes a VP8/VP9 + Opus WebM. FFmpeg uses software libvpx. Media3 uses the device encoder."
                     else ->
                         "Writes a compressed MP4 with video and audio."
                 },
@@ -406,7 +406,7 @@ fun CompressScreen(
                         label = { Text(if (settings.fastStart) "Fast start on" else "Fast start off") },
                     )
                     }
-                    if (!audioOnly) {
+                    if (!audioOnly && !settings.usesWebm()) {
                         FilterChip(
                             selected = settings.preferHardware,
                             onClick = { viewModel.update { it.copy(preferHardware = !it.preferHardware) } },

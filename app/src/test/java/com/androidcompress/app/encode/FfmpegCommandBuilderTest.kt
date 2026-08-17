@@ -275,11 +275,34 @@ class FfmpegCommandBuilderTest {
             codec = VideoCodec.VP9,
         )
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
-        assertEquals("vp9_mediacodec", plan.videoEncoder)
+        assertEquals("libvpx-vp9", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
+        assertTrue(plan.args.contains("format=yuv420p"))
         assertEquals("libopus", plan.args[plan.args.indexOf("-c:a") + 1])
         assertFalse(plan.args.contains("-movflags"))
         assertFalse(plan.args.contains("-bf"))
         assertEquals("out.webm", plan.args.last())
+    }
+
+    @Test
+    fun webmIgnoresHardwareVp9WhenLibvpxIsPresent() {
+        val caps = hardwareCaps.copy(hasVp9MediaCodec = true, hasLibvpxVp9 = true, hasLibvpx = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            container = ContainerFormat.WEBM,
+            preferHardware = true,
+        )
+        val encoder = FfmpegCommandBuilder.selectVideoEncoder(settings, caps)
+        assertEquals("libvpx-vp9", encoder)
+    }
+
+    @Test
+    fun webmHardwareOnlyUsesYuv420pNotNv12() {
+        val caps = hardwareCaps.copy(hasVp9MediaCodec = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(container = ContainerFormat.WEBM)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("vp9_mediacodec", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
+        assertFalse(plan.args.contains("nv12"))
     }
 
     @Test
@@ -292,6 +315,7 @@ class FfmpegCommandBuilderTest {
         )
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
         assertEquals("libvpx-vp9", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
         assertEquals("good", plan.args[plan.args.indexOf("-deadline") + 1])
         assertEquals("1", plan.args[plan.args.indexOf("-row-mt") + 1])
     }
@@ -311,13 +335,25 @@ class FfmpegCommandBuilderTest {
         val caps = hardwareCaps.copy(hasVp9MediaCodec = true, hasLibvpx = true, hasLibvpxVp9 = true)
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(container = ContainerFormat.WEBM)
         val first = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx-vp9", first.videoEncoder)
         val second = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx", second?.videoEncoder)
         assertEquals("yuv420p", second!!.pixFmt)
-        val third = FfmpegCommandBuilder.fallbackPlan(second, "in.mp4", "out.webm", settings, source, caps)
-        assertEquals("libvpx-vp9", third?.videoEncoder)
-        val last = FfmpegCommandBuilder.fallbackPlan(third!!, "in.mp4", "out.webm", settings, source, caps)
-        assertEquals("libvpx", last?.videoEncoder)
-        assertNull(FfmpegCommandBuilder.fallbackPlan(last!!, "in.mp4", "out.webm", settings, source, caps))
+        assertEquals("0", second.args[second.args.indexOf("-auto-alt-ref") + 1])
+        assertNull(FfmpegCommandBuilder.fallbackPlan(second, "in.mp4", "out.webm", settings, source, caps))
+    }
+
+    @Test
+    fun webmMediaCodecFallsBackToLibvpx() {
+        val caps = hardwareCaps.copy(hasVp9MediaCodec = true, hasLibvpx = true, hasLibvpxVp9 = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(container = ContainerFormat.WEBM)
+        val hardware = FfmpegCommandBuilder.build(
+            "in.mp4", "out.webm", settings, source, caps,
+            encoderOverride = "vp9_mediacodec",
+        )
+        assertEquals("vp9_mediacodec", hardware.videoEncoder)
+        val software = FfmpegCommandBuilder.fallbackPlan(hardware, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx-vp9", software?.videoEncoder)
     }
 
     @Test

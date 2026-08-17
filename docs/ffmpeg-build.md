@@ -3,10 +3,10 @@
 The debug/dev Gradle dependency is:
 
 ```
-io.github.jamaismagic.ffmpeg:ffmpeg-kit-lts-16kb:6.1.7
+dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7
 ```
 
-That package is LGPL-3.0 and 16 KB aligned. For a store listing you should ship a binary you built yourself so you control enabled libraries and can fulfill the LGPL source offer.
+That package is LGPL-3.0, 16 KB aligned, arm64-v8a only, and wraps FFmpeg n8.1.2. It does not include GPL encoders (`libx264` / `libx265`). For a store listing you should still prefer a binary you built yourself so you control enabled libraries and can fulfill the LGPL source offer.
 
 ## Recommended production AAR
 

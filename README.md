@@ -25,4 +25,4 @@ The debug APK is written to `app/build/outputs/apk/debug/`.
 
 ## FFmpeg
 
-Day-to-day builds use a 16 KB–aligned FFmpegKit LTS AAR from Maven Central. A Play Store binary should be rebuilt from FFmpegKitNext without GPL encoders — see [docs/ffmpeg-build.md](docs/ffmpeg-build.md).
+Day-to-day builds use `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.2, 16 KB pages, arm64-v8a, LGPL — no x264/x265). A Play Store binary can stay on that AAR or be rebuilt from FFmpegKitNext — see [docs/ffmpeg-build.md](docs/ffmpeg-build.md).

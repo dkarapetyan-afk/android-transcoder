@@ -5,6 +5,7 @@ import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.EncoderCapabilities
 import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.H264Profile
@@ -90,5 +91,33 @@ class SettingsJsonTest {
         val back = webm.withContainer(ContainerFormat.MP4)
         assertEquals(VideoCodec.H264, back.codec)
         assertEquals("mp4", back.outputExtension())
+    }
+
+    @Test
+    fun encoderCapsRoundTrip() {
+        val caps = EncoderCapabilities(
+            hasH264MediaCodec = true,
+            hasHevcMediaCodec = true,
+            hasOpenH264 = false,
+            hasMpeg4 = true,
+            hasVp8MediaCodec = true,
+            hasVp9MediaCodec = true,
+            hasLibvpx = true,
+            hasLibvpxVp9 = true,
+            hasLibOpus = true,
+        )
+        val decoded = SettingsJson.decodeCaps(SettingsJson.encodeCaps(caps))
+        assertEquals(caps, decoded)
+    }
+
+    @Test
+    fun encoderCapsRejectsOldKit() {
+        val raw = """
+            {"h264mc":true,"hevcMc":true,"openh264":false,"mpeg4":true,
+             "vp8mc":true,"vp9mc":true,"libvpx":true,"libvpxVp9":true,"libopus":true}
+        """.trimIndent()
+        assertNull(SettingsJson.decodeCaps(raw))
+        val stale = """{"kit":"6.1.7","vp9mc":true}"""
+        assertNull(SettingsJson.decodeCaps(stale))
     }
 }

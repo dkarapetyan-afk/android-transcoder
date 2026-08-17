@@ -3,6 +3,9 @@ package com.androidcompress.app.data
 import org.json.JSONObject
 
 object SettingsJson {
+    /** Bump when the bundled FFmpegKit AAR changes so cached encoder lists are re-probed. */
+    const val CAPS_KIT = "8.1.7"
+
     fun encode(settings: EncodeSettings): String = JSONObject().apply {
         put("preset", settings.preset.name)
         put("maxHeight", settings.maxHeight ?: JSONObject.NULL)
@@ -62,6 +65,7 @@ object SettingsJson {
     }
 
     fun encodeCaps(caps: EncoderCapabilities): String = JSONObject().apply {
+        put("kit", CAPS_KIT)
         put("h264mc", caps.hasH264MediaCodec)
         put("hevcMc", caps.hasHevcMediaCodec)
         put("openh264", caps.hasOpenH264)
@@ -77,6 +81,7 @@ object SettingsJson {
         if (raw.isNullOrBlank()) return null
         return runCatching {
             val obj = JSONObject(raw)
+            if (obj.optString("kit") != CAPS_KIT) return null
             if (!obj.has("vp9mc")) return null
             EncoderCapabilities(
                 hasH264MediaCodec = obj.optBoolean("h264mc"),

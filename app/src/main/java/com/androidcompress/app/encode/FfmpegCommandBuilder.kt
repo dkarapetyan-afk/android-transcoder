@@ -118,14 +118,14 @@ object FfmpegCommandBuilder {
         capabilities: EncoderCapabilities,
     ): String {
         return when (settings.effectiveVideoCodec()) {
+            // FFmpeg's vp8/vp9_mediacodec path writes garbage frames on many
+            // devices (including Pixel) even when the process exits 0. Prefer libvpx.
             VideoCodec.VP9 -> when {
-                settings.preferHardware && capabilities.hasVp9MediaCodec -> "vp9_mediacodec"
                 capabilities.hasLibvpxVp9 || capabilities.hasLibvpx -> "libvpx-vp9"
                 capabilities.hasVp9MediaCodec -> "vp9_mediacodec"
                 else -> "libvpx-vp9"
             }
             VideoCodec.VP8 -> when {
-                settings.preferHardware && capabilities.hasVp8MediaCodec -> "vp8_mediacodec"
                 capabilities.hasLibvpx -> "libvpx"
                 capabilities.hasVp8MediaCodec -> "vp8_mediacodec"
                 else -> "libvpx"
@@ -167,8 +167,11 @@ object FfmpegCommandBuilder {
         val needsFps = settings.fpsCap != null && source.frameRate > settings.fpsCap + 0.1f
         val toneMap = settings.hdrMode == HdrMode.TONE_MAP
         val isHardware = encoder.endsWith("_mediacodec")
+        val isLibvpx = encoder == "libvpx" || encoder == "libvpx-vp9"
+        val isVpxMediaCodec = encoder == "vp8_mediacodec" || encoder == "vp9_mediacodec"
         val pixFmt = when {
             pixFmtOverride != null -> pixFmtOverride
+            isLibvpx || isVpxMediaCodec -> "yuv420p"
             isHardware -> "nv12"
             else -> null
         }
@@ -177,8 +180,8 @@ object FfmpegCommandBuilder {
 
         val args = mutableListOf("-y", "-hide_banner", "-i", input)
         val vf = mutableListOf<String>()
-        if (toneMap) vf += "format=yuv420p"
         if (needsScale) vf += "scale=$outW:$outH"
+        if (toneMap || settings.usesWebm()) vf += "format=yuv420p"
         if (vf.isNotEmpty()) {
             args += listOf("-vf", vf.joinToString(","))
         }
@@ -186,8 +189,11 @@ object FfmpegCommandBuilder {
             args += listOf("-r", settings.fpsCap!!.toString())
         }
         args += listOf("-c:v", encoder, "-b:v", "${videoBitrate}k")
-        if (encoder == "libvpx" || encoder == "libvpx-vp9") {
+        if (isLibvpx) {
             args += listOf("-deadline", "good", "-cpu-used", "5", "-row-mt", "1")
+            if (encoder == "libvpx") {
+                args += listOf("-auto-alt-ref", "0")
+            }
         }
         if (settings.bitrateMode == BitrateMode.CBR) {
             if (encoder == "libvpx" || encoder == "libvpx-vp9") {
@@ -245,11 +251,6 @@ object FfmpegCommandBuilder {
         if (settings.audioOutput(source.hasVideo) || previous.videoEncoder.isBlank()) return null
         if (settings.usesWebm()) {
             return when {
-                previous.pixFmt == "nv12" -> build(
-                    input, output, settings, source, capabilities,
-                    pixFmtOverride = "yuv420p",
-                    encoderOverride = previous.videoEncoder,
-                )
                 previous.videoEncoder == "vp9_mediacodec" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
                     input, output, settings, source, capabilities,
                     encoderOverride = "libvpx-vp9",
