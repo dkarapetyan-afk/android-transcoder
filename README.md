@@ -11,11 +11,11 @@ Android app that records the screen and compresses recordings on-device with FFm
 - Screen recording via MediaProjection (microphone or internal audio)
 - Presets plus advanced encoder settings
 - Two encode engines: FFmpeg (default, with software fallback) or Device / Media3 (hardware MediaCodec, same approach as Compressor Edge)
-- Play-oriented: target API 36, scoped storage, typed foreground services, LGPL FFmpeg
+- Play-oriented: target API 37, scoped storage, typed foreground services, LGPL FFmpeg
 
 ## Build
 
-Requires JDK 17+ and the Android SDK (compile SDK 36).
+Requires JDK 17+ and the Android SDK (compile SDK 37).
 
 ```bash
 export ANDROID_HOME=$HOME/Android/Sdk

@@ -6,7 +6,7 @@ Host `privacy-policy.html` at a public HTTPS URL and paste that URL into the sto
 
 - Name: Recording Compressor
 - applicationId: `com.androidcompress.app`
-- targetSdk: 36 (required for new Play apps from 31 August 2026)
+- targetSdk: 37 (Play requires at least 36 for new apps from 31 August 2026)
 - minSdk: 26
 - Native ABI: `arm64-v8a` only (the FFmpeg 8.1 AAR does not ship 32-bit or x86)
 

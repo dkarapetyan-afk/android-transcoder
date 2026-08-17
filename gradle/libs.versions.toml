@@ -1,17 +1,18 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.2.21"
-ksp = "2.2.21-2.0.5"
-coreKtx = "1.16.0"
-lifecycle = "2.9.2"
-activity = "1.10.1"
-composeBom = "2026.06.01"
-navigation = "2.9.3"
-room = "2.7.2"
-datastore = "1.1.7"
-window = "1.4.0"
-coroutines = "1.10.2"
+agp = "9.3.1"
+kotlin = "2.4.10"
+ksp = "2.3.11"
+coreKtx = "1.19.0"
+lifecycle = "2.11.0"
+activity = "1.13.0"
+composeBom = "2026.08.00"
+navigation = "2.9.8"
+room = "2.8.4"
+datastore = "1.2.1"
+window = "1.5.1"
+coroutines = "1.11.0"
 junit = "4.13.2"
+json = "20260719"
 ffmpegKit = "8.1.7"
 smartException = "0.2.1"
 media3 = "1.11.0"
@@ -38,6 +39,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-window = { group = "androidx.window", name = "window", version.ref = "window" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+json = { group = "org.json", name = "json", version.ref = "json" }
 ffmpeg-kit = { group = "dev.ffmpegkit-maintained", name = "ffmpeg-kit-full", version.ref = "ffmpegKit" }
 smart-exception = { group = "com.arthenica", name = "smart-exception-java", version.ref = "smartException" }
 androidx-media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
@@ -47,6 +49,5 @@ androidx-media3-muxer = { group = "androidx.media3", name = "media3-muxer", vers
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
