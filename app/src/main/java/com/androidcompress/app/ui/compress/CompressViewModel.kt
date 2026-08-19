@@ -3,6 +3,7 @@ package com.androidcompress.app.ui.compress
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.R
 import com.androidcompress.app.ai.GeminiFfmpegAssistant
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.CompressJob
@@ -99,13 +100,15 @@ class CompressViewModel(
         val generated = plan?.let { FfmpegCommandTemplate.fromArgs(it.args) }.orEmpty()
         val override = enc.ffmpegCommandOverride
         val customized = override.isNotBlank() && override.trim() != generated.trim()
+        val app = container.appContext
         val encoderLabel = when {
             job == null || job.sourceUri.isBlank() -> ""
             enc.engine == EncodeEngine.MEDIA3 -> Media3EncodePlanner.plan(enc, source).encoderLabel
             enc.audioOutput(source.hasVideo) -> when {
-                enc.effectiveAudio(source.hasVideo) == AudioOption.COPY -> "FFmpeg · audio copy"
-                enc.usesWebm() -> "FFmpeg · Opus"
-                else -> "FFmpeg · AAC"
+                enc.effectiveAudio(source.hasVideo) == AudioOption.COPY ->
+                    app.getString(R.string.encoder_ffmpeg_audio_copy)
+                enc.usesWebm() -> app.getString(R.string.encoder_ffmpeg_opus)
+                else -> app.getString(R.string.encoder_ffmpeg_aac)
             }
             else -> plan?.videoEncoder.orEmpty()
         }
@@ -279,18 +282,23 @@ class CompressViewModel(
             result.fold(
                 onSuccess = { suggestion ->
                     if (suggestion.args.isBlank()) {
-                        aiMessage.value = suggestion.note.ifBlank { "Gemini did not add extra arguments." }
+                        aiMessage.value = suggestion.note.ifBlank {
+                            container.appContext.getString(R.string.gemini_no_extra_args)
+                        }
                     } else {
                         settings.value = enc.copy(
                             ffmpegExtraArgs = suggestion.args,
                             ffmpegCommandOverride = "",
                         )
                         persist()
-                        aiMessage.value = suggestion.note.ifBlank { "Extra args filled in. Review them before starting." }
+                        aiMessage.value = suggestion.note.ifBlank {
+                            container.appContext.getString(R.string.gemini_extra_args_filled)
+                        }
                     }
                 },
                 onFailure = { error ->
-                    extraArgsError.value = error.message ?: "Could not generate extra args."
+                    extraArgsError.value = error.message
+                        ?: container.appContext.getString(R.string.error_generate_extra_args)
                 },
             )
             aiBusy.value = false
@@ -404,31 +412,12 @@ private fun CompressJob?.toSource(): SourceVideo? {
     )
 }
 
-fun heightLabel(value: Int?): String = when (value) {
-    null -> "Original"
-    2160 -> "2160p"
-    1440 -> "1440p"
-    1080 -> "1080p"
-    720 -> "720p"
-    480 -> "480p"
-    360 -> "360p"
-    else -> "${value}p"
-}
-
-fun audioLabel(option: AudioOption, webm: Boolean = false): String {
-    val codec = if (webm) "Opus" else "AAC"
-    return when (option) {
-        AudioOption.COPY -> "Keep original"
-        AudioOption.AAC_64 -> "$codec 64 kbps"
-        AudioOption.AAC_96 -> "$codec 96 kbps"
-        AudioOption.AAC_128 -> "$codec 128 kbps"
-        AudioOption.AAC_192 -> "$codec 192 kbps"
-        AudioOption.MUTE -> "Mute"
+fun codecAllowed(codec: VideoCodec, caps: EncoderCapabilities, engine: EncodeEngine = EncodeEngine.FFMPEG): Boolean =
+    when (codec) {
+        VideoCodec.HEVC -> caps.hasHevcMediaCodec
+        VideoCodec.AV1 -> caps.av1Available(engine)
+        else -> true
     }
-}
-
-fun codecAllowed(codec: VideoCodec, caps: EncoderCapabilities): Boolean =
-    codec != VideoCodec.HEVC || caps.hasHevcMediaCodec
 
 private data class AiSlice(
     val error: String?,

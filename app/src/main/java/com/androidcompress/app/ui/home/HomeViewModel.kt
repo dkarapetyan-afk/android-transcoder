@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.R
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.di.AppContainer
@@ -30,7 +31,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching { container.importer.import(uri) }
                 .onSuccess(onReady)
-                .onFailure { onError(it.message ?: "Unable to read that file") }
+                .onFailure { onError(it.message ?: container.appContext.getString(R.string.error_read_file)) }
         }
     }
 
@@ -43,7 +44,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching { container.importer.importCombine(visual, audio) }
                 .onSuccess(onReady)
-                .onFailure { onError(it.message ?: "Unable to combine those files") }
+                .onFailure { onError(it.message ?: container.appContext.getString(R.string.error_combine)) }
         }
     }
 
@@ -66,7 +67,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             if (active.any { it.status == JobStatus.RUNNING || it.status == JobStatus.QUEUED }) {
                 CompressService.cancelAll(context)
             }
-            onDone(container.history.clearHistory().message())
+            onDone(container.history.clearHistory().message(container.appContext))
         }
     }
 }

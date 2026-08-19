@@ -9,7 +9,7 @@ enum class JobStatus { DRAFT, RECORDING, READY, QUEUED, RUNNING, SUCCEEDED, FAIL
 
 enum class Preset { SMALLER, BALANCED, HIGHER }
 
-enum class VideoCodec { H264, HEVC, VP8, VP9 }
+enum class VideoCodec { H264, HEVC, VP8, VP9, AV1 }
 
 enum class EncodeEngine { FFMPEG, MEDIA3 }
 
@@ -29,7 +29,19 @@ enum class HdrMode { KEEP, TONE_MAP }
 
 enum class BFrameSetting { AUTO, NONE, ONE, TWO }
 
-enum class RecordAudioMode { NONE, MICROPHONE, INTERNAL }
+enum class RecordAudioMode {
+    NONE, MICROPHONE, INTERNAL, BOTH;
+
+    val usesMicrophone: Boolean get() = this == MICROPHONE || this == BOTH
+    val usesInternalAudio: Boolean get() = this == INTERNAL || this == BOTH
+    val needsRecordAudioPermission: Boolean get() = this != NONE
+
+    fun resolvedForSdk(sdk: Int): RecordAudioMode {
+        if (!usesInternalAudio) return this
+        if (sdk >= 29) return this
+        return if (usesMicrophone) MICROPHONE else NONE
+    }
+}
 
 enum class RecordResolution { P720, P1080, DISPLAY }
 
@@ -117,21 +129,21 @@ fun EncodeSettings.effectiveAudio(hasVideo: Boolean = true): AudioOption =
 
 fun EncodeSettings.usesWebm(): Boolean = container == ContainerFormat.WEBM
 
+fun VideoCodec.compatibleWith(container: ContainerFormat): Boolean = when (container) {
+    ContainerFormat.WEBM -> this == VideoCodec.VP8 || this == VideoCodec.VP9 || this == VideoCodec.AV1
+    ContainerFormat.MP4 -> this == VideoCodec.H264 || this == VideoCodec.HEVC || this == VideoCodec.AV1
+}
+
 fun EncodeSettings.effectiveVideoCodec(): VideoCodec =
-    if (usesWebm()) {
-        if (codec == VideoCodec.VP8) VideoCodec.VP8 else VideoCodec.VP9
-    } else {
-        if (codec == VideoCodec.HEVC) VideoCodec.HEVC else VideoCodec.H264
-    }
+    if (codec.compatibleWith(container)) codec else defaultCodec(container)
 
 fun EncodeSettings.withContainer(next: ContainerFormat): EncodeSettings {
-    val nextCodec = when {
-        next == ContainerFormat.WEBM && codec != VideoCodec.VP8 && codec != VideoCodec.VP9 -> VideoCodec.VP9
-        next == ContainerFormat.MP4 && codec != VideoCodec.H264 && codec != VideoCodec.HEVC -> VideoCodec.H264
-        else -> codec
-    }
+    val nextCodec = if (codec.compatibleWith(next)) codec else defaultCodec(next)
     return copy(container = next, codec = nextCodec)
 }
+
+private fun defaultCodec(container: ContainerFormat): VideoCodec =
+    if (container == ContainerFormat.WEBM) VideoCodec.VP9 else VideoCodec.H264
 
 fun EncodeSettings.outputExtension(): String = when {
     usesWebm() -> "webm"
@@ -172,12 +184,20 @@ data class EncoderCapabilities(
     val hasMpeg4: Boolean = true,
     val hasVp8MediaCodec: Boolean = false,
     val hasVp9MediaCodec: Boolean = false,
+    val hasAv1MediaCodec: Boolean = false,
     val hasLibvpx: Boolean = false,
     val hasLibvpxVp9: Boolean = false,
+    val hasLibaomAv1: Boolean = false,
+    val hasLibSvtAv1: Boolean = false,
     val hasLibOpus: Boolean = false,
 ) {
     val hardwareH264: Boolean get() = hasH264MediaCodec
     val hardwareHevc: Boolean get() = hasHevcMediaCodec
+    val hardwareAv1: Boolean get() = hasAv1MediaCodec
+    val softwareAv1: Boolean get() = hasLibaomAv1 || hasLibSvtAv1
+
+    fun av1Available(engine: EncodeEngine): Boolean =
+        hasAv1MediaCodec || (engine == EncodeEngine.FFMPEG && softwareAv1)
 }
 
 data class EncodeStats(
@@ -227,13 +247,3 @@ data class CompressJob(
     val isCombine: Boolean get() = type == JobType.COMBINE || audioUri.isNotBlank()
 }
 
-fun JobStatus.label(): String = when (this) {
-    JobStatus.DRAFT -> "Draft"
-    JobStatus.RECORDING -> "Recording"
-    JobStatus.READY -> "Ready"
-    JobStatus.QUEUED -> "Queued"
-    JobStatus.RUNNING -> "Compressing"
-    JobStatus.SUCCEEDED -> "Done"
-    JobStatus.FAILED -> "Failed"
-    JobStatus.CANCELLED -> "Cancelled"
-}

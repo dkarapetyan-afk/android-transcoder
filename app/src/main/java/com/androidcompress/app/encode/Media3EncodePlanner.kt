@@ -74,6 +74,7 @@ object Media3EncodePlanner {
     const val MIME_HEVC = "video/hevc"
     const val MIME_VP8 = "video/x-vnd.on2.vp8"
     const val MIME_VP9 = "video/x-vnd.on2.vp9"
+    const val MIME_AV1 = "video/av01"
     const val MIME_AAC = "audio/mp4a-latm"
     const val MIME_OPUS = "audio/opus"
     const val MIN_CLIP_MS = 100L
@@ -137,6 +138,7 @@ object Media3EncodePlanner {
         val videoMime = when (codec) {
             VideoCodec.VP8 -> MIME_VP8
             VideoCodec.VP9 -> MIME_VP9
+            VideoCodec.AV1 -> MIME_AV1
             VideoCodec.HEVC -> MIME_HEVC
             VideoCodec.H264 -> MIME_H264
         }
@@ -170,10 +172,12 @@ object Media3EncodePlanner {
                 audioOnly -> "Media3 · AAC"
                 source.stillImage && codec == VideoCodec.VP8 -> "Media3 · still VP8"
                 source.stillImage && codec == VideoCodec.VP9 -> "Media3 · still VP9"
+                source.stillImage && codec == VideoCodec.AV1 -> "Media3 · still AV1"
                 source.stillImage && codec == VideoCodec.HEVC -> "Media3 · still HEVC"
                 source.stillImage -> "Media3 · still H.264"
                 codec == VideoCodec.VP8 -> "Media3 · VP8"
                 codec == VideoCodec.VP9 -> "Media3 · VP9"
+                codec == VideoCodec.AV1 -> "Media3 · AV1"
                 codec == VideoCodec.HEVC -> "Media3 · HEVC"
                 else -> "Media3 · H.264"
             },
@@ -202,5 +206,14 @@ object Media3EncodePlanner {
     fun vp8Fallback(spec: Media3EncodeSpec): Media3EncodeSpec? {
         if (spec.removeVideo || !spec.webm || spec.videoMimeType == MIME_VP8) return null
         return spec.copy(videoMimeType = MIME_VP8, encoderLabel = "Media3 · VP8")
+    }
+
+    fun webmFallback(spec: Media3EncodeSpec): Media3EncodeSpec? {
+        if (spec.removeVideo || !spec.webm) return null
+        return when (spec.videoMimeType) {
+            MIME_AV1 -> spec.copy(videoMimeType = MIME_VP9, encoderLabel = "Media3 · VP9")
+            MIME_VP9 -> vp8Fallback(spec)
+            else -> null
+        }
     }
 }

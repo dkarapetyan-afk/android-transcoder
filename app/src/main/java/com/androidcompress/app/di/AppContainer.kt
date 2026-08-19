@@ -27,7 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 class AppContainer(context: Context) {
-    private val appContext = context.applicationContext
+    val appContext = context.applicationContext
     private val db = AppDatabase.create(appContext)
 
     val jobs = JobRepository(db.jobDao())
@@ -42,7 +42,7 @@ class AppContainer(context: Context) {
     val jobLogs = JobLogStore(appContext)
     val recording = RecordingStore()
     val history = HistoryJanitor(jobs, jobLogs, inputs)
-    val importer = JobImporter(jobs, prefs, probe, inputs, history)
+    val importer = JobImporter(appContext, jobs, prefs, probe, inputs, history)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -64,6 +64,7 @@ class AppContainer(context: Context) {
                     hasHevcMediaCodec = cached.hasHevcMediaCodec || device.hasHevcMediaCodec,
                     hasVp8MediaCodec = cached.hasVp8MediaCodec || device.hasVp8MediaCodec,
                     hasVp9MediaCodec = cached.hasVp9MediaCodec || device.hasVp9MediaCodec,
+                    hasAv1MediaCodec = cached.hasAv1MediaCodec || device.hasAv1MediaCodec,
                 )
                 caps = merged
                 return merged
@@ -76,6 +77,7 @@ class AppContainer(context: Context) {
                 hasHevcMediaCodec = detected.hasHevcMediaCodec || device.hasHevcMediaCodec,
                 hasVp8MediaCodec = detected.hasVp8MediaCodec || device.hasVp8MediaCodec,
                 hasVp9MediaCodec = detected.hasVp9MediaCodec || device.hasVp9MediaCodec,
+                hasAv1MediaCodec = detected.hasAv1MediaCodec || device.hasAv1MediaCodec,
             )
             caps = merged
             merged

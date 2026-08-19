@@ -41,16 +41,44 @@ object Notifications {
         )
     }
 
-    fun recording(context: Context, elapsed: String, stopIntent: PendingIntent): Notification {
+    fun recording(
+        context: Context,
+        elapsed: String,
+        stopIntent: PendingIntent,
+        pauseResumeIntent: PendingIntent? = null,
+        paused: Boolean = false,
+        saving: Boolean = false,
+    ): Notification {
         ensureChannels(context)
-        return NotificationCompat.Builder(context, RECORD_CHANNEL)
+        val title = when {
+            saving -> context.getString(R.string.notif_recording_saving)
+            paused -> context.getString(R.string.notif_recording_paused)
+            else -> context.getString(R.string.notif_recording)
+        }
+        val text = if (saving) {
+            context.getString(R.string.notif_recording_saving_text)
+        } else {
+            elapsed
+        }
+        val builder = NotificationCompat.Builder(context, RECORD_CHANNEL)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle(context.getString(R.string.notif_recording))
-            .setContentText(elapsed)
+            .setContentTitle(title)
+            .setContentText(text)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(openApp(context))
-            .addAction(0, context.getString(R.string.action_stop), stopIntent)
-            .build()
+        if (!saving) {
+            if (pauseResumeIntent != null) {
+                val pauseResumeLabel = if (paused) {
+                    context.getString(R.string.action_resume)
+                } else {
+                    context.getString(R.string.action_pause)
+                }
+                builder.addAction(0, pauseResumeLabel, pauseResumeIntent)
+            }
+            builder.addAction(0, context.getString(R.string.action_stop), stopIntent)
+        }
+        return builder.build()
     }
 
     fun encoding(
@@ -63,9 +91,9 @@ object Notifications {
     ): Notification {
         ensureChannels(context)
         val text = if (queueTotal > 1) {
-            "$percent% · $queueIndex of $queueTotal"
+            context.getString(R.string.notif_encoding_queue, percent, queueIndex, queueTotal)
         } else {
-            "$percent%"
+            context.getString(R.string.notif_encoding_percent, percent)
         }
         return NotificationCompat.Builder(context, ENCODE_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)

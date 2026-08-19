@@ -399,7 +399,7 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
 
     /**
      * Report which hardware and software encoders this device can use. Call
-     * this before choosing HEVC or WebM on an unknown device.
+     * this before choosing HEVC, AV1, or WebM on an unknown device.
      */
     @AppFunction(isDescribedByKDoc = true)
     suspend fun getEncoderCapabilities(): DeviceEncodeCaps = io { agent.getEncoderCapabilities() }

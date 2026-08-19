@@ -72,8 +72,11 @@ object SettingsJson {
         put("mpeg4", caps.hasMpeg4)
         put("vp8mc", caps.hasVp8MediaCodec)
         put("vp9mc", caps.hasVp9MediaCodec)
+        put("av1mc", caps.hasAv1MediaCodec)
         put("libvpx", caps.hasLibvpx)
         put("libvpxVp9", caps.hasLibvpxVp9)
+        put("libaomAv1", caps.hasLibaomAv1)
+        put("libSvtAv1", caps.hasLibSvtAv1)
         put("libopus", caps.hasLibOpus)
     }.toString()
 
@@ -82,7 +85,7 @@ object SettingsJson {
         return runCatching {
             val obj = JSONObject(raw)
             if (obj.optString("kit") != CAPS_KIT) return null
-            if (!obj.has("vp9mc")) return null
+            if (!obj.has("vp9mc") || !obj.has("av1mc")) return null
             EncoderCapabilities(
                 hasH264MediaCodec = obj.optBoolean("h264mc"),
                 hasHevcMediaCodec = obj.optBoolean("hevcMc"),
@@ -90,8 +93,11 @@ object SettingsJson {
                 hasMpeg4 = obj.optBoolean("mpeg4", true),
                 hasVp8MediaCodec = obj.optBoolean("vp8mc"),
                 hasVp9MediaCodec = obj.optBoolean("vp9mc"),
+                hasAv1MediaCodec = obj.optBoolean("av1mc"),
                 hasLibvpx = obj.optBoolean("libvpx"),
                 hasLibvpxVp9 = obj.optBoolean("libvpxVp9"),
+                hasLibaomAv1 = obj.optBoolean("libaomAv1"),
+                hasLibSvtAv1 = obj.optBoolean("libSvtAv1"),
                 hasLibOpus = obj.optBoolean("libopus"),
             )
         }.getOrNull()

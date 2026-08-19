@@ -3,6 +3,7 @@ package com.androidcompress.app.di
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.androidcompress.app.ui.compress.CompressViewModel
+import com.androidcompress.app.ui.hardware.HardwareTestViewModel
 import com.androidcompress.app.ui.home.HomeViewModel
 import com.androidcompress.app.ui.library.LibraryViewModel
 import com.androidcompress.app.ui.log.JobLogViewModel
@@ -28,6 +29,7 @@ class AppViewModelFactory(
                 ResultViewModel(container, requireNotNull(jobId))
             modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(container)
             modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(container)
+            modelClass.isAssignableFrom(HardwareTestViewModel::class.java) -> HardwareTestViewModel(container)
             modelClass.isAssignableFrom(JobLogViewModel::class.java) ->
                 JobLogViewModel(container, jobId ?: JobLogViewModel.LAST)
             else -> error("Unknown ViewModel ${modelClass.name}")

@@ -35,7 +35,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.androidcompress.app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -50,7 +52,7 @@ fun AppTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable 
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                 }
             }
         },
@@ -98,7 +100,7 @@ fun VideoThumbnail(uri: Uri?, modifier: Modifier = Modifier) {
         if (frame != null) {
             Image(
                 bitmap = frame.asImageBitmap(),
-                contentDescription = null,
+                contentDescription = stringResource(R.string.cd_video_thumbnail),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
@@ -115,20 +117,15 @@ fun ConfirmClearJobsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Clear all jobs?") },
+        title = { Text(stringResource(R.string.dialog_clear_jobs_title)) },
         text = {
-            Text(
-                "Removes every job from Recent and Library and deletes leftover cache files " +
-                    "(imports, encode temps, and recordings still in the app). " +
-                    "Compressed files already saved to Movies or Music stay. " +
-                    "In-progress encodes are cancelled. A screen recording in progress is left alone.",
-            )
+            Text(stringResource(R.string.dialog_clear_jobs_body))
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text("Clear") }
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_clear)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
         },
     )
 }

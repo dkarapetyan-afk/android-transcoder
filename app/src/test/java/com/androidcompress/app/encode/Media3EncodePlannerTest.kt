@@ -347,6 +347,54 @@ class Media3EncodePlannerTest {
     }
 
     @Test
+    fun av1SelectsAv1Mime() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                engine = EncodeEngine.MEDIA3,
+                codec = VideoCodec.AV1,
+            ),
+            source,
+        )
+        assertEquals(Media3EncodePlanner.MIME_AV1, spec.videoMimeType)
+        assertEquals("Media3 · AV1", spec.encoderLabel)
+        assertEquals(Media3EncodePlanner.MIME_AAC, spec.audioMimeType)
+        val fallback = Media3EncodePlanner.h264Fallback(spec)
+        assertEquals(Media3EncodePlanner.MIME_H264, fallback?.videoMimeType)
+    }
+
+    @Test
+    fun webmAv1UsesOpusAndFallsBackToVp9() {
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(
+                engine = EncodeEngine.MEDIA3,
+                container = ContainerFormat.WEBM,
+                codec = VideoCodec.AV1,
+            ),
+            source,
+        )
+        assertEquals(Media3EncodePlanner.MIME_AV1, spec.videoMimeType)
+        assertEquals(Media3EncodePlanner.MIME_OPUS, spec.audioMimeType)
+        assertTrue(spec.webm)
+        assertEquals("Media3 · AV1", spec.encoderLabel)
+        assertNull(Media3EncodePlanner.h264Fallback(spec))
+        val fallback = Media3EncodePlanner.webmFallback(spec)
+        assertEquals(Media3EncodePlanner.MIME_VP9, fallback?.videoMimeType)
+        assertEquals("Media3 · VP9", fallback?.encoderLabel)
+        val vp8 = Media3EncodePlanner.webmFallback(fallback!!)
+        assertEquals(Media3EncodePlanner.MIME_VP8, vp8?.videoMimeType)
+    }
+
+    @Test
+    fun stillImageAv1Label() {
+        val still = source.copy(stillImage = true, audioUri = "content://a", durationMs = 8_000)
+        val spec = Media3EncodePlanner.plan(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1),
+            still,
+        )
+        assertEquals("Media3 · still AV1", spec.encoderLabel)
+    }
+
+    @Test
     fun vp8FallbackFromVp9() {
         val spec = Media3EncodePlanner.plan(
             EncodeSettings.forPreset(Preset.BALANCED).copy(container = ContainerFormat.WEBM),

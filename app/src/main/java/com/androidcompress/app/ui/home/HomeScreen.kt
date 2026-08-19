@@ -44,12 +44,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.androidcompress.app.R
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.JobStatus
-import com.androidcompress.app.data.label
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.label
 import com.androidcompress.app.ui.components.ConfirmClearJobsDialog
 import com.androidcompress.app.ui.components.EmptyState
 import com.androidcompress.app.util.formatBytes
@@ -113,11 +115,17 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             AppTopBar(
-                title = "Recording Compressor",
+                title = stringResource(R.string.app_name),
                 actions = {
-                    IconButton(onClick = onLibrary) { Icon(Icons.Default.Movie, contentDescription = "Library") }
-                    IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
-                    IconButton(onClick = onAbout) { Icon(Icons.Default.Info, contentDescription = "About") }
+                    IconButton(onClick = onLibrary) {
+                        Icon(Icons.Default.Movie, contentDescription = stringResource(R.string.cd_library))
+                    }
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.cd_settings))
+                    }
+                    IconButton(onClick = onAbout) {
+                        Icon(Icons.Default.Info, contentDescription = stringResource(R.string.cd_about))
+                    }
                 },
             )
         },
@@ -130,24 +138,31 @@ fun HomeScreen(
         ) {
             item {
                 ActionCard(
-                    title = "Record screen",
-                    body = if (recording.active) "Recording in progress…" else "Capture the display, then compress the file.",
+                    title = stringResource(R.string.home_record_title),
+                    body = stringResource(
+                        when {
+                            recording.saving -> R.string.home_record_body_saving
+                            recording.active && recording.paused -> R.string.home_record_body_paused
+                            recording.active -> R.string.home_record_body_active
+                            else -> R.string.home_record_body
+                        },
+                    ),
                     icon = Icons.Default.Videocam,
                     onClick = onRecord,
                 )
             }
             item {
                 ActionCard(
-                    title = "Compress a file",
-                    body = "Pick a video or audio file, or share one to this app. You can switch to audio-only on the next screen.",
+                    title = stringResource(R.string.home_compress_title),
+                    body = stringResource(R.string.home_compress_body),
                     icon = Icons.Default.FolderOpen,
                     onClick = { filePicker.launch(arrayOf("video/*", "audio/*")) },
                 )
             }
             item {
                 ActionCard(
-                    title = "Combine audio and video",
-                    body = "Pick a picture or video, then a soundtrack. The output is one video. A still image lasts as long as the audio.",
+                    title = stringResource(R.string.home_combine_title),
+                    body = stringResource(R.string.home_combine_body),
                     icon = Icons.Default.MusicVideo,
                     onClick = { combineVisualPicker.launch(arrayOf("image/*", "video/*")) },
                 )
@@ -157,21 +172,30 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Recent", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text(
+                        stringResource(R.string.home_recent),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
                     if (jobs.any { it.status != JobStatus.RECORDING }) {
                         TextButton(onClick = { confirmClear = true }) {
-                            Text("Clear all")
+                            Text(stringResource(R.string.home_clear_all))
                         }
                     }
                 }
                 if (hasLastLog) {
                     TextButton(onClick = onLastLog) {
-                        Text("View last encode log")
+                        Text(stringResource(R.string.home_view_last_log))
                     }
                 }
             }
             if (jobs.isEmpty()) {
-                item { EmptyState("Nothing yet", "Record, import, share, or combine a picture with audio to get started.") }
+                item {
+                    EmptyState(
+                        stringResource(R.string.home_empty_title),
+                        stringResource(R.string.home_empty_body),
+                    )
+                }
             } else {
                 items(jobs.take(8), key = { it.id }) { job ->
                     JobRow(job, onClick = {
@@ -227,17 +251,20 @@ private fun JobRow(job: CompressJob, onClick: () -> Unit) {
         Column(Modifier.padding(16.dp)) {
             Text(job.displayName, style = MaterialTheme.typography.titleSmall)
             Text(
-                buildString {
-                    append(job.status.label())
-                    append(" · ")
-                    append(formatDuration(job.durationMs))
-                    append(" · ")
-                    append(formatBytes(job.sourceBytes))
-                    job.outputBytes?.let { compressed ->
-                        append(" → ")
-                        append(formatBytes(compressed))
-                    }
-                },
+                job.outputBytes?.let { compressed ->
+                    stringResource(
+                        R.string.job_meta_compressed,
+                        job.status.label(),
+                        formatDuration(job.durationMs),
+                        formatBytes(job.sourceBytes),
+                        formatBytes(compressed),
+                    )
+                } ?: stringResource(
+                    R.string.job_meta,
+                    job.status.label(),
+                    formatDuration(job.durationMs),
+                    formatBytes(job.sourceBytes),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

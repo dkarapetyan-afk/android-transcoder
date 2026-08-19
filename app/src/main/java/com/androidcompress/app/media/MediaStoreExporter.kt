@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import com.androidcompress.app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -47,10 +48,10 @@ class MediaStoreExporter(private val context: Context) {
                 MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             }
             val uri = resolver.insert(collection, values)
-                ?: error("Unable to create MediaStore entry")
+                ?: error(context.getString(R.string.error_mediastore_create))
             resolver.openOutputStream(uri)?.use { out ->
                 file.inputStream().use { it.copyTo(out) }
-            } ?: error("Unable to write MediaStore entry")
+            } ?: error(context.getString(R.string.error_mediastore_write))
             values.clear()
             if (audioOnly) {
                 values.put(MediaStore.Audio.Media.IS_PENDING, 0)

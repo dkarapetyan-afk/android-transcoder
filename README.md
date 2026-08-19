@@ -7,13 +7,15 @@ Android app that records the screen and compresses recordings on-device with FFm
 - Combine a picture or video with a separate soundtrack (FFmpeg or Media3). A still image lasts as long as the audio. Sharing several pictures/videos with several audio files creates one job per pair.
 - Clear all Recent / Library jobs and leftover cache files (gallery outputs stay)
 - Audio-only output: extract a video soundtrack or transcode audio to AAC (.m4a) or Opus (.webm) with FFmpeg or Media3
-- WebM output: VP8/VP9 + Opus video, or Opus-only audio, on both engines
-- Screen recording via MediaProjection (microphone or internal audio)
+- WebM output: VP8/VP9/AV1 + Opus video, or Opus-only audio, on both engines
+- AV1 on both engines when the device has an AV1 encoder; FFmpeg can also use libaom-av1 / libsvtav1 if the bundled build includes them
+- Screen recording via MediaProjection (microphone, internal audio, or both at once) with pause/resume
 - Presets plus advanced encoder settings
 - Two encode engines: FFmpeg (default, with software fallback) or Device / Media3 (hardware MediaCodec, same approach as Compressor Edge)
 - Play-oriented: target API 37, scoped storage, typed foreground services, LGPL FFmpeg
 - Android 16 App Functions so a system agent can import, customize, start, wait, retry, share, and discard jobs (no media bytes)
 - Optional Device library access (`READ_MEDIA_*`) so that agent can list and import files already on the device without the picker
+- Settings hardware test: 1-second encodes on h264/hevc/vp9/av1_mediacodec and Media3 for max resolution, 10-bit HDR, and realtime speed
 
 ## Build
 

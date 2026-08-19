@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.R
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.SettingsJson
@@ -41,9 +42,9 @@ class ResultViewModel(
             )
             container.jobs.markSourceDeleted(jobId, result.deleted)
             _deleteMessage.value = if (result.deleted) {
-                "Original file deleted."
+                container.appContext.getString(R.string.result_original_deleted)
             } else {
-                result.error ?: "Could not delete the original file."
+                result.error ?: container.appContext.getString(R.string.error_delete_original)
             }
         }
     }
@@ -57,7 +58,14 @@ class ResultViewModel(
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, if (mime.startsWith("audio")) "Share audio" else "Share video"))
+        context.startActivity(
+            Intent.createChooser(
+                intent,
+                context.getString(
+                    if (mime.startsWith("audio")) R.string.share_audio else R.string.share_video,
+                ),
+            ),
+        )
     }
 
     fun open(context: Context) {

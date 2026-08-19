@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import com.androidcompress.app.R
 import com.androidcompress.app.container
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeProgress
@@ -151,10 +152,10 @@ class CompressService : Service() {
         }
         try {
             if (audioOnly && !source.hasAudio) {
-                error("This file has no audio to extract or transcode.")
+                error(getString(R.string.error_no_audio_extract))
             }
             if (!app.inputs.hasSpaceFor(job.sourceBytes)) {
-                error("Not enough free storage to compress this file (need about 2× the source size).")
+                error(getString(R.string.error_not_enough_storage_compress))
             }
             val result = when (settings.engine) {
                 EncodeEngine.MEDIA3 -> runMedia3(jobId, source, settings, sourceUri, output, log)
@@ -203,7 +204,7 @@ class CompressService : Service() {
                     app.jobs.updateStatus(
                         jobId,
                         JobStatus.FAILED,
-                        error = result.error ?: "Compression failed",
+                        error = result.error ?: getString(R.string.error_compression_failed),
                         finished = true,
                     )
                     app.encodeProgress.update(null)
@@ -214,7 +215,12 @@ class CompressService : Service() {
             log.appendLine("exception: ${t.message}")
             log.appendLine(t.stackTraceToString())
             runCatching { app.jobLogs.write(jobId, log.toString()) }
-            app.jobs.updateStatus(jobId, JobStatus.FAILED, error = t.message ?: "Compression failed", finished = true)
+            app.jobs.updateStatus(
+                jobId,
+                JobStatus.FAILED,
+                error = t.message ?: getString(R.string.error_compression_failed),
+                finished = true,
+            )
             app.encodeProgress.update(null)
         } finally {
             runCatching { if (app.jobLogs.read(jobId) == null) app.jobLogs.write(jobId, log.toString()) }
@@ -275,12 +281,12 @@ class CompressService : Service() {
         var spec = Media3EncodePlanner.plan(settings, source)
         var result = executeMedia3(jobId, source, spec, sourceUri, output, log)
         val fallback = if (settings.usesWebm()) {
-            Media3EncodePlanner.vp8Fallback(spec)
+            Media3EncodePlanner.webmFallback(spec)
         } else {
             Media3EncodePlanner.h264Fallback(spec)
         }
         if (!result.success && !result.cancelled && fallback != null) {
-            log.appendLine("retrying Media3 ${if (settings.usesWebm()) "VP8" else "H.264"} fallback")
+            log.appendLine("retrying Media3 ${fallback.encoderLabel} fallback")
             output.delete()
             spec = fallback
             result = executeMedia3(jobId, source, spec, sourceUri, output, log)

@@ -30,7 +30,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
             if (active.any { it.status == JobStatus.RUNNING || it.status == JobStatus.QUEUED }) {
                 CompressService.cancelAll(context)
             }
-            onDone(container.history.clearHistory().message())
+            onDone(container.history.clearHistory().message(container.appContext))
         }
     }
 }

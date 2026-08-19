@@ -3,6 +3,7 @@ package com.androidcompress.app.media
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.androidcompress.app.R
 import com.arthenica.ffmpegkit.FFmpegKitConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,7 +47,7 @@ class InputResolver(private val context: Context) {
         val out = File(dir, "$jobId.$suffix")
         context.contentResolver.openInputStream(uri)?.use { input ->
             out.outputStream().use { input.copyTo(it) }
-        } ?: error("Unable to open the selected file")
+        } ?: error(context.getString(R.string.error_open_file))
         out
     }
 
@@ -84,6 +85,8 @@ class InputResolver(private val context: Context) {
         deleteImportCopy(jobId)
         File(context.cacheDir, "record/$jobId.mp4").delete()
         File(context.cacheDir, "record/$jobId.wav").delete()
+        File(context.cacheDir, "record/$jobId.mic.wav").delete()
+        File(context.cacheDir, "record/$jobId-muxed.mp4").delete()
         File(context.cacheDir, "encode").listFiles()
             ?.filter { cacheJobId(it.name) == jobId }
             ?.forEach { it.delete() }
@@ -102,6 +105,12 @@ class InputResolver(private val context: Context) {
         val dir = File(context.cacheDir, "record")
         if (!dir.exists()) dir.mkdirs()
         return File(dir, "$jobId.wav")
+    }
+
+    fun recordMicAudioFile(jobId: String): File {
+        val dir = File(context.cacheDir, "record")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, "$jobId.mic.wav")
     }
 
     companion object {

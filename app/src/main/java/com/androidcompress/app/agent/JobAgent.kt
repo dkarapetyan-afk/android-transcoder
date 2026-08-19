@@ -611,12 +611,15 @@ class JobAgent(
             hardwareHevc = caps.hasHevcMediaCodec,
             hardwareVp8 = caps.hasVp8MediaCodec,
             hardwareVp9 = caps.hasVp9MediaCodec,
+            hardwareAv1 = caps.hasAv1MediaCodec,
             softwareVp8 = caps.hasLibvpx,
             softwareVp9 = caps.hasLibvpxVp9,
+            softwareAv1 = caps.softwareAv1,
             opus = caps.hasLibOpus,
             openH264 = caps.hasOpenH264,
             note = "Prefer hardware H.264 when hardwareH264 is true. Use HEVC only when hardwareHevc is true. " +
-                "WebM should use software VP9 (libvpx) when softwareVp9 is true.",
+                "Use AV1 when hardwareAv1 is true, or softwareAv1 on FFmpeg. " +
+                "WebM should use software VP9 (libvpx) when softwareVp9 is true. AV1 works in MP4 and WebM.",
         )
     }
 

@@ -33,9 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.androidcompress.app.R
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.BFrameSetting
 import com.androidcompress.app.data.BitrateMode
@@ -51,9 +53,13 @@ import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.encode.Media3EncodePlanner
+import com.androidcompress.app.ui.audioLabel
 import com.androidcompress.app.ui.components.AppTopBar
 import com.androidcompress.app.ui.components.StatLine
 import com.androidcompress.app.ui.components.VideoThumbnail
+import com.androidcompress.app.ui.fpsLabel
+import com.androidcompress.app.ui.heightLabel
+import com.androidcompress.app.ui.presetLabel
 import com.androidcompress.app.util.formatBytes
 import com.androidcompress.app.util.formatDuration
 import com.androidcompress.app.util.formatResolution
@@ -75,7 +81,7 @@ fun CompressScreen(
         viewModel.maybeAutoStart(context) { onStarted(jobIdOr(job)) }
     }
 
-    Scaffold(topBar = { AppTopBar("Compress", onBack = onBack) }) { padding ->
+    Scaffold(topBar = { AppTopBar(stringResource(R.string.compress_title), onBack = onBack) }) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -90,14 +96,24 @@ fun CompressScreen(
             )
             if (job != null) {
                 Text(job.displayName, style = MaterialTheme.typography.titleMedium)
-                StatLine("Source", "${formatResolution(job.width, job.height)} · ${formatDuration(job.durationMs)} · ${formatBytes(job.sourceBytes)}")
+                StatLine(
+                    stringResource(R.string.compress_source),
+                    stringResource(
+                        R.string.compress_source_meta,
+                        formatResolution(job.width, job.height),
+                        formatDuration(job.durationMs),
+                        formatBytes(job.sourceBytes),
+                    ),
+                )
                 if (job.isCombine) {
                     StatLine(
-                        if (job.stillImage) "Picture + audio" else "Video + audio",
+                        stringResource(
+                            if (job.stillImage) R.string.compress_picture_audio else R.string.compress_video_audio,
+                        ),
                         if (job.stillImage) {
-                            "Still image held for ${formatDuration(job.durationMs)}"
+                            stringResource(R.string.compress_still_held, formatDuration(job.durationMs))
                         } else {
-                            "Picture from the video, soundtrack from the second file"
+                            stringResource(R.string.compress_video_soundtrack)
                         },
                     )
                 }
@@ -107,17 +123,25 @@ fun CompressScreen(
                     if (clip.active) {
                         val endLabel = clip.endMs?.let { formatDuration(it) } ?: formatDuration(job.durationMs)
                         StatLine(
-                            "Clip",
-                            "${formatDuration(clip.startMs)} – $endLabel · ${formatDuration(clip.durationMs(job.durationMs))}",
+                            stringResource(R.string.compress_clip),
+                            stringResource(
+                                R.string.compress_clip_range,
+                                formatDuration(clip.startMs),
+                                endLabel,
+                                formatDuration(clip.durationMs(job.durationMs)),
+                            ),
                         )
                     }
                 }
-                StatLine("Estimated output", "${formatBytes(ui.estimateBytes)} (estimate)")
+                StatLine(
+                    stringResource(R.string.compress_estimated_output),
+                    stringResource(R.string.compress_estimate_bytes, formatBytes(ui.estimateBytes)),
+                )
                 if (ui.encoderLabel.isNotBlank()) {
-                    StatLine("Encoder", ui.encoderLabel)
+                    StatLine(stringResource(R.string.compress_encoder), ui.encoderLabel)
                 }
             }
-            Text("Preset", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.compress_preset), style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Preset.entries.forEach { preset ->
                     FilterChip(
@@ -127,79 +151,94 @@ fun CompressScreen(
                     )
                 }
             }
-            Text("Engine", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.compress_engine), style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = settings.engine == EncodeEngine.FFMPEG,
                     onClick = { viewModel.update { it.copy(engine = EncodeEngine.FFMPEG) } },
-                    label = { Text("FFmpeg") },
+                    label = { Text(stringResource(R.string.engine_ffmpeg)) },
                 )
                 FilterChip(
                     selected = settings.engine == EncodeEngine.MEDIA3,
                     onClick = { viewModel.update { it.copy(engine = EncodeEngine.MEDIA3) } },
-                    label = { Text("Device (Media3)") },
+                    label = { Text(stringResource(R.string.engine_media3)) },
                 )
             }
             Text(
-                if (settings.engine == EncodeEngine.MEDIA3) {
-                    "Uses Android Media3 Transformer and the hardware encoder. No FFmpeg."
-                } else {
-                    "Uses the bundled FFmpeg build, including software fallback if the hardware encoder fails."
-                },
+                stringResource(
+                    if (settings.engine == EncodeEngine.MEDIA3) {
+                        R.string.compress_engine_media3_hint
+                    } else {
+                        R.string.compress_engine_ffmpeg_hint
+                    },
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             val sourceHasVideo = job == null || job.width > 0 || job.height > 0 || job.stillImage
             val combineJob = job?.isCombine == true
-            Text("Output", style = MaterialTheme.typography.titleMedium)
+            val stillImage = job?.stillImage == true
+            Text(stringResource(R.string.compress_output), style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (sourceHasVideo) {
                     FilterChip(
                         selected = settings.output == OutputMode.VIDEO || combineJob,
                         onClick = { viewModel.setOutput(OutputMode.VIDEO) },
-                        label = { Text("Video") },
+                        label = { Text(stringResource(R.string.compress_output_video)) },
                     )
                 }
                 if (!combineJob) {
                     FilterChip(
                         selected = settings.output == OutputMode.AUDIO || !sourceHasVideo,
                         onClick = { viewModel.setOutput(OutputMode.AUDIO) },
-                        label = { Text("Audio only") },
+                        label = { Text(stringResource(R.string.compress_output_audio)) },
                     )
                 }
             }
-            Text("Container", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.compress_container), style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = settings.container == ContainerFormat.MP4,
                     onClick = { viewModel.setContainer(ContainerFormat.MP4) },
-                    label = { Text(if (settings.audioOutput(sourceHasVideo)) "M4A" else "MP4") },
+                    label = {
+                        Text(
+                            stringResource(
+                                if (settings.audioOutput(sourceHasVideo)) {
+                                    R.string.container_m4a
+                                } else {
+                                    R.string.container_mp4
+                                },
+                            ),
+                        )
+                    },
                 )
                 FilterChip(
                     selected = settings.container == ContainerFormat.WEBM,
                     onClick = { viewModel.setContainer(ContainerFormat.WEBM) },
-                    label = { Text("WebM") },
+                    label = { Text(stringResource(R.string.container_webm)) },
                 )
             }
             Text(
-                when {
-                    combineJob && job?.stillImage == true && settings.usesWebm() ->
-                        "Holds the picture as a VP8/VP9 + Opus WebM. Length matches the soundtrack."
-                    combineJob && job?.stillImage == true ->
-                        "Holds the picture as an MP4. Length matches the soundtrack."
-                    combineJob && settings.usesWebm() ->
-                        "Keeps the video picture and replaces the soundtrack in a WebM."
-                    combineJob ->
-                        "Keeps the video picture and replaces the soundtrack in an MP4."
-                    settings.audioOutput(sourceHasVideo) && settings.usesWebm() ->
-                        "Writes an Opus .webm. From a video this extracts the soundtrack; from audio this re-encodes it."
-                    settings.audioOutput(sourceHasVideo) ->
-                        "Writes an AAC .m4a. From a video this extracts the soundtrack; from audio this re-encodes it."
-                    settings.usesWebm() ->
-                        "Writes a VP8/VP9 + Opus WebM. FFmpeg uses software libvpx. Media3 uses the device encoder."
-                    else ->
-                        "Writes a compressed MP4 with video and audio."
-                },
+                stringResource(
+                    when {
+                        combineJob && stillImage && settings.usesWebm() ->
+                            R.string.compress_container_still_webm
+                        combineJob && stillImage ->
+                            R.string.compress_container_still_mp4
+                        combineJob && settings.usesWebm() ->
+                            R.string.compress_container_combine_webm
+                        combineJob ->
+                            R.string.compress_container_combine_mp4
+                        settings.audioOutput(sourceHasVideo) && settings.usesWebm() ->
+                            R.string.compress_container_audio_webm
+                        settings.audioOutput(sourceHasVideo) ->
+                            R.string.compress_container_audio_m4a
+                        settings.usesWebm() ->
+                            R.string.compress_container_webm
+                        else ->
+                            R.string.compress_container_mp4
+                    },
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -214,12 +253,16 @@ fun CompressScreen(
                 )
             }
             TextButton(onClick = viewModel::toggleAdvanced) {
-                Text(if (ui.advancedOpen) "Hide advanced" else "Advanced")
+                Text(
+                    stringResource(
+                        if (ui.advancedOpen) R.string.compress_hide_advanced else R.string.compress_advanced,
+                    ),
+                )
             }
             if (ui.advancedOpen) {
                 val audioOnly = settings.audioOutput(sourceHasVideo)
                 if (!audioOnly) {
-                Text("Resolution cap")
+                Text(stringResource(R.string.compress_resolution_cap))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(null, 2160, 1440, 1080, 720, 480, 360).forEach { height ->
                         FilterChip(
@@ -229,174 +272,198 @@ fun CompressScreen(
                         )
                     }
                 }
-                Text("Codec")
+                Text(stringResource(R.string.compress_codec))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (settings.usesWebm()) {
                         FilterChip(
                             selected = settings.codec == VideoCodec.VP9,
                             onClick = { viewModel.update { it.copy(codec = VideoCodec.VP9) } },
-                            label = { Text("VP9") },
+                            label = { Text(stringResource(R.string.codec_vp9)) },
                         )
                         FilterChip(
                             selected = settings.codec == VideoCodec.VP8,
                             onClick = { viewModel.update { it.copy(codec = VideoCodec.VP8) } },
-                            label = { Text("VP8") },
+                            label = { Text(stringResource(R.string.codec_vp8)) },
                         )
                     } else {
                         FilterChip(
                             selected = settings.codec == VideoCodec.H264,
                             onClick = { viewModel.update { it.copy(codec = VideoCodec.H264) } },
-                            label = { Text("H.264") },
+                            label = { Text(stringResource(R.string.codec_h264)) },
                         )
                         if (ui.capabilities.hasHevcMediaCodec) {
                             FilterChip(
                                 selected = settings.codec == VideoCodec.HEVC,
                                 onClick = { viewModel.update { it.copy(codec = VideoCodec.HEVC) } },
-                                label = { Text("HEVC") },
+                                label = { Text(stringResource(R.string.codec_hevc)) },
                             )
                         }
                     }
+                    if (ui.capabilities.av1Available(settings.engine)) {
+                        FilterChip(
+                            selected = settings.codec == VideoCodec.AV1,
+                            onClick = { viewModel.update { it.copy(codec = VideoCodec.AV1) } },
+                            label = { Text(stringResource(R.string.codec_av1)) },
+                        )
+                    }
                 }
-                Text("Quality  ${settings.videoBitrateKbps} kbps")
+                if (settings.codec == VideoCodec.AV1) {
+                    Text(
+                        stringResource(
+                            if (settings.engine == EncodeEngine.MEDIA3) {
+                                R.string.compress_av1_hint_media3
+                            } else {
+                                R.string.compress_av1_hint_ffmpeg
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(stringResource(R.string.compress_quality_kbps, settings.videoBitrateKbps))
                 Slider(
                     value = settings.videoBitrateKbps.toFloat(),
                     onValueChange = { value -> viewModel.update { it.copy(videoBitrateKbps = value.toInt()) } },
                     valueRange = 400f..20000f,
                 )
-                Text("Bitrate mode")
+                Text(stringResource(R.string.compress_bitrate_mode))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = settings.bitrateMode == BitrateMode.CBR,
                         onClick = { viewModel.update { it.copy(bitrateMode = BitrateMode.CBR) } },
-                        label = { Text("CBR") },
+                        label = { Text(stringResource(R.string.bitrate_cbr)) },
                     )
                     FilterChip(
                         selected = settings.bitrateMode == BitrateMode.VBR,
                         onClick = { viewModel.update { it.copy(bitrateMode = BitrateMode.VBR) } },
-                        label = { Text("VBR") },
+                        label = { Text(stringResource(R.string.bitrate_vbr)) },
                     )
                 }
                 Text(
-                    "CBR holds a steady rate. VBR can look better at the same average size. MediaTek devices still try VBR first.",
+                    stringResource(R.string.compress_bitrate_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text("Frame rate")
+                Text(stringResource(R.string.compress_frame_rate))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(null, 60, 30, 24).forEach { fps ->
                         FilterChip(
                             selected = settings.fpsCap == fps,
                             onClick = { viewModel.update { it.copy(fpsCap = fps) } },
-                            label = { Text(if (fps == null) "Original" else fps.toString()) },
+                            label = { Text(fpsLabel(fps)) },
                         )
                     }
                 }
-                Text("Keyframe interval")
+                Text(stringResource(R.string.compress_keyframe))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = settings.keyframeInterval == KeyframeInterval.AUTO,
                         onClick = { viewModel.update { it.copy(keyframeInterval = KeyframeInterval.AUTO) } },
-                        label = { Text("Auto") },
+                        label = { Text(stringResource(R.string.option_auto)) },
                     )
                     FilterChip(
                         selected = settings.keyframeInterval == KeyframeInterval.SEC_1,
                         onClick = { viewModel.update { it.copy(keyframeInterval = KeyframeInterval.SEC_1) } },
-                        label = { Text("1 s") },
+                        label = { Text(stringResource(R.string.keyframe_1s)) },
                     )
                     FilterChip(
                         selected = settings.keyframeInterval == KeyframeInterval.SEC_2,
                         onClick = { viewModel.update { it.copy(keyframeInterval = KeyframeInterval.SEC_2) } },
-                        label = { Text("2 s") },
+                        label = { Text(stringResource(R.string.keyframe_2s)) },
                     )
                     FilterChip(
                         selected = settings.keyframeInterval == KeyframeInterval.SEC_5,
                         onClick = { viewModel.update { it.copy(keyframeInterval = KeyframeInterval.SEC_5) } },
-                        label = { Text("5 s") },
+                        label = { Text(stringResource(R.string.keyframe_5s)) },
                     )
                 }
                 if (!settings.usesWebm() && settings.codec == VideoCodec.H264) {
-                    Text("H.264 profile")
+                    Text(stringResource(R.string.compress_h264_profile))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = settings.h264Profile == H264Profile.AUTO,
                             onClick = { viewModel.update { it.copy(h264Profile = H264Profile.AUTO) } },
-                            label = { Text("Auto") },
+                            label = { Text(stringResource(R.string.option_auto)) },
                         )
                         FilterChip(
                             selected = settings.h264Profile == H264Profile.BASELINE,
                             onClick = { viewModel.update { it.copy(h264Profile = H264Profile.BASELINE) } },
-                            label = { Text("Baseline") },
+                            label = { Text(stringResource(R.string.h264_baseline)) },
                         )
                         FilterChip(
                             selected = settings.h264Profile == H264Profile.MAIN,
                             onClick = { viewModel.update { it.copy(h264Profile = H264Profile.MAIN) } },
-                            label = { Text("Main") },
+                            label = { Text(stringResource(R.string.h264_main)) },
                         )
                         FilterChip(
                             selected = settings.h264Profile == H264Profile.HIGH,
                             onClick = { viewModel.update { it.copy(h264Profile = H264Profile.HIGH) } },
-                            label = { Text("High") },
+                            label = { Text(stringResource(R.string.h264_high)) },
                         )
                     }
                     Text(
-                        if (settings.engine == EncodeEngine.MEDIA3) {
-                            "Some device H.264 encoders ignore profile. FFmpeg honors it more reliably."
-                        } else {
-                            "Baseline is the most compatible. High usually looks better at the same bitrate."
-                        },
+                        stringResource(
+                            if (settings.engine == EncodeEngine.MEDIA3) {
+                                R.string.compress_h264_hint_media3
+                            } else {
+                                R.string.compress_h264_hint_ffmpeg
+                            },
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (!settings.usesWebm()) {
-                Text("B-frames")
+                if (!settings.usesWebm() && settings.codec != VideoCodec.AV1) {
+                Text(stringResource(R.string.compress_bframes))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = settings.bFrames == BFrameSetting.AUTO,
                         onClick = { viewModel.update { it.copy(bFrames = BFrameSetting.AUTO) } },
-                        label = { Text("Auto") },
+                        label = { Text(stringResource(R.string.option_auto)) },
                     )
                     FilterChip(
                         selected = settings.bFrames == BFrameSetting.NONE,
                         onClick = { viewModel.update { it.copy(bFrames = BFrameSetting.NONE) } },
-                        label = { Text("Off") },
+                        label = { Text(stringResource(R.string.option_off)) },
                     )
                     FilterChip(
                         selected = settings.bFrames == BFrameSetting.ONE,
                         onClick = { viewModel.update { it.copy(bFrames = BFrameSetting.ONE) } },
-                        label = { Text("1") },
+                        label = { Text(stringResource(R.string.bframes_one)) },
                     )
                     FilterChip(
                         selected = settings.bFrames == BFrameSetting.TWO,
                         onClick = { viewModel.update { it.copy(bFrames = BFrameSetting.TWO) } },
-                        label = { Text("2") },
+                        label = { Text(stringResource(R.string.bframes_two)) },
                     )
                 }
                 }
-                Text("HDR")
+                Text(stringResource(R.string.compress_hdr))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = settings.hdrMode == HdrMode.KEEP,
                         onClick = { viewModel.update { it.copy(hdrMode = HdrMode.KEEP) } },
-                        label = { Text("Keep") },
+                        label = { Text(stringResource(R.string.option_keep)) },
                     )
                     FilterChip(
                         selected = settings.hdrMode == HdrMode.TONE_MAP,
                         onClick = { viewModel.update { it.copy(hdrMode = HdrMode.TONE_MAP) } },
-                        label = { Text("Tone-map to SDR") },
+                        label = { Text(stringResource(R.string.hdr_tone_map)) },
                     )
                 }
                 Text(
-                    if (settings.engine == EncodeEngine.MEDIA3) {
-                        "Tone-map uses OpenGL on the device. Pixel 10 still tone-maps H.264/HEVC automatically."
-                    } else {
-                        "Tone-map writes Rec.709 SDR tags. Full HDR mapping depends on the FFmpeg build."
-                    },
+                    stringResource(
+                        if (settings.engine == EncodeEngine.MEDIA3) {
+                            R.string.compress_hdr_hint_media3
+                        } else {
+                            R.string.compress_hdr_hint_ffmpeg
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 }
-                Text("Audio")
+                Text(stringResource(R.string.compress_audio))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AudioOption.entries
                         .filter { option -> !audioOnly || option != AudioOption.MUTE }
@@ -409,7 +476,7 @@ fun CompressScreen(
                     }
                 }
                 if (settings.audio != AudioOption.MUTE) {
-                    Text("Volume  ${settings.audioVolumePercent}%")
+                    Text(stringResource(R.string.compress_volume_percent, settings.audioVolumePercent))
                     Slider(
                         value = settings.audioVolumePercent.toFloat(),
                         onValueChange = { value ->
@@ -424,19 +491,39 @@ fun CompressScreen(
                     FilterChip(
                         selected = settings.fastStart,
                         onClick = { viewModel.update { it.copy(fastStart = !it.fastStart) } },
-                        label = { Text(if (settings.fastStart) "Fast start on" else "Fast start off") },
+                        label = {
+                            Text(
+                                stringResource(
+                                    if (settings.fastStart) {
+                                        R.string.compress_fast_start_on
+                                    } else {
+                                        R.string.compress_fast_start_off
+                                    },
+                                ),
+                            )
+                        },
                     )
                     }
-                    if (!audioOnly && !settings.usesWebm()) {
+                    if (!audioOnly && (!settings.usesWebm() || settings.codec == VideoCodec.AV1)) {
                         FilterChip(
                             selected = settings.preferHardware,
                             onClick = { viewModel.update { it.copy(preferHardware = !it.preferHardware) } },
-                            label = { Text(if (settings.preferHardware) "Hardware encoder on" else "Hardware encoder off") },
+                            label = {
+                                Text(
+                                    stringResource(
+                                        if (settings.preferHardware) {
+                                            R.string.compress_hw_on
+                                        } else {
+                                            R.string.compress_hw_off
+                                        },
+                                    ),
+                                )
+                            },
                         )
                     }
-                    Text("Extra FFmpeg args")
+                    Text(stringResource(R.string.compress_extra_args))
                     Text(
-                        "Appended after the built-in flags. Type them yourself or describe what you want and let Gemini write the flags. Video stays on this device.",
+                        stringResource(R.string.compress_extra_args_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -445,8 +532,8 @@ fun CompressScreen(
                         onValueChange = viewModel::setAiPrompt,
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
-                        label = { Text("Describe the extra change") },
-                        placeholder = { Text("e.g. flip horizontally and boost contrast a little") },
+                        label = { Text(stringResource(R.string.compress_ai_prompt_label)) },
+                        placeholder = { Text(stringResource(R.string.compress_ai_prompt_placeholder)) },
                     )
                     Button(
                         onClick = viewModel::generateExtraArgs,
@@ -458,15 +545,23 @@ fun CompressScreen(
                                 strokeWidth = 2.dp,
                             )
                         }
-                        Text(if (ui.hasGeminiKey) "Generate extra args" else "Generate extra args (add key in Settings)")
+                        Text(
+                            stringResource(
+                                if (ui.hasGeminiKey) {
+                                    R.string.compress_generate_extra_args
+                                } else {
+                                    R.string.compress_generate_extra_args_no_key
+                                },
+                            ),
+                        )
                     }
                     OutlinedTextField(
                         value = settings.ffmpegExtraArgs,
                         onValueChange = { value -> viewModel.update { it.copy(ffmpegExtraArgs = value) } },
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 2,
-                        label = { Text("Extra FFmpeg args") },
-                        placeholder = { Text("-vf hflip") },
+                        label = { Text(stringResource(R.string.compress_extra_args)) },
+                        placeholder = { Text(stringResource(R.string.compress_extra_args_placeholder)) },
                     )
                     if (ui.aiMessage != null) {
                         Text(ui.aiMessage!!, style = MaterialTheme.typography.bodySmall)
@@ -481,13 +576,11 @@ fun CompressScreen(
                 }
             }
             if (settings.engine == EncodeEngine.FFMPEG) {
-                Text("FFmpeg command", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.compress_command_title), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (combineJob) {
-                        "This is the command that will run. INPUT is the picture or video, AUDIO is the soundtrack, and OUTPUT is this job’s file. Edit anything else, then start."
-                    } else {
-                        "This is the command that will run. INPUT and OUTPUT are this job’s files and cannot be pointed elsewhere. Edit anything else, then start."
-                    },
+                    stringResource(
+                        if (combineJob) R.string.compress_command_hint_combine else R.string.compress_command_hint,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -496,17 +589,17 @@ fun CompressScreen(
                     onValueChange = viewModel::setCommandTemplate,
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 4,
-                    label = { Text("Command template") },
+                    label = { Text(stringResource(R.string.compress_command_template)) },
                     textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 )
                 if (ui.commandCustomized) {
                     Text(
-                        "Using your edited command. Preset and advanced chips will not change it until you reset.",
+                        stringResource(R.string.compress_command_customized),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(onClick = viewModel::resetCommandTemplate) {
-                        Text("Reset to generated command")
+                        Text(stringResource(R.string.compress_reset_command))
                     }
                 }
                 if (!ui.advancedOpen && ui.extraArgsError != null) {
@@ -519,9 +612,9 @@ fun CompressScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Delete original after success")
+                    Text(stringResource(R.string.compress_delete_original))
                     Text(
-                        "Removes the source file only after the compressed copy is saved. Gallery files may be blocked by Android.",
+                        stringResource(R.string.compress_delete_original_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -533,7 +626,11 @@ fun CompressScreen(
                 enabled = job != null && job.sourceUri.isNotBlank() && (!job.isCombine || job.audioUri.isNotBlank()),
                 onClick = { viewModel.start(context) { onStarted(jobIdOr(job)) } },
             ) {
-                Text(if (ui.queueBusy) "Add to queue" else "Start compression")
+                Text(
+                    stringResource(
+                        if (ui.queueBusy) R.string.compress_add_to_queue else R.string.compress_start,
+                    ),
+                )
             }
         }
     }
@@ -554,20 +651,25 @@ private fun Media3ClipControls(
     )
     val start = window.startMs
     val end = window.endMs ?: durationMs
-    Text("Clip", style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.compress_clip), style = MaterialTheme.typography.titleMedium)
     Text(
-        "Exports only this range. Leave both ends at the edges for the whole video.",
+        stringResource(R.string.compress_clip_hint),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     if (durationMs > 0L) {
-        Text("Start  ${formatDuration(start)}")
+        Text(stringResource(R.string.compress_clip_start, formatDuration(start)))
         Slider(
             value = start.toFloat().coerceIn(0f, durationMs.toFloat()),
             onValueChange = { value -> onStart(value.toLong().coerceIn(0L, durationMs)) },
             valueRange = 0f..durationMs.toFloat(),
         )
-        Text("End  ${formatDuration(if (window.endMs == null) durationMs else end)}")
+        Text(
+            stringResource(
+                R.string.compress_clip_end,
+                formatDuration(if (window.endMs == null) durationMs else end),
+            ),
+        )
         Slider(
             value = end.toFloat().coerceIn(0f, durationMs.toFloat()),
             onValueChange = { value ->
@@ -578,11 +680,15 @@ private fun Media3ClipControls(
         )
         if (window.active) {
             Text(
-                "Keeps ${formatDuration(window.durationMs(durationMs))} of ${formatDuration(durationMs)}",
+                stringResource(
+                    R.string.compress_clip_keeps,
+                    formatDuration(window.durationMs(durationMs)),
+                    formatDuration(durationMs),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onClear) { Text("Use whole video") }
+            TextButton(onClick = onClear) { Text(stringResource(R.string.compress_use_whole_video)) }
         }
     } else {
         var startText by rememberSaveable { mutableStateOf(if (startMs > 0) formatDuration(startMs) else "") }
@@ -595,8 +701,8 @@ private fun Media3ClipControls(
             },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("Start") },
-            placeholder = { Text("0:00") },
+            label = { Text(stringResource(R.string.compress_clip_start_label)) },
+            placeholder = { Text(stringResource(R.string.compress_clip_start_placeholder)) },
         )
         OutlinedTextField(
             value = endText,
@@ -606,23 +712,17 @@ private fun Media3ClipControls(
             },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("End") },
-            placeholder = { Text("End of video") },
+            label = { Text(stringResource(R.string.compress_clip_end_label)) },
+            placeholder = { Text(stringResource(R.string.compress_clip_end_placeholder)) },
         )
         if (startMs > 0L || endMs != null) {
             TextButton(onClick = {
                 startText = ""
                 endText = ""
                 onClear()
-            }) { Text("Use whole video") }
+            }) { Text(stringResource(R.string.compress_use_whole_video)) }
         }
     }
 }
 
 private fun jobIdOr(job: com.androidcompress.app.data.CompressJob?) = job?.id.orEmpty()
-
-private fun presetLabel(preset: Preset) = when (preset) {
-    Preset.SMALLER -> "Smaller"
-    Preset.BALANCED -> "Balanced"
-    Preset.HIGHER -> "Higher quality"
-}

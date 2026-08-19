@@ -19,6 +19,13 @@ interface FfmpegGateway {
     ): EncodeSession
 
     fun muxCopyVideoAac(videoPath: String, audioPath: String, outputPath: String): EncodeSession
+
+    fun muxMixMicAndInternalAac(
+        videoPath: String,
+        internalWav: String,
+        micWav: String,
+        outputPath: String,
+    ): EncodeSession
 }
 
 fun quoteArgs(args: List<String>): String = args.joinToString(" ") { token ->

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.R
 import com.androidcompress.app.capture.ScreenRecordService
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.EncodeSettings
@@ -66,7 +67,7 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
                     status = JobStatus.DRAFT,
                     sourceUri = "",
                     outputUri = null,
-                    displayName = "Screen recording",
+                    displayName = container.appContext.getString(R.string.display_name_screen_recording),
                     sourceBytes = 0,
                     outputBytes = null,
                     durationMs = 0,
@@ -95,8 +96,16 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
         ScreenRecordService.stop(context)
     }
 
-    fun markStarting() {
-        _ui.value = _ui.value.copy(starting = true)
+    fun pause(context: Context) {
+        ScreenRecordService.pause(context)
+    }
+
+    fun resume(context: Context) {
+        ScreenRecordService.resume(context)
+    }
+
+    fun markStarting(starting: Boolean = true) {
+        _ui.value = _ui.value.copy(starting = starting)
     }
 
     fun supportsInternalAudio(): Boolean = Build.VERSION.SDK_INT >= 29

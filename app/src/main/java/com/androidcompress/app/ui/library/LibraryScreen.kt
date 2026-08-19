@@ -27,12 +27,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.androidcompress.app.R
 import com.androidcompress.app.data.JobStatus
-import com.androidcompress.app.data.label
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.label
 import com.androidcompress.app.ui.components.ConfirmClearJobsDialog
 import com.androidcompress.app.ui.components.EmptyState
 import com.androidcompress.app.util.formatBytes
@@ -53,12 +55,15 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             AppTopBar(
-                title = "Library",
+                title = stringResource(R.string.library_title),
                 onBack = onBack,
                 actions = {
                     if (jobs.any { it.status != JobStatus.RECORDING }) {
                         IconButton(onClick = { confirmClear = true }) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = "Clear all jobs")
+                            Icon(
+                                Icons.Default.DeleteSweep,
+                                contentDescription = stringResource(R.string.cd_clear_all_jobs),
+                            )
                         }
                     }
                 },
@@ -68,8 +73,8 @@ fun LibraryScreen(
     ) { padding ->
         if (jobs.isEmpty()) {
             EmptyState(
-                "No jobs yet",
-                "Recorded and imported videos and audio will show up here.",
+                stringResource(R.string.library_empty_title),
+                stringResource(R.string.library_empty_body),
                 modifier = Modifier.padding(padding),
             )
         } else {
@@ -84,13 +89,28 @@ fun LibraryScreen(
                             headlineContent = { Text(job.displayName) },
                             supportingContent = {
                                 Column {
-                                    Text("${job.status.label()} · ${formatDuration(job.durationMs)}")
-                                    Text("${formatBytes(job.sourceBytes)} → ${job.outputBytes?.let(::formatBytes) ?: "—"}")
+                                    Text(
+                                        stringResource(
+                                            R.string.job_status_duration,
+                                            job.status.label(),
+                                            formatDuration(job.durationMs),
+                                        ),
+                                    )
+                                    Text(
+                                        stringResource(
+                                            R.string.job_size_arrow,
+                                            formatBytes(job.sourceBytes),
+                                            job.outputBytes?.let(::formatBytes) ?: stringResource(R.string.em_dash),
+                                        ),
+                                    )
                                 }
                             },
                             trailingContent = {
                                 IconButton(onClick = { viewModel.delete(context, job.id) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Remove from history")
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = stringResource(R.string.cd_remove_from_history),
+                                    )
                                 }
                             },
                         )

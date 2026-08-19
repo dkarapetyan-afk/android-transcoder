@@ -7,6 +7,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
+import com.androidcompress.app.R
 import com.androidcompress.app.data.SourceVideo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -85,7 +86,7 @@ class MediaProbe(private val context: Context) {
                 height = opts.outHeight
             }
         }
-        if (width <= 0 || height <= 0) error("Unable to read that image")
+        if (width <= 0 || height <= 0) error(context.getString(R.string.error_read_image))
         val oriented = applyExifOrientation(uri, width, height)
         return SourceVideo(
             uri = uri.toString(),

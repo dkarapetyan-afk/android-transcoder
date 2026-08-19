@@ -17,7 +17,7 @@ data class AppCapabilities(
     val outputs: List<String>,
     /** Containers: MP4 or WEBM. */
     val containers: List<String>,
-    /** Video codecs: H264, HEVC, VP8, VP9. */
+    /** Video codecs: H264, HEVC, VP8, VP9, AV1. */
     val codecs: List<String>,
     /** Audio options: COPY, AAC_64, AAC_96, AAC_128, AAC_192, MUTE. */
     val audioOptions: List<String>,
@@ -65,7 +65,7 @@ data class JobSettingsSnapshot(
     val output: String,
     /** Container: MP4 or WEBM. */
     val container: String,
-    /** Video codec: H264, HEVC, VP8, or VP9. */
+    /** Video codec: H264, HEVC, VP8, VP9, or AV1. */
     val codec: String,
     /** Max output height in pixels, or null to keep the source height. */
     val maxHeight: Int?,
@@ -115,7 +115,7 @@ data class JobSettingsUpdate(
     val output: String? = null,
     /** Container: MP4 or WEBM. */
     val container: String? = null,
-    /** Video codec: H264, HEVC, VP8, or VP9. */
+    /** Video codec: H264, HEVC, VP8, VP9, or AV1. */
     val codec: String? = null,
     /** Max output height in pixels. */
     val maxHeight: Int? = null,
@@ -409,10 +409,14 @@ data class DeviceEncodeCaps(
     val hardwareVp8: Boolean,
     /** True when a hardware VP9 encoder is available. */
     val hardwareVp9: Boolean,
+    /** True when a hardware AV1 encoder is available. */
+    val hardwareAv1: Boolean,
     /** True when FFmpeg libvpx (VP8) is available. */
     val softwareVp8: Boolean,
     /** True when FFmpeg libvpx-vp9 is available. */
     val softwareVp9: Boolean,
+    /** True when FFmpeg libaom-av1 or libsvtav1 is available. */
+    val softwareAv1: Boolean,
     /** True when FFmpeg Opus is available. */
     val opus: Boolean,
     /** True when FFmpeg OpenH264 is available. */

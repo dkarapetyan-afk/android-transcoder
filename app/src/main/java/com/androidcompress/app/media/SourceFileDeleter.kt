@@ -2,6 +2,7 @@ package com.androidcompress.app.media
 
 import android.content.Context
 import android.net.Uri
+import com.androidcompress.app.R
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,7 +27,7 @@ class SourceFileDeleter(private val context: Context) {
 
     suspend fun deleteSources(uris: List<String>, outputUri: String?): DeleteSourceResult {
         val targets = uris.filter { it.isNotBlank() }
-        if (targets.isEmpty()) return DeleteSourceResult(false, "Nothing to delete")
+        if (targets.isEmpty()) return DeleteSourceResult(false, context.getString(R.string.error_delete_nothing))
         var deletedAll = true
         var lastError: String? = null
         for (uri in targets) {
@@ -41,16 +42,20 @@ class SourceFileDeleter(private val context: Context) {
 
     suspend fun delete(sourceUri: String, outputUri: String?): DeleteSourceResult = withContext(Dispatchers.IO) {
         if (SourceDeletePolicy.shouldSkip(sourceUri, outputUri)) {
-            return@withContext DeleteSourceResult(false, "Refusing to delete the compressed output.")
+            return@withContext DeleteSourceResult(false, context.getString(R.string.error_delete_output))
         }
         val uri = runCatching { Uri.parse(sourceUri) }.getOrNull()
-            ?: return@withContext DeleteSourceResult(false, "Invalid source")
+            ?: return@withContext DeleteSourceResult(false, context.getString(R.string.error_invalid_source))
         when (uri.scheme) {
             null, "file" -> {
                 val path = uri.path ?: sourceUri
                 val file = File(path)
                 if (!file.exists()) return@withContext DeleteSourceResult(true)
-                if (file.delete()) DeleteSourceResult(true) else DeleteSourceResult(false, "Could not delete ${file.name}")
+                if (file.delete()) {
+                    DeleteSourceResult(true)
+                } else {
+                    DeleteSourceResult(false, context.getString(R.string.error_delete_named, file.name))
+                }
             }
             else -> {
                 val deleted = runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false) ||
@@ -58,10 +63,7 @@ class SourceFileDeleter(private val context: Context) {
                 if (deleted) {
                     DeleteSourceResult(true)
                 } else {
-                    DeleteSourceResult(
-                        false,
-                        "Android did not allow deleting this original. Gallery picks often cannot be removed by other apps.",
-                    )
+                    DeleteSourceResult(false, context.getString(R.string.error_delete_gallery))
                 }
             }
         }

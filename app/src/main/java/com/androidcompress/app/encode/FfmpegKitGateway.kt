@@ -52,18 +52,20 @@ class FfmpegKitGateway : FfmpegGateway {
     }
 
     override fun muxCopyVideoAac(videoPath: String, audioPath: String, outputPath: String): EncodeSession {
-        val args = listOf(
-            "-y", "-hide_banner",
-            "-i", videoPath,
-            "-i", audioPath,
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-shortest",
-            "-movflags", "+faststart",
-            outputPath,
+        return encode(FfmpegMuxCommands.copyVideoAac(videoPath, audioPath, outputPath), onLog = {}, onStats = {})
+    }
+
+    override fun muxMixMicAndInternalAac(
+        videoPath: String,
+        internalWav: String,
+        micWav: String,
+        outputPath: String,
+    ): EncodeSession {
+        return encode(
+            FfmpegMuxCommands.mixMicAndInternalAac(videoPath, internalWav, micWav, outputPath),
+            onLog = {},
+            onStats = {},
         )
-        return encode(args, onLog = {}, onStats = {})
     }
 
 }

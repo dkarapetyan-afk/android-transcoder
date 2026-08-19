@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.androidcompress.app.R
 import com.androidcompress.app.di.AppContainer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,7 +15,7 @@ import kotlinx.coroutines.withContext
 
 data class JobLogUi(
     val jobId: String? = null,
-    val title: String = "Encode log",
+    val title: String = "",
     val text: String = "",
     val empty: Boolean = true,
 )
@@ -41,7 +42,9 @@ class JobLogViewModel(
             }
             _ui.value = JobLogUi(
                 jobId = id,
-                title = job?.displayName?.let { "Log · $it" } ?: "Encode log",
+                title = job?.displayName?.let {
+                    container.appContext.getString(R.string.log_title_named, it)
+                } ?: container.appContext.getString(R.string.log_title),
                 text = text.orEmpty(),
                 empty = text.isNullOrBlank(),
             )
@@ -52,7 +55,9 @@ class JobLogViewModel(
         val text = _ui.value.text
         if (text.isBlank()) return false
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("encode log", text))
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText(context.getString(R.string.log_clipboard_label), text),
+        )
         return true
     }
 

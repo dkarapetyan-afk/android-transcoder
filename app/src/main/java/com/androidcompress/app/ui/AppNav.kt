@@ -25,7 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.androidcompress.app.R
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -55,6 +57,8 @@ import com.androidcompress.app.ui.record.RecordScreen
 import com.androidcompress.app.ui.record.RecordViewModel
 import com.androidcompress.app.ui.result.ResultScreen
 import com.androidcompress.app.ui.result.ResultViewModel
+import com.androidcompress.app.ui.hardware.HardwareTestScreen
+import com.androidcompress.app.ui.hardware.HardwareTestViewModel
 import com.androidcompress.app.ui.settings.SettingsScreen
 import com.androidcompress.app.ui.settings.SettingsViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,7 +86,7 @@ fun CompressApp(
             ShareIntents.isLikelyShareItem(context.contentResolver.getType(uri) ?: request.mimeType)
         }
         if (accepted.isEmpty()) {
-            snackbar.showSnackbar("That share is not a video, audio, or picture file.")
+            snackbar.showSnackbar(context.getString(R.string.share_not_media))
             onShareConsumed(request.nonce)
             return@LaunchedEffect
         }
@@ -96,13 +100,21 @@ fun CompressApp(
                     nav.navigate("compress/${batch.jobIds.first()}")
                     if (batch.errors.isNotEmpty()) {
                         snackbar.showSnackbar(
-                            "Opened ${batch.jobIds.size} file(s). ${batch.errors.size} could not be read.",
+                            context.getString(
+                                R.string.share_opened_partial,
+                                batch.jobIds.size,
+                                batch.errors.size,
+                            ),
                         )
                     } else if (batch.jobIds.size > 1) {
-                        snackbar.showSnackbar("Opened ${batch.jobIds.size} files. The rest are in Recent.")
+                        snackbar.showSnackbar(
+                            context.getString(R.string.share_opened_rest, batch.jobIds.size),
+                        )
                     }
                 }
-                else -> snackbar.showSnackbar(batch.errors.firstOrNull() ?: "Unable to read that file")
+                else -> snackbar.showSnackbar(
+                    batch.errors.firstOrNull() ?: context.getString(R.string.error_read_file),
+                )
             }
         } finally {
             importing = false
@@ -219,7 +231,11 @@ fun CompressApp(
         }
         composable("settings") {
             val vm: SettingsViewModel = viewModel(factory = AppViewModelFactory(container))
-            SettingsScreen(viewModel = vm, onBack = { nav.safePop() })
+            SettingsScreen(
+                viewModel = vm,
+                onBack = { nav.safePop() },
+                onHardwareTest = { nav.navigate("settings/hardware") },
+            )
         }
         composable("settings/library") {
             val vm: SettingsViewModel = viewModel(factory = AppViewModelFactory(container))
@@ -227,7 +243,12 @@ fun CompressApp(
                 viewModel = vm,
                 onBack = { nav.safePop() },
                 promptLibraryAccess = true,
+                onHardwareTest = { nav.navigate("settings/hardware") },
             )
+        }
+        composable("settings/hardware") {
+            val vm: HardwareTestViewModel = viewModel(factory = AppViewModelFactory(container))
+            HardwareTestScreen(viewModel = vm, onBack = { nav.safePop() })
         }
         composable("about") {
             AboutScreen(onBack = { nav.safePop() })
@@ -258,7 +279,7 @@ fun CompressApp(
                     ) {
                         CircularProgressIndicator()
                         Spacer(Modifier.height(16.dp))
-                        Text("Opening shared file…")
+                        Text(stringResource(R.string.share_opening))
                     }
                 }
             }

@@ -130,6 +130,7 @@ object FfmpegCommandBuilder {
                 capabilities.hasVp8MediaCodec -> "vp8_mediacodec"
                 else -> "libvpx"
             }
+            VideoCodec.AV1 -> selectAv1Encoder(settings, capabilities)
             VideoCodec.HEVC -> when {
                 settings.preferHardware && capabilities.hasHevcMediaCodec -> "hevc_mediacodec"
                 settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
@@ -141,6 +142,27 @@ object FfmpegCommandBuilder {
                 capabilities.hasOpenH264 -> "libopenh264"
                 else -> "mpeg4"
             }
+        }
+    }
+
+    private fun selectAv1Encoder(
+        settings: EncodeSettings,
+        capabilities: EncoderCapabilities,
+    ): String {
+        if (settings.preferHardware && capabilities.hasAv1MediaCodec) return "av1_mediacodec"
+        if (capabilities.hasLibaomAv1) return "libaom-av1"
+        if (capabilities.hasLibSvtAv1) return "libsvtav1"
+        if (settings.usesWebm()) {
+            return when {
+                capabilities.hasLibvpxVp9 || capabilities.hasLibvpx -> "libvpx-vp9"
+                capabilities.hasVp9MediaCodec -> "vp9_mediacodec"
+                else -> "libvpx-vp9"
+            }
+        }
+        return when {
+            settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
+            capabilities.hasOpenH264 -> "libopenh264"
+            else -> "mpeg4"
         }
     }
 
@@ -173,9 +195,11 @@ object FfmpegCommandBuilder {
         val isHardware = encoder.endsWith("_mediacodec")
         val isLibvpx = encoder == "libvpx" || encoder == "libvpx-vp9"
         val isVpxMediaCodec = encoder == "vp8_mediacodec" || encoder == "vp9_mediacodec"
+        val isSoftwareAv1 = encoder == "libaom-av1" || encoder == "libsvtav1"
         val pixFmt = when {
             pixFmtOverride != null -> pixFmtOverride
-            isLibvpx || isVpxMediaCodec -> "yuv420p"
+            isLibvpx || isVpxMediaCodec || isSoftwareAv1 -> "yuv420p"
+            encoder == "av1_mediacodec" && settings.usesWebm() -> "yuv420p"
             isHardware -> "nv12"
             else -> null
         }
@@ -206,8 +230,14 @@ object FfmpegCommandBuilder {
                 args += listOf("-auto-alt-ref", "0")
             }
         }
+        if (encoder == "libaom-av1") {
+            args += listOf("-usage", "realtime", "-cpu-used", "8", "-row-mt", "1", "-tiles", "2x2")
+        }
+        if (encoder == "libsvtav1") {
+            args += listOf("-preset", "10")
+        }
         if (settings.bitrateMode == BitrateMode.CBR) {
-            if (encoder == "libvpx" || encoder == "libvpx-vp9") {
+            if (encoder == "libvpx" || encoder == "libvpx-vp9" || encoder == "libaom-av1") {
                 args += listOf("-minrate", "${videoBitrate}k", "-maxrate", "${videoBitrate}k")
             } else {
                 args += listOf("-maxrate", "${videoBitrate}k", "-bufsize", "${videoBitrate * 2}k")
@@ -218,6 +248,9 @@ object FfmpegCommandBuilder {
         }
         if (encoder == "hevc_mediacodec") {
             args += listOf("-tag:v", "hvc1")
+        }
+        if (encoder == "av1_mediacodec" && !settings.usesWebm()) {
+            args += listOf("-tag:v", "av01")
         }
         if (settings.effectiveVideoCodec() == VideoCodec.H264) {
             when (settings.h264Profile) {
@@ -231,7 +264,7 @@ object FfmpegCommandBuilder {
             val gop = (outputFrameRate(source, settings) * seconds).roundToInt().coerceAtLeast(1)
             args += listOf("-g", gop.toString())
         }
-        if (!settings.usesWebm()) {
+        if (!settings.usesWebm() && settings.effectiveVideoCodec() != VideoCodec.AV1) {
             maxBFrames(settings)?.let { frames ->
                 args += listOf("-bf", frames.toString())
             }
@@ -280,6 +313,32 @@ object FfmpegCommandBuilder {
         if (settings.audioOutput(source.hasVideo) || previous.videoEncoder.isBlank()) return null
         if (settings.usesWebm()) {
             return when {
+                previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibaomAv1 -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libaom-av1",
+                    audioInput = audioInput,
+                )
+                previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibSvtAv1 -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libsvtav1",
+                    audioInput = audioInput,
+                )
+                previous.videoEncoder == "av1_mediacodec" &&
+                    (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libvpx-vp9",
+                    audioInput = audioInput,
+                )
+                previous.videoEncoder == "libaom-av1" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libvpx-vp9",
+                    audioInput = audioInput,
+                )
+                previous.videoEncoder == "libsvtav1" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
+                    input, output, settings, source, capabilities,
+                    encoderOverride = "libvpx-vp9",
+                    audioInput = audioInput,
+                )
                 previous.videoEncoder == "vp9_mediacodec" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
                     input, output, settings, source, capabilities,
                     encoderOverride = "libvpx-vp9",
@@ -303,6 +362,16 @@ object FfmpegCommandBuilder {
                 input, output, settings, source, capabilities,
                 pixFmtOverride = "yuv420p",
                 encoderOverride = previous.videoEncoder,
+                audioInput = audioInput,
+            )
+            previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibaomAv1 -> build(
+                input, output, settings, source, capabilities,
+                encoderOverride = "libaom-av1",
+                audioInput = audioInput,
+            )
+            previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibSvtAv1 -> build(
+                input, output, settings, source, capabilities,
+                encoderOverride = "libsvtav1",
                 audioInput = audioInput,
             )
             previous.videoEncoder.endsWith("_mediacodec") && capabilities.hasOpenH264 -> build(

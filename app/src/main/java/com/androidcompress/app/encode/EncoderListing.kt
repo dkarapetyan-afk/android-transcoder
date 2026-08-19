@@ -12,8 +12,11 @@ object EncoderListing {
             hasMpeg4 = has("mpeg4") || listing.isBlank(),
             hasVp8MediaCodec = has("vp8_mediacodec"),
             hasVp9MediaCodec = has("vp9_mediacodec"),
+            hasAv1MediaCodec = has("av1_mediacodec"),
             hasLibvpx = listing.contains("libvpx"),
             hasLibvpxVp9 = listing.contains("libvpx-vp9"),
+            hasLibaomAv1 = listing.contains("libaom-av1") || has("libaom"),
+            hasLibSvtAv1 = has("libsvtav1"),
             hasLibOpus = has("libopus") || has("opus"),
         )
     }

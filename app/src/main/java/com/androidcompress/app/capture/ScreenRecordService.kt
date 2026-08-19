@@ -20,6 +20,7 @@ import android.util.DisplayMetrics
 import android.view.WindowManager
 import androidx.core.app.ServiceCompat
 import androidx.window.layout.WindowMetricsCalculator
+import com.androidcompress.app.R
 import com.androidcompress.app.container
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.RecordAudioMode
@@ -44,12 +45,16 @@ class ScreenRecordService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var recorder: MediaRecorder? = null
-    private var internalAudio: InternalAudioCapture? = null
+    private var internalAudio: PcmWavCapture? = null
+    private var micAudio: PcmWavCapture? = null
     private var outputFile: File? = null
     private var audioFile: File? = null
+    private var micAudioFile: File? = null
     private var jobId: String? = null
     private var ticker: Job? = null
     private var stopping = false
+    private var paused = false
+    private var usesMicrophone = false
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -69,6 +74,14 @@ class ScreenRecordService : Service() {
                 scope.launch { finalizeRecording(userStopped = true) }
                 return START_NOT_STICKY
             }
+            ACTION_PAUSE -> {
+                pauseRecording()
+                return START_NOT_STICKY
+            }
+            ACTION_RESUME -> {
+                resumeRecording()
+                return START_NOT_STICKY
+            }
             ACTION_START -> startRecording(intent)
         }
         return START_NOT_STICKY
@@ -85,23 +98,26 @@ class ScreenRecordService : Service() {
             intent.getParcelableExtra(EXTRA_RESULT_DATA)
         }
         if (resultCode != Activity.RESULT_OK || data == null) {
-            container().recording.fail("Screen capture was denied")
+            container().recording.fail(getString(R.string.error_capture_denied))
             stopSelf()
             return
         }
         jobId = id
-        val audioMode = intent.getStringExtra(EXTRA_AUDIO_MODE)
-            ?.let { runCatching { RecordAudioMode.valueOf(it) }.getOrNull() }
-            ?: RecordAudioMode.NONE
+        val audioMode = (
+            intent.getStringExtra(EXTRA_AUDIO_MODE)
+                ?.let { runCatching { RecordAudioMode.valueOf(it) }.getOrNull() }
+                ?: RecordAudioMode.NONE
+            ).resolvedForSdk(Build.VERSION.SDK_INT)
         val resolution = intent.getStringExtra(EXTRA_RESOLUTION)
             ?.let { runCatching { RecordResolution.valueOf(it) }.getOrNull() }
             ?: RecordResolution.P1080
+        usesMicrophone = audioMode.usesMicrophone
 
         startAsForeground(0)
         val manager = getSystemService(MediaProjectionManager::class.java)
         val projection = manager.getMediaProjection(resultCode, data)
         if (projection == null) {
-            container().recording.fail("Unable to start screen capture")
+            container().recording.fail(getString(R.string.error_start_capture))
             stopSelf()
             return
         }
@@ -125,10 +141,15 @@ class ScreenRecordService : Service() {
                 null,
                 handler,
             )
-            if (audioMode == RecordAudioMode.INTERNAL && Build.VERSION.SDK_INT >= 29) {
+            if (audioMode.usesInternalAudio && Build.VERSION.SDK_INT >= 29) {
                 val wav = container().inputs.recordAudioFile(id)
                 audioFile = wav
-                internalAudio = InternalAudioCapture(projection, wav).also { it.start() }
+                internalAudio = PcmWavCapture.internal(projection, wav).also { it.start() }
+            }
+            if (audioMode == RecordAudioMode.BOTH) {
+                val micWav = container().inputs.recordMicAudioFile(id)
+                micAudioFile = micWav
+                micAudio = PcmWavCapture.microphone(micWav).also { it.start() }
             }
             rec.start()
             container().recording.start(id)
@@ -136,26 +157,61 @@ class ScreenRecordService : Service() {
                 container().jobs.updateStatus(id, JobStatus.RECORDING)
             }
             ticker = scope.launch {
-                val started = System.currentTimeMillis()
                 while (isActive) {
-                    startAsForeground(System.currentTimeMillis() - started)
+                    if (!stopping) {
+                        startAsForeground(container().recording.state.value.elapsedMs())
+                    }
                     delay(1_000)
                 }
             }
         } catch (t: Throwable) {
-            container().recording.fail(t.message ?: "Unable to start recorder")
+            container().recording.fail(t.message ?: getString(R.string.error_start_recorder))
             teardown()
             stopSelf()
         }
     }
 
-    private suspend fun finalizeRecording(userStopped: Boolean) {
+    private fun pauseRecording() {
+        if (stopping || paused || recorder == null) return
+        try {
+            recorder?.pause()
+            internalAudio?.pause()
+            micAudio?.pause()
+            paused = true
+            container().recording.setPaused(true)
+            startAsForeground(container().recording.state.value.elapsedMs(), paused = true)
+        } catch (_: Throwable) {
+            runCatching { recorder?.resume() }
+            internalAudio?.resume()
+            micAudio?.resume()
+            paused = false
+        }
+    }
+
+    private fun resumeRecording() {
+        if (stopping || !paused || recorder == null) return
+        try {
+            recorder?.resume()
+            internalAudio?.resume()
+            micAudio?.resume()
+            paused = false
+            container().recording.setPaused(false)
+            startAsForeground(container().recording.state.value.elapsedMs(), paused = false)
+        } catch (_: Throwable) {
+            // Leave the session paused if the encoder cannot resume.
+        }
+    }
+
+    private suspend fun finalizeRecording(@Suppress("UNUSED_PARAMETER") userStopped: Boolean) {
         if (stopping) return
         stopping = true
         ticker?.cancel()
         val id = jobId
         val video = outputFile
         val wav = audioFile
+        val micWav = micAudioFile
+        container().recording.markSaving()
+        startAsForeground(container().recording.state.value.elapsedMs(), saving = true)
         try {
             runCatching { recorder?.stop() }
             runCatching { recorder?.reset() }
@@ -163,6 +219,8 @@ class ScreenRecordService : Service() {
             recorder = null
             internalAudio?.stop()
             internalAudio = null
+            micAudio?.stop()
+            micAudio = null
             virtualDisplay?.release()
             virtualDisplay = null
             mediaProjection?.unregisterCallback(projectionCallback)
@@ -170,22 +228,51 @@ class ScreenRecordService : Service() {
             mediaProjection = null
 
             if (id == null || video == null || !video.exists() || video.length() < 1024) {
-                container().recording.fail("Recording produced no video")
-                if (id != null) container().jobs.updateStatus(id, JobStatus.FAILED, error = "Recording produced no video", finished = true)
+                val noVideo = getString(R.string.error_recording_no_video)
+                container().recording.fail(noVideo)
+                if (id != null) container().jobs.updateStatus(id, JobStatus.FAILED, error = noVideo, finished = true)
                 return
             }
 
             var finalFile = video
-            if (wav != null && wav.exists() && wav.length() > 44) {
-                val muxed = File(video.parentFile, "${video.nameWithoutExtension}-muxed.mp4")
-                val mux = container().ffmpeg.muxCopyVideoAac(video.absolutePath, wav.absolutePath, muxed.absolutePath)
-                val muxResult = mux.await()
-                if (muxResult.success && muxed.exists()) {
-                    video.delete()
-                    finalFile = muxed
+            val muxed = File(video.parentFile, "${video.nameWithoutExtension}-muxed.mp4")
+            val usableInternal = wav.takeIf { it != null && it.exists() && it.length() > 44 }
+            val usableMic = micWav.takeIf { it != null && it.exists() && it.length() > 44 }
+            val muxSession = when {
+                usableInternal != null && usableMic != null -> {
+                    container().ffmpeg.muxMixMicAndInternalAac(
+                        video.absolutePath,
+                        usableInternal.absolutePath,
+                        usableMic.absolutePath,
+                        muxed.absolutePath,
+                    )
                 }
-                wav.delete()
+                usableInternal != null -> {
+                    container().ffmpeg.muxCopyVideoAac(
+                        video.absolutePath,
+                        usableInternal.absolutePath,
+                        muxed.absolutePath,
+                    )
+                }
+                usableMic != null -> {
+                    container().ffmpeg.muxCopyVideoAac(
+                        video.absolutePath,
+                        usableMic.absolutePath,
+                        muxed.absolutePath,
+                    )
+                }
+                else -> null
             }
+            if (muxSession != null) {
+                val muxResult = muxSession.await()
+                if (muxResult.success && muxed.exists() && muxed.length() > 1024) {
+                    video.delete()
+                    finalFile = if (muxed.renameTo(video)) video else muxed
+                }
+            }
+            wav?.delete()
+            micWav?.delete()
+            if (finalFile != muxed) muxed.delete()
 
             val uri = Uri.fromFile(finalFile)
             val probed = runCatching { container().probe.probe(uri) }.getOrNull()
@@ -205,7 +292,7 @@ class ScreenRecordService : Service() {
             }
             container().recording.finish(id)
         } catch (t: Throwable) {
-            container().recording.fail(t.message ?: "Failed to save recording")
+            container().recording.fail(t.message ?: getString(R.string.error_save_recording))
             if (id != null) {
                 container().jobs.updateStatus(id, JobStatus.FAILED, error = t.message, finished = true)
             }
@@ -264,19 +351,44 @@ class ScreenRecordService : Service() {
         return metrics.densityDpi
     }
 
-    private fun startAsForeground(elapsedMs: Long) {
+    private fun startAsForeground(elapsedMs: Long, paused: Boolean = this.paused, saving: Boolean = false) {
         val stop = PendingIntent.getService(
             this,
             1,
             Intent(this, ScreenRecordService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val pauseResume = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, ScreenRecordService::class.java)
+                .setAction(if (paused) ACTION_RESUME else ACTION_PAUSE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         ServiceCompat.startForeground(
             this,
             Notifications.RECORD_ID,
-            Notifications.recording(this, formatDuration(elapsedMs), stop),
-            if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0,
+            Notifications.recording(
+                context = this,
+                elapsed = formatDuration(elapsedMs),
+                stopIntent = stop,
+                pauseResumeIntent = pauseResume,
+                paused = paused,
+                saving = saving,
+            ),
+            foregroundTypes(),
         )
+    }
+
+    private fun foregroundTypes(): Int {
+        var types = 0
+        if (Build.VERSION.SDK_INT >= 29) {
+            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        }
+        if (usesMicrophone && Build.VERSION.SDK_INT >= 30) {
+            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
+        return types
     }
 
     private fun teardown() {
@@ -285,6 +397,8 @@ class ScreenRecordService : Service() {
         recorder = null
         internalAudio?.stop()
         internalAudio = null
+        micAudio?.stop()
+        micAudio = null
         virtualDisplay?.release()
         virtualDisplay = null
         mediaProjection?.unregisterCallback(projectionCallback)
@@ -301,6 +415,8 @@ class ScreenRecordService : Service() {
     companion object {
         const val ACTION_START = "com.androidcompress.app.RECORD_START"
         const val ACTION_STOP = "com.androidcompress.app.RECORD_STOP"
+        const val ACTION_PAUSE = "com.androidcompress.app.RECORD_PAUSE"
+        const val ACTION_RESUME = "com.androidcompress.app.RECORD_RESUME"
         const val EXTRA_JOB_ID = "jobId"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
@@ -320,13 +436,21 @@ class ScreenRecordService : Service() {
                 .putExtra(EXTRA_JOB_ID, jobId)
                 .putExtra(EXTRA_RESULT_CODE, resultCode)
                 .putExtra(EXTRA_RESULT_DATA, data)
-                .putExtra(EXTRA_AUDIO_MODE, audioMode.name)
+                .putExtra(EXTRA_AUDIO_MODE, audioMode.resolvedForSdk(Build.VERSION.SDK_INT).name)
                 .putExtra(EXTRA_RESOLUTION, resolution.name)
             context.startForegroundService(intent)
         }
 
         fun stop(context: Context) {
             context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_STOP))
+        }
+
+        fun pause(context: Context) {
+            context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_PAUSE))
+        }
+
+        fun resume(context: Context) {
+            context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_RESUME))
         }
     }
 }

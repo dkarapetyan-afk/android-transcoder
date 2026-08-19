@@ -20,11 +20,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.androidcompress.app.R
 import com.androidcompress.app.data.JobStatus
-import com.androidcompress.app.data.label
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.label
 import com.androidcompress.app.util.formatDuration
 import kotlin.math.roundToInt
 
@@ -61,7 +63,7 @@ fun ProgressScreen(
     } else {
         0f
     }
-    Scaffold(topBar = { AppTopBar("Compressing", onBack = onBack) }) { padding ->
+    Scaffold(topBar = { AppTopBar(stringResource(R.string.progress_title), onBack = onBack) }) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -71,36 +73,60 @@ fun ProgressScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (ui.total > 1) {
-                Text("Job ${ui.position} of ${ui.total}", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    stringResource(R.string.progress_job_of, ui.position, ui.total),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
-            Text(job?.displayName ?: "Video", style = MaterialTheme.typography.titleMedium)
+            Text(job?.displayName ?: stringResource(R.string.untitled_video), style = MaterialTheme.typography.titleMedium)
             if (job?.status == JobStatus.QUEUED) {
-                Text("Waiting in queue", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.progress_waiting), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             LinearProgressIndicator(
                 progress = { fraction },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("${(fraction * 100).roundToInt()}%")
+            Text(stringResource(R.string.progress_percent, (fraction * 100).roundToInt()))
             if (progress != null && job != null && job.status == JobStatus.RUNNING) {
-                Text("${formatDuration(progress.timeMs)} / ${formatDuration(ui.durationMs)}")
+                Text(
+                    stringResource(
+                        R.string.progress_time,
+                        formatDuration(progress.timeMs),
+                        formatDuration(ui.durationMs),
+                    ),
+                )
             }
             if (ui.active.size > 1) {
-                Text("Queue", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.progress_queue), style = MaterialTheme.typography.titleSmall)
                 ui.active.forEachIndexed { index, item ->
-                    Text("${index + 1}. ${item.displayName} · ${item.status.label()}")
+                    Text(
+                        stringResource(
+                            R.string.progress_queue_item,
+                            index + 1,
+                            item.displayName,
+                            item.status.label(),
+                        ),
+                    )
                 }
             }
             Text(
-                "You can leave this screen. Jobs keep running in a notification, one at a time.",
+                stringResource(R.string.progress_leave_hint),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             OutlinedButton(onClick = { viewModel.cancelCurrent(context) }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (job?.status == JobStatus.QUEUED) "Remove from queue" else "Cancel this job")
+                Text(
+                    stringResource(
+                        if (job?.status == JobStatus.QUEUED) {
+                            R.string.progress_remove_from_queue
+                        } else {
+                            R.string.progress_cancel_job
+                        },
+                    ),
+                )
             }
             if (ui.total > 1) {
                 OutlinedButton(onClick = { viewModel.cancelAll(context) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Cancel all")
+                    Text(stringResource(R.string.progress_cancel_all))
                 }
             }
         }

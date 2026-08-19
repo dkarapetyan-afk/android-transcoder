@@ -1,5 +1,7 @@
 package com.androidcompress.app.data
 
+import android.content.Context
+import com.androidcompress.app.R
 import com.androidcompress.app.encode.JobLogStore
 import com.androidcompress.app.media.InputResolver
 
@@ -7,11 +9,15 @@ data class ClearHistoryResult(
     val removed: Int,
     val kept: Int,
 ) {
-    fun message(): String = when {
-        removed == 0 && kept > 0 -> "Nothing to clear. A recording in progress was left alone."
-        kept > 0 -> "Cleared $removed job(s). Left a recording in progress."
-        removed == 0 -> "Nothing to clear."
-        else -> "Cleared $removed job(s) and cache files."
+    fun message(context: Context): String = when {
+        removed == 0 && kept > 0 -> context.getString(R.string.history_cleared_none_recording)
+        kept > 0 -> context.resources.getQuantityString(
+            R.plurals.history_cleared_left_recording,
+            removed,
+            removed,
+        )
+        removed == 0 -> context.getString(R.string.history_cleared_none)
+        else -> context.resources.getQuantityString(R.plurals.history_cleared, removed, removed)
     }
 }
 

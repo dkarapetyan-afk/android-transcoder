@@ -15,7 +15,7 @@ import com.google.common.collect.ImmutableList
 import java.nio.ByteBuffer
 
 /**
- * Transformer factory that writes VP8/VP9 + Opus/Vorbis with Media3 [WebmMuxer].
+ * Transformer factory that writes VP8/VP9/AV1 + Opus/Vorbis with Media3 [WebmMuxer].
  *
  * Media3 1.11 WebM muxing is incomplete: [WebmMuxer.addMetadataEntry] throws,
  * and [WebmMuxer] requires [Format.language] plus Opus CodecPrivate. Transformer
@@ -36,7 +36,11 @@ class AndroidWebmMuxerFactory : Muxer.Factory {
 
     override fun getSupportedSampleMimeTypes(trackType: Int): ImmutableList<String> {
         return when (trackType) {
-            C.TRACK_TYPE_VIDEO -> ImmutableList.of(MimeTypes.VIDEO_VP8, MimeTypes.VIDEO_VP9)
+            C.TRACK_TYPE_VIDEO -> ImmutableList.of(
+                MimeTypes.VIDEO_VP8,
+                MimeTypes.VIDEO_VP9,
+                MimeTypes.VIDEO_AV1,
+            )
             C.TRACK_TYPE_AUDIO -> ImmutableList.of(MimeTypes.AUDIO_OPUS, MimeTypes.AUDIO_VORBIS)
             else -> ImmutableList.of()
         }

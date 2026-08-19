@@ -7,15 +7,18 @@ These cannot be fully automated in this workspace.
 - Single-app capture (Android 14+) produces a usable MP4.
 - Microphone recording has audible mic audio.
 - Internal audio (API 29+) captures media/game playback and muxes after stop.
+- Mic + Internal (API 29+) records voice and playback together; the mix happens after stop. Headphones should reduce speaker echo.
+- Pause and Resume from the Record screen and from the notification freeze the timer and omit paused time from the file. Stop still finalizes.
 - Compress a file opens one system picker; a video and an audio file both reach the compress screen.
 - Share / Send a video or audio file from Photos, Files, or a messenger: Recording Compressor appears as Compress and opens the compress screen. Share two files at once creates two jobs; the first opens and the rest are in Recent.
 - Start compress on API 35+ (Pixel 10 / Android 16): must not crash with InvalidForegroundServiceTypeException.
-- Hardware encoder path and software fallback (toggle hardware off). After the FFmpeg 8.1 AAR swap, confirm FFmpeg still lists h264_mediacodec / libvpx / libopus.
+- Hardware encoder path and software fallback (toggle hardware off). After the FFmpeg 8.1 AAR swap, confirm FFmpeg still lists h264_mediacodec / libvpx / libopus. If the device has AV1, confirm av1_mediacodec (and libaom-av1 if the kit includes it).
 - FFmpeg WebM video looks correct (not scrambled). Command should use libvpx-vp9 or libvpx and yuv420p, not vp9_mediacodec.
 - Device (Media3) engine: pick it on the compress screen, confirm progress, output, and cancel still work without FFmpeg.
 - Device (Media3) clip: set start/end on a known source, confirm the output is only that range and progress uses the clipped duration. Whole-video reset clears the clip.
 - Audio only from a video (both engines): output is an AAC .m4a in Music/RecordingCompressor; Open/Share use audio MIME.
 - WebM video (both engines): Container WebM, VP9 default; output is .webm in Movies/RecordingCompressor; Open/Share use video/webm. FFmpeg software fallback if hardware VP9 fails.
+- AV1 (both engines): Advanced → Codec AV1 when the chip appears (hardware AV1, or FFmpeg libaom). MP4 writes av01; WebM keeps AV1 + Opus. Media3 falls back to H.264 (MP4) or VP9 (WebM) if the device encoder fails. FFmpeg falls back to libaom then H.264/VP9. Open the result in an AV1-capable player.
 - WebM audio only (both engines): Container WebM + Audio only; output is Opus .webm in Music/RecordingCompressor.
 - Pick an m4a/mp3 from the same picker; Audio only is locked if the source has no video.
 - Advanced: CBR vs VBR, keyframe 2s, H.264 High, volume 150%, tone-map, and B-frames Off — try once on FFmpeg and once on Media3.
@@ -32,5 +35,6 @@ These cannot be fully automated in this workspace.
 - After record → compress → result, Back (system or toolbar) returns to Home, not a blank white screen.
 - App Functions (Android 16+): after install, `adb shell cmd app_function list-app-functions` includes `com.androidcompress.app` (or `.debug`). `describeCapabilities`, `compressNow`, `waitForJob`, `cloneJob`, `retryJob`, and `discardJob` work on an imported job. `waitForJob` returns `timedOut=true` if still encoding after the timeout; call it again. Cancel one job leaves later queued items running. `discardJob` leaves gallery files. `shareOutput` / `openOutput` open a system sheet or viewer (may need the assistant in the foreground).
 - Device library access: Settings toggle requests READ_MEDIA_*. Choose Allow all. Then `listDeviceMedia` returns on-device videos and `compressNow` / `importDeviceMedia` with a display name or `/sdcard/Download/clip.mp4` creates a job without the picker. `requestLibraryAccess` opens Settings and the permission prompt when the grant is missing. Denying the permission makes those functions return a Settings grant error. The picker and Share still work without the grant. `listDeviceMedia` `relativePath=Download` filters to that folder.
+- Settings → Test device hardware: Run test encodes a 1-second clip on each listed hardware encoder. Max advertised resolution, verified encode size, 10-bit/HDR flags, and realtime speed appear. Stop cancels mid-run. Temp files in cache/hwtest are gone afterward. Reopening the screen shows the last finished report.
 - Rotation during recording does not crash the service.
 - Notification tap on an in-flight encode returns to the app.

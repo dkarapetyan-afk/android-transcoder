@@ -370,6 +370,101 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
+    fun av1UsesHardwareAndAv01Tag() {
+        val caps = hardwareCaps.copy(hasAv1MediaCodec = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, caps)
+        assertEquals("av1_mediacodec", plan.videoEncoder)
+        assertEquals("nv12", plan.pixFmt)
+        assertEquals("av01", plan.args[plan.args.indexOf("-tag:v") + 1])
+        assertFalse(plan.args.contains("-bf"))
+    }
+
+    @Test
+    fun av1UsesLibaomWhenHardwareOff() {
+        val caps = hardwareCaps.copy(hasAv1MediaCodec = true, hasLibaomAv1 = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            codec = VideoCodec.AV1,
+            preferHardware = false,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, caps)
+        assertEquals("libaom-av1", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
+        assertEquals("realtime", plan.args[plan.args.indexOf("-usage") + 1])
+        assertEquals("8", plan.args[plan.args.indexOf("-cpu-used") + 1])
+        assertEquals("2x2", plan.args[plan.args.indexOf("-tiles") + 1])
+    }
+
+    @Test
+    fun av1FallsBackToH264WithoutAv1Encoders() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
+        val encoder = FfmpegCommandBuilder.selectVideoEncoder(settings, hardwareCaps)
+        assertEquals("h264_mediacodec", encoder)
+    }
+
+    @Test
+    fun webmAv1UsesHardwareThenOpus() {
+        val caps = hardwareCaps.copy(hasAv1MediaCodec = true, hasLibOpus = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            container = ContainerFormat.WEBM,
+            codec = VideoCodec.AV1,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("av1_mediacodec", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
+        assertEquals("libopus", plan.args[plan.args.indexOf("-c:a") + 1])
+        assertFalse(plan.args.contains("-tag:v"))
+        assertFalse(plan.args.contains("-movflags"))
+    }
+
+    @Test
+    fun webmAv1HardwareFallsBackToLibaomThenVp9() {
+        val caps = hardwareCaps.copy(
+            hasAv1MediaCodec = true,
+            hasLibaomAv1 = true,
+            hasLibvpx = true,
+            hasLibvpxVp9 = true,
+        )
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            container = ContainerFormat.WEBM,
+            codec = VideoCodec.AV1,
+        )
+        val first = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("av1_mediacodec", first.videoEncoder)
+        val second = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libaom-av1", second?.videoEncoder)
+        val third = FfmpegCommandBuilder.fallbackPlan(second!!, "in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx-vp9", third?.videoEncoder)
+    }
+
+    @Test
+    fun mp4Av1HardwareFallsBackToLibaom() {
+        val caps = hardwareCaps.copy(hasAv1MediaCodec = true, hasLibaomAv1 = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
+        val first = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, caps)
+        val yuv = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.mp4", settings, source, caps)
+        assertEquals("yuv420p", yuv?.pixFmt)
+        assertEquals("av1_mediacodec", yuv?.videoEncoder)
+        val software = FfmpegCommandBuilder.fallbackPlan(yuv!!, "in.mp4", "out.mp4", settings, source, caps)
+        assertEquals("libaom-av1", software?.videoEncoder)
+    }
+
+    @Test
+    fun encoderListingParserReadsAv1() {
+        val listing = """
+            Encoders:
+             V..... av1_mediacodec
+             V..... libaom-av1
+             V..... libsvtav1
+        """.trimIndent()
+        val caps = EncoderListing.parse(listing)
+        assertTrue(caps.hasAv1MediaCodec)
+        assertTrue(caps.hasLibaomAv1)
+        assertTrue(caps.hasLibSvtAv1)
+        assertFalse(caps.hasH264MediaCodec)
+    }
+
+    @Test
     fun encoderListingParserReadsVpx() {
         val listing = """
             Encoders:

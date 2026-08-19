@@ -254,9 +254,9 @@ If output mode is AUDIO and the container is MP4, the app already supplies -y -h
 
 If output mode is AUDIO and the container is WEBM, the app already supplies -y -hide_banner -i INPUT -vn, optional -ss/-t, audio (-c:a libopus or copy), extra args, and a .webm OUTPUT. Do not add -c:v or -movflags.
 
-If output mode is VIDEO and the container is MP4, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, -c:v (h264_mediacodec, hevc_mediacodec, libopenh264, or mpeg4), -b:v, optional -maxrate/-bufsize, -pix_fmt, profile/GOP/B-frames, audio (-c:a aac or copy or -an), optional -movflags +faststart, extra args, and OUTPUT.
+If output mode is VIDEO and the container is MP4, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, -c:v (h264_mediacodec, hevc_mediacodec, av1_mediacodec, libaom-av1, libsvtav1, libopenh264, or mpeg4), -b:v, optional -maxrate/-bufsize, -pix_fmt, profile/GOP/B-frames, audio (-c:a aac or copy or -an), optional -movflags +faststart, extra args, and OUTPUT.
 
-If output mode is VIDEO and the container is WEBM, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, format=yuv420p, -c:v (libvpx-vp9 or libvpx), -b:v, libvpx deadline/cpu-used, -pix_fmt yuv420p, audio (-c:a libopus or copy or -an), extra args, and a .webm OUTPUT. Do not add -movflags. Do not switch the output to MP4. Do not use vp8_mediacodec or vp9_mediacodec.
+If output mode is VIDEO and the container is WEBM, the app already supplies: -y -hide_banner -i INPUT, optional scale/fps, format=yuv420p, -c:v (libvpx-vp9, libvpx, av1_mediacodec, or libaom-av1), -b:v, libvpx deadline/cpu-used or libaom realtime flags, -pix_fmt yuv420p, audio (-c:a libopus or copy or -an), extra args, and a .webm OUTPUT. Do not add -movflags. Do not switch the output to MP4. Do not use vp8_mediacodec or vp9_mediacodec.
 
 If the current command already has -i INPUT and -i AUDIO, this is a combine job (still image or video picture plus a separate soundtrack). Do not add another -i. Do not drop AUDIO. Do not use -filter_complex.
 

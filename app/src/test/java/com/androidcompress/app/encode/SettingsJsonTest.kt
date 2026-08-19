@@ -14,6 +14,7 @@ import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.effectiveVideoCodec
 import com.androidcompress.app.data.outputExtension
 import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.withContainer
@@ -91,6 +92,12 @@ class SettingsJsonTest {
         val back = webm.withContainer(ContainerFormat.MP4)
         assertEquals(VideoCodec.H264, back.codec)
         assertEquals("mp4", back.outputExtension())
+        val av1Mp4 = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
+        val av1Webm = av1Mp4.withContainer(ContainerFormat.WEBM)
+        assertEquals(VideoCodec.AV1, av1Webm.codec)
+        assertEquals(VideoCodec.AV1, av1Webm.withContainer(ContainerFormat.MP4).codec)
+        assertEquals(VideoCodec.AV1, av1Mp4.effectiveVideoCodec())
+        assertEquals(VideoCodec.AV1, av1Webm.effectiveVideoCodec())
     }
 
     @Test
@@ -102,8 +109,11 @@ class SettingsJsonTest {
             hasMpeg4 = true,
             hasVp8MediaCodec = true,
             hasVp9MediaCodec = true,
+            hasAv1MediaCodec = true,
             hasLibvpx = true,
             hasLibvpxVp9 = true,
+            hasLibaomAv1 = true,
+            hasLibSvtAv1 = false,
             hasLibOpus = true,
         )
         val decoded = SettingsJson.decodeCaps(SettingsJson.encodeCaps(caps))
@@ -119,5 +129,10 @@ class SettingsJsonTest {
         assertNull(SettingsJson.decodeCaps(raw))
         val stale = """{"kit":"6.1.7","vp9mc":true}"""
         assertNull(SettingsJson.decodeCaps(stale))
+        val missingAv1 = """
+            {"kit":"8.1.7","h264mc":true,"hevcMc":false,"openh264":false,"mpeg4":true,
+             "vp8mc":false,"vp9mc":true,"libvpx":true,"libvpxVp9":true,"libopus":true}
+        """.trimIndent()
+        assertNull(SettingsJson.decodeCaps(missingAv1))
     }
 }

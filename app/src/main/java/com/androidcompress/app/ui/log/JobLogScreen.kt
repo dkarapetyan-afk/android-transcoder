@@ -21,9 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.androidcompress.app.R
 import com.androidcompress.app.ui.components.AppTopBar
 import kotlinx.coroutines.launch
 
@@ -37,7 +39,9 @@ fun JobLogScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     Scaffold(
-        topBar = { AppTopBar(ui.title, onBack = onBack) },
+        topBar = {
+            AppTopBar(ui.title.ifBlank { stringResource(R.string.log_title) }, onBack = onBack)
+        },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(
@@ -49,19 +53,19 @@ fun JobLogScreen(
         ) {
             if (ui.empty) {
                 Text(
-                    "No encode log yet. Run a compression and the full FFmpeg or Media3 output will appear here.",
+                    stringResource(R.string.log_empty),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 OutlinedButton(
                     onClick = {
                         if (viewModel.copy(context)) {
-                            scope.launch { snackbar.showSnackbar("Log copied") }
+                            scope.launch { snackbar.showSnackbar(context.getString(R.string.log_copied)) }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Copy log")
+                    Text(stringResource(R.string.log_copy))
                 }
                 SelectionContainer(Modifier.weight(1f)) {
                     Text(

@@ -10,6 +10,7 @@ class JobCacheNamesTest {
         assertEquals("abc", InputResolver.cacheJobId("abc.mp4"))
         assertEquals("abc", InputResolver.cacheJobId("abc.webm"))
         assertEquals("abc", InputResolver.cacheJobId("abc.wav"))
+        assertEquals("abc.mic", InputResolver.cacheJobId("abc.mic.wav"))
     }
 
     @Test

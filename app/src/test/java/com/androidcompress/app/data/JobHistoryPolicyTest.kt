@@ -64,14 +64,12 @@ class JobHistoryPolicyTest {
     }
 
     @Test
-    fun clearAllMessage() {
-        assertEquals("Nothing to clear.", ClearHistoryResult(0, 0).message())
-        assertEquals("Cleared 3 job(s) and cache files.", ClearHistoryResult(3, 0).message())
-        assertEquals("Cleared 2 job(s). Left a recording in progress.", ClearHistoryResult(2, 1).message())
-        assertEquals(
-            "Nothing to clear. A recording in progress was left alone.",
-            ClearHistoryResult(0, 1).message(),
-        )
+    fun clearAllCounts() {
+        assertEquals(0, ClearHistoryResult(0, 0).removed)
+        assertEquals(0, ClearHistoryResult(0, 0).kept)
+        assertEquals(3, ClearHistoryResult(3, 0).removed)
+        assertEquals(1, ClearHistoryResult(2, 1).kept)
+        assertEquals(1, ClearHistoryResult(0, 1).kept)
     }
 
     private fun job(id: String, status: JobStatus, createdAt: Long) = CompressJob(

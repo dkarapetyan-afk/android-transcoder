@@ -50,6 +50,16 @@ class JobSettingsCodecTest {
     }
 
     @Test
+    fun av1SurvivesWebmContainerSwitch() {
+        val next = JobSettingsCodec.apply(
+            EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1),
+            SettingsPatch(container = ContainerFormat.WEBM),
+        )
+        assertEquals(VideoCodec.AV1, next.codec)
+        assertEquals(ContainerFormat.WEBM, next.container)
+    }
+
+    @Test
     fun clearsHeightFpsClipAndOverride() {
         val base = EncodeSettings.forPreset(Preset.BALANCED).copy(
             ffmpegCommandOverride = "-y -i INPUT OUTPUT",
@@ -102,6 +112,8 @@ class JobSettingsCodecTest {
         assertEquals(EncodeEngine.MEDIA3, JobSettingsCodec.parseEngine("media3"))
         assertEquals(Preset.SMALLER, JobSettingsCodec.parsePreset("smaller"))
         assertEquals(ContainerFormat.WEBM, JobSettingsCodec.parseContainer("webm"))
+        assertEquals(VideoCodec.AV1, JobSettingsCodec.parseCodec("av1"))
+        assertEquals(VideoCodec.AV1, JobSettingsCodec.parseCodec("AV1"))
         assertNull(JobSettingsCodec.parseCodec("x264"))
     }
 

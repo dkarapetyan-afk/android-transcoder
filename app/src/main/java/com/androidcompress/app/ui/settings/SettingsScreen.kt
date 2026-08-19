@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -39,16 +40,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.androidcompress.app.R
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.media.MediaLibraryAccess
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.presetLabel
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
     promptLibraryAccess: Boolean = false,
+    onHardwareTest: () -> Unit = {},
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
@@ -71,7 +75,7 @@ fun SettingsScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    Scaffold(topBar = { AppTopBar("Settings", onBack = onBack) }) { padding ->
+    Scaffold(topBar = { AppTopBar(stringResource(R.string.settings_title), onBack = onBack) }) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -80,47 +84,47 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Default engine", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_default_engine), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = settings.defaultEngine == EncodeEngine.FFMPEG,
                     onClick = { viewModel.setEngine(EncodeEngine.FFMPEG) },
-                    label = { Text("FFmpeg") },
+                    label = { Text(stringResource(R.string.engine_ffmpeg)) },
                 )
                 FilterChip(
                     selected = settings.defaultEngine == EncodeEngine.MEDIA3,
                     onClick = { viewModel.setEngine(EncodeEngine.MEDIA3) },
-                    label = { Text("Device (Media3)") },
+                    label = { Text(stringResource(R.string.engine_media3)) },
                 )
             }
             Text(
-                "Device uses Media3 Transformer and the hardware encoder, without FFmpeg. Applied to new jobs.",
+                stringResource(R.string.settings_engine_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text("Default preset", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_default_preset), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = settings.defaultPreset == Preset.SMALLER,
                     onClick = { viewModel.setPreset(Preset.SMALLER) },
-                    label = { Text("Smaller") },
+                    label = { Text(presetLabel(Preset.SMALLER)) },
                 )
                 FilterChip(
                     selected = settings.defaultPreset == Preset.BALANCED,
                     onClick = { viewModel.setPreset(Preset.BALANCED) },
-                    label = { Text("Balanced") },
+                    label = { Text(presetLabel(Preset.BALANCED)) },
                 )
                 FilterChip(
                     selected = settings.defaultPreset == Preset.HIGHER,
                     onClick = { viewModel.setPreset(Preset.HIGHER) },
-                    label = { Text("Higher quality") },
+                    label = { Text(presetLabel(Preset.HIGHER)) },
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Remember advanced settings")
+                    Text(stringResource(R.string.settings_remember_advanced))
                     Text(
-                        "Reuse the last resolution, bitrate, and audio choices.",
+                        stringResource(R.string.settings_remember_advanced_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -129,9 +133,9 @@ fun SettingsScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Auto-compress after recording")
+                    Text(stringResource(R.string.settings_auto_compress))
                     Text(
-                        "Start Balanced (or your remembered settings) as soon as a recording stops.",
+                        stringResource(R.string.settings_auto_compress_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -140,9 +144,9 @@ fun SettingsScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Delete original after compress")
+                    Text(stringResource(R.string.settings_delete_original))
                     Text(
-                        "Default for new jobs. The original is removed only after the compressed file is written. Recordings this app created can always be deleted; gallery files may be blocked by Android.",
+                        stringResource(R.string.settings_delete_original_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -151,13 +155,15 @@ fun SettingsScreen(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Device library access")
+                    Text(stringResource(R.string.settings_library_access))
                     Text(
-                        if (libraryGranted) {
-                            "Agents can list and import videos, audio, and photos already on this device. Choose Allow all if Android offers selected items."
-                        } else {
-                            "Needed so App Functions can open a file without the picker. Choose Allow all, not selected photos."
-                        },
+                        stringResource(
+                            if (libraryGranted) {
+                                R.string.settings_library_granted
+                            } else {
+                                R.string.settings_library_needed
+                            },
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -177,9 +183,18 @@ fun SettingsScreen(
                     },
                 )
             }
-            Text("Gemini extra args", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.settings_hardware_title), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Optional. A free Google AI Studio key lets the compress screen turn a plain-English request into extra FFmpeg flags. It starts with the latest Flash model and falls back to older or lighter ones if that model is missing or rate-limited. The video file stays on this device; only the text prompt and encode settings are sent to Google.",
+                stringResource(R.string.settings_hardware_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onHardwareTest) {
+                Text(stringResource(R.string.settings_hardware_open))
+            }
+            Text(stringResource(R.string.settings_gemini_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.settings_gemini_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -188,12 +203,12 @@ fun SettingsScreen(
                 onValueChange = viewModel::setGeminiApiKey,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                label = { Text("Gemini API key") },
+                label = { Text(stringResource(R.string.settings_gemini_key)) },
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
             TextButton(onClick = { uriHandler.openUri("https://aistudio.google.com/apikey") }) {
-                Text("Get a free Gemini API key")
+                Text(stringResource(R.string.settings_gemini_get_key))
             }
         }
     }
