@@ -1,17 +1,21 @@
 package com.androidcompress.app.agent
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import com.androidcompress.app.container
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.JobStatus
+import com.androidcompress.app.data.JobType
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.data.galleryFolder
+import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.di.AppContainer
 import com.androidcompress.app.encode.CompressService
@@ -19,9 +23,13 @@ import com.androidcompress.app.encode.EncodeQueue
 import com.androidcompress.app.encode.FfmpegCommandBuilder
 import com.androidcompress.app.encode.FfmpegCommandTemplate
 import com.androidcompress.app.encode.Media3EncodePlanner
+import com.androidcompress.app.media.DeviceMediaQueries
 import com.androidcompress.app.media.DeviceMediaStore
+import com.androidcompress.app.media.InputResolver
 import com.androidcompress.app.media.MediaLibraryAccess
-import com.androidcompress.app.container
+import kotlinx.coroutines.delay
+import java.io.File
+import java.util.UUID
 
 class JobAgent(
     private val context: Context,
@@ -30,11 +38,12 @@ class JobAgent(
     fun describeCapabilities(): AppCapabilities = AppCapabilities(
         summary = "Recording Compressor encodes videos and audio on this device with FFmpeg or Media3. " +
             "It can also combine a picture or video with a separate soundtrack.",
-        workflow = "1) If libraryAccessGranted is false, tell the user to grant library access in Settings (Allow all). " +
-            "2) listDeviceMedia to find a file, then importDeviceMedia or importFile. " +
-            "3) getJob and optionally updateJobSettings or applyPreset. " +
-            "4) previewEncode, then startJob or startReadyJobs. " +
-            "5) getProgress and getEncodeLog until status is SUCCEEDED or FAILED.",
+        workflow = "1) If libraryAccessGranted is false, call requestLibraryAccess and ask the user to Allow all. " +
+            "2) For one file, call compressNow(uriOrPath, settings, wait=true). " +
+            "3) For several files, listDeviceMedia with relativePath or date filters, then importDeviceMediaBatch. " +
+            "4) Use cloneJob for a second encode of the same source, or retryJob after a failure. " +
+            "5) waitForJob or waitForQueue (max 180s; call again if timedOut). " +
+            "6) shareOutput or openOutput when done. discardJob removes history only.",
         presets = JobSettingsCodec.presets,
         engines = JobSettingsCodec.engines,
         outputs = JobSettingsCodec.outputs,
@@ -49,10 +58,29 @@ class JobAgent(
         jobStatuses = JobSettingsCodec.jobStatuses,
         libraryAccessGranted = MediaLibraryAccess.granted(context),
         libraryAccessNote = "Grant videos, audio, and photos in Settings and choose Allow all. " +
-            "Then listDeviceMedia and importDeviceMedia can open files already on the device. " +
-            "importDeviceMedia accepts a MediaStore content URI, an absolute path, or an exact display name.",
-        restrictions = "This API does not record the screen, delete gallery files, clear history, or send media off the device. " +
-            "Job records omit source and output URIs. Extra FFmpeg args cannot add inputs or paths.",
+            "requestLibraryAccess opens that screen. Then listDeviceMedia, importDeviceMedia, " +
+            "importDeviceMediaBatch, and compressNow can open files already on the device. " +
+            "Those tools accept a MediaStore content URI, an absolute path, or an exact display name.",
+        recommendedTools = listOf(
+            "describeCapabilities",
+            "requestLibraryAccess",
+            "compressNow",
+            "waitForJob",
+            "listDeviceMedia",
+            "importDeviceMediaBatch",
+            "cloneJob",
+            "retryJob",
+            "getProgress",
+            "getEncodeLog",
+            "getEncoderCapabilities",
+            "getSourceInfo",
+            "shareOutput",
+            "discardJob",
+        ),
+        restrictions = "This API does not record the screen, delete gallery files, clear all history, or send media off the device. " +
+            "discardJob removes a history row and cache only. shareOutput and openOutput use the system sheet or viewer. " +
+            "Job records omit source and output URIs. Extra FFmpeg args cannot add inputs or paths. " +
+            "waitForJob blocks at most 180 seconds.",
     )
 
     fun listPresets(): List<PresetInfo> = Preset.entries.map { preset ->
@@ -301,8 +329,25 @@ class JobAgent(
         )
     }
 
-    suspend fun listDeviceMedia(kind: String?, query: String?, limit: Int): DeviceMediaList {
-        val items = DeviceMediaStore.list(context, kind, query, limit).map { row ->
+    suspend fun listDeviceMedia(
+        kind: String?,
+        query: String?,
+        limit: Int,
+        relativePath: String?,
+        addedAfterEpochMs: Long,
+        minDurationMs: Long,
+        maxDurationMs: Long,
+    ): DeviceMediaList {
+        val items = DeviceMediaStore.list(
+            context = context,
+            kind = kind,
+            query = query,
+            limit = limit,
+            relativePath = relativePath,
+            addedAfterEpochMs = addedAfterEpochMs,
+            minDurationMs = minDurationMs,
+            maxDurationMs = maxDurationMs,
+        ).map { row ->
             DeviceMediaItem(
                 contentUri = row.contentUri.toString(),
                 displayName = row.displayName,
@@ -311,11 +356,17 @@ class JobAgent(
                 bytes = row.bytes,
                 durationMs = row.durationMs,
                 relativePath = row.relativePath,
+                dateAddedEpochMs = row.dateAddedEpochMs,
+                dateModifiedEpochMs = row.dateModifiedEpochMs,
             )
         }
         return DeviceMediaList(
             items = items,
             kind = kind?.trim()?.uppercase()?.ifBlank { "ANY" } ?: "ANY",
+            relativePath = DeviceMediaQueries.normalizeRelativePath(relativePath),
+            addedAfterEpochMs = addedAfterEpochMs.coerceAtLeast(0L),
+            minDurationMs = minDurationMs.coerceAtLeast(0L),
+            maxDurationMs = maxDurationMs.coerceAtLeast(0L),
             libraryAccessGranted = MediaLibraryAccess.granted(context),
         )
     }
@@ -363,6 +414,7 @@ class JobAgent(
         engineName: String?,
         autoCompressAfterRecord: Boolean?,
         rememberAdvanced: Boolean?,
+        deleteOriginalAfterEncode: Boolean?,
     ): AppDefaults {
         if (presetName != null) container.prefs.setDefaultPreset(JobSettingsCodec.requirePreset(presetName))
         if (engineName != null) container.prefs.setDefaultEngine(JobSettingsCodec.requireEngine(engineName))
@@ -370,7 +422,297 @@ class JobAgent(
             container.prefs.setAutoCompressAfterRecord(autoCompressAfterRecord)
         }
         if (rememberAdvanced != null) container.prefs.setRememberAdvanced(rememberAdvanced)
+        if (deleteOriginalAfterEncode != null) {
+            container.prefs.setDeleteOriginalAfterEncode(deleteOriginalAfterEncode)
+        }
         return getAppDefaults()
+    }
+
+    suspend fun compressNow(
+        uriOrPath: String,
+        update: JobSettingsUpdate?,
+        wait: Boolean,
+        timeoutSec: Int,
+        deleteSourceAfter: Boolean,
+    ): WaitResult {
+        val imported = importDeviceMedia(uriOrPath)
+        val job = imported.jobs.firstOrNull() ?: error("Import did not create a job.")
+        val started = startJob(job.summary.jobId, update, deleteSourceAfter)
+        val startedJob = started.jobs.first()
+        if (!wait) {
+            return toWaitResult(started.jobs, timedOut = false, started.message)
+        }
+        return waitForJob(startedJob.summary.jobId, timeoutSec)
+    }
+
+    suspend fun waitForJob(jobId: String, timeoutSec: Int): WaitResult {
+        val job = requireJob(jobId)
+        if (AgentWait.isTerminal(job.status)) {
+            return toWaitResult(listOf(getJob(job.id)), timedOut = false, terminalMessage(job))
+        }
+        if (!AgentWait.canWait(job.status)) {
+            error("Job ${job.id} is ${job.status.name} and is not encoding. Call startJob or compressNow first.")
+        }
+        return awaitUntil(timeoutSec, idleMessage = "Job ${job.displayName} finished.") { all ->
+            val current = all.firstOrNull { it.id == job.id } ?: throw NoSuchElementException("No job with id ${job.id}.")
+            when {
+                AgentWait.isTerminal(current.status) -> listOf(current) to true
+                AgentWait.canWait(current.status) -> listOf(current) to false
+                else -> error("Job ${current.id} is ${current.status.name} and is not encoding.")
+            }
+        }
+    }
+
+    suspend fun waitForQueue(timeoutSec: Int): WaitResult {
+        val initial = EncodeQueue.active(container.jobs.listAll())
+        if (initial.isEmpty()) {
+            return toWaitResult(emptyList(), timedOut = false, "The queue is idle.")
+        }
+        val watchedIds = initial.map { it.id }.toSet()
+        return awaitUntil(timeoutSec, idleMessage = "Queue finished.") { all ->
+            val active = EncodeQueue.active(all)
+            if (active.isEmpty()) {
+                all.filter { it.id in watchedIds } to true
+            } else {
+                active to false
+            }
+        }
+    }
+
+    suspend fun importDeviceMediaBatch(uriOrPaths: List<String>): BatchImportResult {
+        val paths = uriOrPaths.map { it.trim() }.filter { it.isNotBlank() }.distinct().take(40)
+        if (paths.isEmpty()) error("Pass at least one content URI, file path, or display name.")
+        val jobs = ArrayList<JobDetail>()
+        val errors = ArrayList<String>()
+        for (raw in paths) {
+            runCatching { importDeviceMedia(raw) }
+                .onSuccess { jobs.addAll(it.jobs) }
+                .onFailure { errors.add("${raw.take(80)}: ${it.message ?: "Unable to import"}") }
+        }
+        return BatchImportResult(
+            message = "Imported ${jobs.size} file(s). ${errors.size} failed.",
+            jobs = jobs,
+            errors = errors,
+            importedCount = jobs.size,
+            failedCount = errors.size,
+        )
+    }
+
+    suspend fun importCombineDeviceMedia(visualUriOrPath: String, audioUriOrPath: String): JobActionResult {
+        val visual = DeviceMediaStore.resolve(context, visualUriOrPath)
+        val audio = DeviceMediaStore.resolve(context, audioUriOrPath)
+        return importCombine(visual, audio)
+    }
+
+    suspend fun retryJob(jobId: String, update: JobSettingsUpdate?): JobActionResult {
+        val job = requireJob(jobId)
+        JobSettingsCodec.requireRetryable(job)
+        return startJob(job.id, update, deleteSourceAfter = false)
+    }
+
+    suspend fun cloneJob(jobId: String, update: JobSettingsUpdate?): JobDetail {
+        val job = requireJob(jobId)
+        JobSettingsCodec.requireCloneable(job)
+        val newId = UUID.randomUUID().toString()
+        runCatching { container.inputs.copyJobCache(job.id, newId) }
+            .getOrElse { error("Could not copy the source for a second job.") }
+        val sourceUri = InputResolver.remapCachedUri(job.sourceUri, job.id, newId)
+        val audioUri = if (job.audioUri.isBlank()) {
+            ""
+        } else {
+            InputResolver.remapCachedUri(job.audioUri, job.id, newId)
+        }
+        if (sourceUri != job.sourceUri) {
+            val path = Uri.parse(sourceUri).path
+            if (path == null || !File(path).isFile) error("Could not copy the source for a second job.")
+        }
+        var settings = SettingsJson.decode(job.settingsJson)
+        if (update != null) {
+            settings = JobSettingsCodec.apply(settings, JobSettingsCodec.patchFromUpdate(update))
+        }
+        val clone = job.copy(
+            id = newId,
+            type = if (job.type == JobType.RECORD) JobType.IMPORT else job.type,
+            status = JobStatus.READY,
+            sourceUri = sourceUri,
+            audioUri = audioUri,
+            outputUri = null,
+            outputBytes = null,
+            error = null,
+            createdAt = System.currentTimeMillis(),
+            finishedAt = null,
+            queuedAt = null,
+            deleteSourceAfter = false,
+            sourceDeleted = false,
+            settingsJson = SettingsJson.encode(settings),
+        )
+        container.jobs.upsert(clone)
+        runCatching { container.history.prune() }
+        return getJob(newId)
+    }
+
+    suspend fun discardJob(jobId: String): JobActionResult {
+        val job = requireJob(jobId)
+        JobSettingsCodec.requireDiscardable(job)
+        val detail = toDetail(job, container.jobs.listAll())
+        container.history.deleteJob(job.id)
+        return JobActionResult(
+            message = "Removed ${job.displayName} from history. Gallery files were left alone.",
+            jobs = listOf(detail),
+        )
+    }
+
+    suspend fun shareOutput(jobId: String): JobActionResult {
+        val job = requireOutputJob(jobId)
+        val mime = SettingsJson.decode(job.settingsJson).outputMime()
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, Uri.parse(job.outputUri))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(send, if (mime.startsWith("audio")) "Share audio" else "Share video")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startUserActivity(chooser, "Could not open the share sheet. Open the result screen in the app.")
+        return JobActionResult(
+            message = "Opened the share sheet for ${job.displayName}.",
+            jobs = listOf(toDetail(job, container.jobs.listAll())),
+        )
+    }
+
+    suspend fun openOutput(jobId: String): JobActionResult {
+        val job = requireOutputJob(jobId)
+        val mime = SettingsJson.decode(job.settingsJson).outputMime()
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(job.outputUri), mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startUserActivity(view, "Could not open the file. Open the result screen in the app.")
+        return JobActionResult(
+            message = "Opened ${job.displayName}.",
+            jobs = listOf(toDetail(job, container.jobs.listAll())),
+        )
+    }
+
+    fun requestLibraryAccess(): LibraryAccessResult {
+        if (MediaLibraryAccess.granted(context)) {
+            return LibraryAccessResult(granted = true, message = "Library access is already granted.")
+        }
+        AgentLaunch.openSettings(context, requestLibrary = true)
+        return LibraryAccessResult(
+            granted = false,
+            message = "Opened Settings. Ask the user to allow videos, audio, and photos and choose Allow all.",
+        )
+    }
+
+    suspend fun getEncoderCapabilities(): DeviceEncodeCaps {
+        val caps = container.encoderCapabilities()
+        return DeviceEncodeCaps(
+            hardwareH264 = caps.hasH264MediaCodec,
+            hardwareHevc = caps.hasHevcMediaCodec,
+            hardwareVp8 = caps.hasVp8MediaCodec,
+            hardwareVp9 = caps.hasVp9MediaCodec,
+            softwareVp8 = caps.hasLibvpx,
+            softwareVp9 = caps.hasLibvpxVp9,
+            opus = caps.hasLibOpus,
+            openH264 = caps.hasOpenH264,
+            note = "Prefer hardware H.264 when hardwareH264 is true. Use HEVC only when hardwareHevc is true. " +
+                "WebM should use software VP9 (libvpx) when softwareVp9 is true.",
+        )
+    }
+
+    suspend fun getSourceInfo(jobId: String): SourceInfo {
+        val job = requireJob(jobId)
+        val probed = runCatching { container.probe.probe(Uri.parse(job.sourceUri)) }.getOrNull()
+        val audioProbed = if (job.audioUri.isBlank()) {
+            null
+        } else {
+            runCatching { container.probe.probe(Uri.parse(job.audioUri)) }.getOrNull()
+        }
+        return SourceInfo(
+            jobId = job.id,
+            displayName = job.displayName,
+            durationMs = probed?.durationMs ?: job.durationMs,
+            width = probed?.width ?: job.width,
+            height = probed?.height ?: job.height,
+            sourceBytes = probed?.bytes ?: job.sourceBytes,
+            frameRate = probed?.frameRate ?: 0f,
+            hasAudio = probed?.hasAudio == true || audioProbed?.hasAudio == true || job.audioUri.isNotBlank(),
+            hasVideo = probed?.hasVideo ?: (job.width > 0 && job.height > 0 || job.stillImage),
+            stillImage = probed?.stillImage ?: job.stillImage,
+            combine = job.isCombine,
+            audioCodec = (audioProbed?.audioCodec ?: probed?.audioCodec).orEmpty(),
+        )
+    }
+
+    private suspend fun awaitUntil(
+        timeoutSec: Int,
+        idleMessage: String,
+        snapshot: (List<CompressJob>) -> Pair<List<CompressJob>, Boolean>,
+    ): WaitResult {
+        val timeout = AgentWait.clampTimeout(timeoutSec)
+        val deadline = System.currentTimeMillis() + timeout * 1000L
+        while (true) {
+            val all = container.jobs.listAll()
+            val (jobs, done) = snapshot(all)
+            if (done) {
+                val details = jobs.map { toDetail(it, all) }
+                val message = jobs.firstOrNull()?.let { terminalMessage(it) } ?: idleMessage
+                return toWaitResult(details, timedOut = false, message)
+            }
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0L) {
+                val details = jobs.map { toDetail(it, all) }
+                return toWaitResult(
+                    details,
+                    timedOut = true,
+                    "Still encoding after ${timeout}s. Call waitForJob or waitForQueue again.",
+                )
+            }
+            delay(remaining.coerceAtMost(500L))
+        }
+    }
+
+    private suspend fun toWaitResult(
+        jobs: List<JobDetail>,
+        timedOut: Boolean,
+        message: String,
+    ): WaitResult {
+        val primaryId = jobs.firstOrNull()?.summary?.jobId
+        val log = if (primaryId != null && (timedOut || jobs.any { it.summary.status == "FAILED" })) {
+            getEncodeLog(primaryId, 4_000)
+        } else {
+            EncodeLogSnapshot(jobId = primaryId.orEmpty(), found = false, text = "", returnedChars = 0)
+        }
+        return WaitResult(
+            message = message,
+            timedOut = timedOut,
+            jobs = jobs,
+            progress = getProgress(primaryId),
+            log = log,
+        )
+    }
+
+    private fun terminalMessage(job: CompressJob): String = when (job.status) {
+        JobStatus.SUCCEEDED -> "Job ${job.displayName} succeeded."
+        JobStatus.FAILED -> "Job ${job.displayName} failed. ${job.error.orEmpty()}".trim()
+        JobStatus.CANCELLED -> "Job ${job.displayName} was cancelled."
+        else -> "Job ${job.displayName} is ${job.status.name}."
+    }
+
+    private suspend fun requireOutputJob(jobId: String): CompressJob {
+        val job = requireJob(jobId)
+        if (job.status != JobStatus.SUCCEEDED || job.outputUri.isNullOrBlank()) {
+            error("Job ${job.id} has no compressed file to share yet.")
+        }
+        return job
+    }
+
+    private fun startUserActivity(intent: Intent, fallback: String) {
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            error(fallback)
+        }
     }
 
     private suspend fun saveSettings(job: CompressJob, settings: EncodeSettings): JobDetail =

@@ -18,7 +18,7 @@ Video processing is on-device. Optional Gemini extra-args generation sends text 
 - No analytics
 - Files: video files the user creates, stay on device
 - Optional: text prompts sent to Google Gemini when the user uses Generate extra args
-- Optional: job metadata (names, sizes, settings, progress, encode logs) may be read by a privileged on-device agent through App Functions on Android 16+. The assistant may send the user's spoken request to a server; this app still does not upload media.
+- Optional: job metadata (names, sizes, settings, progress, encode logs) may be read by a privileged on-device agent through App Functions on Android 16+. The assistant can also open the system share sheet or a viewer for a finished file; this app does not upload media. The assistant may send the user's spoken request to a server.
 - Sensitive permissions: microphone (optional, user-initiated), notifications, optional photo/video/audio library access
 - Internet: optional Gemini API only
 

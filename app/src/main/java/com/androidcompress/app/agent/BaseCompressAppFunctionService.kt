@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Recording Compressor tools for system agents. Use these to inspect jobs, fully
- * customize encode settings, start or cancel the queue, and read progress.
+ * customize encode settings, start or wait for the queue, share a result, and
+ * read progress.
  */
 @RequiresApi(36)
 @AppFunctionServiceEntryPoint(
@@ -170,18 +171,36 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
     /**
      * List videos, audio, or pictures already on the device. Requires library
      * access from Settings (Allow all). Use a returned contentUri with
-     * importDeviceMedia or importFile.
+     * importDeviceMedia, importDeviceMediaBatch, or compressNow.
      *
      * @param kind VIDEO, AUDIO, IMAGE, or ANY. Null means ANY.
      * @param query Optional display-name substring, such as clip.mp4.
      * @param limit Maximum items to return, from 1 to 40.
+     * @param relativePath Optional MediaStore folder filter such as Download or DCIM/Camera.
+     * @param addedAfterEpochMs Only items added after this epoch millisecond time. 0 means no date filter.
+     * @param minDurationMs Minimum duration in milliseconds. 0 means no minimum.
+     * @param maxDurationMs Maximum duration in milliseconds. 0 means no maximum.
      */
     @AppFunction(isDescribedByKDoc = true)
     suspend fun listDeviceMedia(
         kind: String? = null,
         query: String? = null,
         limit: Int = 20,
-    ): DeviceMediaList = io { agent.listDeviceMedia(kind, query, limit) }
+        relativePath: String? = null,
+        addedAfterEpochMs: Long = 0L,
+        minDurationMs: Long = 0L,
+        maxDurationMs: Long = 0L,
+    ): DeviceMediaList = io {
+        agent.listDeviceMedia(
+            kind = kind,
+            query = query,
+            limit = limit,
+            relativePath = relativePath,
+            addedAfterEpochMs = addedAfterEpochMs,
+            minDurationMs = minDurationMs,
+            maxDurationMs = maxDurationMs,
+        )
+    }
 
     /**
      * Import a file that is already on the device. Accepts a MediaStore content
@@ -231,6 +250,7 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
      * @param engine FFMPEG or MEDIA3. Null keeps the current default.
      * @param autoCompressAfterRecord Whether a finished recording starts encoding automatically. Pass null to leave unchanged.
      * @param rememberAdvanced Whether the compress screen restores last advanced settings. Pass null to leave unchanged.
+     * @param deleteOriginalAfterEncode Whether new jobs default to deleting the source after success. Pass null to leave unchanged. Agent startJob still defaults to false.
      */
     @AppFunction(isDescribedByKDoc = true)
     suspend fun setAppDefaults(
@@ -238,14 +258,160 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
         engine: String? = null,
         autoCompressAfterRecord: Boolean? = null,
         rememberAdvanced: Boolean? = null,
+        deleteOriginalAfterEncode: Boolean? = null,
     ): AppDefaults = io {
         agent.setAppDefaults(
             presetName = preset,
             engineName = engine,
             autoCompressAfterRecord = autoCompressAfterRecord,
             rememberAdvanced = rememberAdvanced,
+            deleteOriginalAfterEncode = deleteOriginalAfterEncode,
         )
     }
+
+    /**
+     * Import one file, optionally patch settings, and start encoding. Prefer this
+     * for a single "compress this" request. deleteSourceAfter defaults to false.
+     *
+     * @param uriOrPath Content URI, absolute path, or exact file name.
+     * @param settings Optional settings patch applied before start. Pass an empty object to keep defaults.
+     * @param wait If true, block until the job finishes or [timeoutSec] elapses.
+     * @param timeoutSec How long to wait when wait is true, from 5 to 180 seconds. Defaults to 45.
+     * @param deleteSourceAfter If true, delete the source after a successful encode.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun compressNow(
+        uriOrPath: String,
+        settings: JobSettingsUpdate? = null,
+        wait: Boolean = false,
+        timeoutSec: Int = 45,
+        deleteSourceAfter: Boolean = false,
+    ): WaitResult = io {
+        agent.compressNow(uriOrPath, settings, wait, timeoutSec, deleteSourceAfter)
+    }
+
+    /**
+     * Wait until one job reaches SUCCEEDED, FAILED, or CANCELLED, or until the
+     * timeout. If timedOut is true, call this again. Does not start the job.
+     *
+     * @param jobId Job that is already queued or running.
+     * @param timeoutSec How long to wait, from 5 to 180 seconds. Defaults to 45.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun waitForJob(
+        jobId: String,
+        timeoutSec: Int = 45,
+    ): WaitResult = io { agent.waitForJob(jobId, timeoutSec) }
+
+    /**
+     * Wait until the encode queue is idle, or until the timeout. If timedOut is
+     * true, call this again.
+     *
+     * @param timeoutSec How long to wait, from 5 to 180 seconds. Defaults to 45.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun waitForQueue(
+        timeoutSec: Int = 45,
+    ): WaitResult = io { agent.waitForQueue(timeoutSec) }
+
+    /**
+     * Import several files already on the device. Partial success is returned
+     * instead of failing the whole batch. Requires library access.
+     *
+     * @param uriOrPaths Content URIs, absolute paths, or exact file names, up to 40.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun importDeviceMediaBatch(
+        uriOrPaths: List<String>,
+    ): BatchImportResult = io { agent.importDeviceMediaBatch(uriOrPaths) }
+
+    /**
+     * Create a combine job from a picture or video plus a soundtrack, using
+     * paths or MediaStore URIs. Requires library access.
+     *
+     * @param visualUriOrPath Picture or video content URI, path, or exact file name.
+     * @param audioUriOrPath Soundtrack content URI, path, or exact file name.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun importCombineDeviceMedia(
+        visualUriOrPath: String,
+        audioUriOrPath: String,
+    ): JobActionResult = io { agent.importCombineDeviceMedia(visualUriOrPath, audioUriOrPath) }
+
+    /**
+     * Re-queue a FAILED, CANCELLED, or SUCCEEDED job with the same source.
+     * Optionally patch settings first. Does not delete gallery files.
+     *
+     * @param jobId Job to retry.
+     * @param settings Optional settings patch. Pass an empty object to keep current settings.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun retryJob(
+        jobId: String,
+        settings: JobSettingsUpdate? = null,
+    ): JobActionResult = io { agent.retryJob(jobId, settings) }
+
+    /**
+     * Create a second READY job from the same source, optionally with different
+     * settings. Use this for 720p plus 1080p or MP4 plus WebM.
+     *
+     * @param jobId Job whose source to copy.
+     * @param settings Optional settings for the new job. Null copies the original settings.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun cloneJob(
+        jobId: String,
+        settings: JobSettingsUpdate? = null,
+    ): JobDetail = io { agent.cloneJob(jobId, settings) }
+
+    /**
+     * Remove one job from history and delete its cache files. Gallery outputs
+     * stay. Cannot discard a queued, running, or recording job.
+     *
+     * @param jobId Job to remove from history.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun discardJob(jobId: String): JobActionResult = io { agent.discardJob(jobId) }
+
+    /**
+     * Open the system share sheet for a finished compressed file. Does not
+     * upload the file. The user must pick a destination.
+     *
+     * @param jobId Successful job whose output to share.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun shareOutput(jobId: String): JobActionResult = io { agent.shareOutput(jobId) }
+
+    /**
+     * Open a finished compressed file in a viewer. Does not upload the file.
+     *
+     * @param jobId Successful job whose output to open.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun openOutput(jobId: String): JobActionResult = io { agent.openOutput(jobId) }
+
+    /**
+     * Open Settings and prompt for Device library access if it is not granted.
+     * The user must choose Allow all. Call describeCapabilities afterwards.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun requestLibraryAccess(): LibraryAccessResult = io { agent.requestLibraryAccess() }
+
+    /**
+     * Report which hardware and software encoders this device can use. Call
+     * this before choosing HEVC or WebM on an unknown device.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun getEncoderCapabilities(): DeviceEncodeCaps = io { agent.getEncoderCapabilities() }
+
+    /**
+     * Probe one job's source for duration, size, frame rate, and audio. Does
+     * not return file URIs.
+     *
+     * @param jobId Job to inspect.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun getSourceInfo(jobId: String): SourceInfo = io { agent.getSourceInfo(jobId) }
 
     private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) {
         try {

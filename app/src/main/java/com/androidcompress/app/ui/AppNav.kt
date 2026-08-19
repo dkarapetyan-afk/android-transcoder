@@ -34,6 +34,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.androidcompress.app.agent.AgentLaunch
 import com.androidcompress.app.container
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.di.AppViewModelFactory
@@ -56,17 +57,21 @@ import com.androidcompress.app.ui.result.ResultScreen
 import com.androidcompress.app.ui.result.ResultViewModel
 import com.androidcompress.app.ui.settings.SettingsScreen
 import com.androidcompress.app.ui.settings.SettingsViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun CompressApp(
     shareRequests: StateFlow<ShareRequest?>,
     onShareConsumed: (Long) -> Unit,
+    agentUiRequests: StateFlow<AgentLaunch.UiRequest?> = MutableStateFlow(null),
+    onAgentUiConsumed: (Long) -> Unit = {},
 ) {
     val nav = rememberNavController()
     val context = LocalContext.current
     val container = remember { context.container() }
     val shareRequest by shareRequests.collectAsStateWithLifecycle()
+    val agentUiRequest by agentUiRequests.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var importing by remember { mutableStateOf(false) }
     val blockClicks = remember { MutableInteractionSource() }
@@ -103,6 +108,21 @@ fun CompressApp(
             importing = false
             onShareConsumed(request.nonce)
         }
+    }
+
+    LaunchedEffect(agentUiRequest?.nonce) {
+        val request = agentUiRequest ?: return@LaunchedEffect
+        when (request.destination) {
+            AgentLaunch.OPEN_SETTINGS -> {
+                nav.navigate(if (request.requestLibrary) "settings/library" else "settings") {
+                    launchSingleTop = true
+                }
+            }
+            AgentLaunch.OPEN_RESULT -> if (request.jobId.isNotBlank()) {
+                nav.openResult(request.jobId)
+            }
+        }
+        onAgentUiConsumed(request.nonce)
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -200,6 +220,14 @@ fun CompressApp(
         composable("settings") {
             val vm: SettingsViewModel = viewModel(factory = AppViewModelFactory(container))
             SettingsScreen(viewModel = vm, onBack = { nav.safePop() })
+        }
+        composable("settings/library") {
+            val vm: SettingsViewModel = viewModel(factory = AppViewModelFactory(container))
+            SettingsScreen(
+                viewModel = vm,
+                onBack = { nav.safePop() },
+                promptLibraryAccess = true,
+            )
         }
         composable("about") {
             AboutScreen(onBack = { nav.safePop() })

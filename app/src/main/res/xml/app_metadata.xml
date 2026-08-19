@@ -3,13 +3,14 @@
     appfn:description="Recording Compressor encodes video and audio on this device with FFmpeg or Media3 and can combine a picture or video with a soundtrack.
     Operational Patterns:
     - Call describeCapabilities first to learn allowed enum values and whether library access is granted.
-    - If library access is off, ask the user to enable Device library access in Settings and choose Allow all.
-    - Use listDeviceMedia then importDeviceMedia (content URI, path, or file name) to open a file already on the device.
-    - Use getJob, updateJobSettings, or applyPreset to customize a job that is not queued or running.
-    - Use previewEncode, then startJob or startReadyJobs.
-    - Use getQueue, getProgress, and getEncodeLog to monitor work. Use cancelJob or cancelQueue to stop it.
+    - If library access is off, call requestLibraryAccess and ask the user to enable Device library access and choose Allow all.
+    - Prefer compressNow(uriOrPath, settings, wait=true) for a single file.
+    - For several files, listDeviceMedia with relativePath or date filters, then importDeviceMediaBatch, then startReadyJobs and waitForQueue.
+    - Use cloneJob for a second encode of the same source. Use retryJob after FAILED or CANCELLED.
+    - waitForJob and waitForQueue block at most 180 seconds; if timedOut is true, call them again.
+    - shareOutput or openOutput when a job SUCCEEDED. discardJob removes history only.
     Constraints:
-    - Do not record the screen, delete gallery files, or wipe history.
+    - Do not record the screen, delete gallery files, or wipe all history.
     - Do not return or request media bytes. Job records omit source and output URIs.
     - Extra FFmpeg arguments cannot add inputs, paths, or filter_complex."
     appfn:displayDescription="@string/app_functions_description" />

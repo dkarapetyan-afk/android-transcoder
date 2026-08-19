@@ -5,6 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.androidcompress.app.agent.AgentLaunch
 import com.androidcompress.app.media.ShareIntents
 import com.androidcompress.app.media.ShareRequest
 import com.androidcompress.app.ui.CompressApp
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class MainActivity : ComponentActivity() {
     private val shareRequests = MutableStateFlow<ShareRequest?>(null)
+    private val agentUiRequests = MutableStateFlow<AgentLaunch.UiRequest?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,6 +24,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (savedInstanceState == null) {
             offerShare(intent)
+            offerAgentUi(intent)
         }
         setContent {
             RecordingCompressorTheme {
@@ -29,6 +32,10 @@ class MainActivity : ComponentActivity() {
                     shareRequests = shareRequests.asStateFlow(),
                     onShareConsumed = { nonce ->
                         shareRequests.value = shareRequests.value?.takeUnless { it.nonce == nonce }
+                    },
+                    agentUiRequests = agentUiRequests.asStateFlow(),
+                    onAgentUiConsumed = { nonce ->
+                        agentUiRequests.value = agentUiRequests.value?.takeUnless { it.nonce == nonce }
                     },
                 )
             }
@@ -39,6 +46,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         offerShare(intent)
+        offerAgentUi(intent)
+    }
+
+    private fun offerAgentUi(incoming: Intent?) {
+        agentUiRequests.value = AgentLaunch.fromIntent(incoming) ?: return
     }
 
     private fun offerShare(incoming: Intent?) {

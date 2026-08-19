@@ -2,6 +2,7 @@ package com.androidcompress.app.media
 
 import android.content.ContentUris
 import android.content.Context
+import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -15,6 +16,8 @@ data class DeviceMediaRow(
     val bytes: Long,
     val durationMs: Long,
     val relativePath: String,
+    val dateAddedEpochMs: Long = 0L,
+    val dateModifiedEpochMs: Long = 0L,
 )
 
 object DeviceMediaStore {
@@ -59,16 +62,28 @@ object DeviceMediaStore {
         kind: String?,
         query: String?,
         limit: Int,
+        relativePath: String? = null,
+        addedAfterEpochMs: Long = 0L,
+        minDurationMs: Long = 0L,
+        maxDurationMs: Long = 0L,
     ): List<DeviceMediaRow> {
         MediaLibraryAccess.require(context)
         val cap = limit.coerceIn(1, 40)
-        val needle = query?.trim().orEmpty()
         val kinds = requestedKinds(kind)
         val rows = ArrayList<DeviceMediaRow>(cap)
         for (target in kinds) {
             if (rows.size >= cap) break
             if (!kindAllowed(context, target)) continue
-            rows += queryCollection(context, target, needle, cap - rows.size)
+            val spec = DeviceMediaQuerySpec(
+                displayNameQuery = query.orEmpty(),
+                relativePath = relativePath.orEmpty(),
+                addedAfterEpochMs = addedAfterEpochMs,
+                minDurationMs = minDurationMs,
+                maxDurationMs = maxDurationMs,
+                includeDuration = target != "IMAGE" && Build.VERSION.SDK_INT >= 29,
+                includeRelativePath = Build.VERSION.SDK_INT >= 29,
+            )
+            rows += queryCollection(context, target, spec, cap - rows.size)
         }
         return rows
     }
@@ -92,7 +107,7 @@ object DeviceMediaStore {
     private fun queryCollection(
         context: Context,
         kind: String,
-        needle: String,
+        spec: DeviceMediaQuerySpec,
         limit: Int,
     ): List<DeviceMediaRow> {
         if (limit <= 0) return emptyList()
@@ -102,20 +117,14 @@ object DeviceMediaStore {
             add(MediaStore.MediaColumns.DISPLAY_NAME)
             add(MediaStore.MediaColumns.MIME_TYPE)
             add(MediaStore.MediaColumns.SIZE)
+            add(MediaStore.MediaColumns.DATE_ADDED)
+            add(MediaStore.MediaColumns.DATE_MODIFIED)
             if (Build.VERSION.SDK_INT >= 29) {
                 add(MediaStore.MediaColumns.DURATION)
                 add(MediaStore.MediaColumns.RELATIVE_PATH)
             }
         }.toTypedArray()
-        val selection: String?
-        val args: Array<String>?
-        if (needle.isBlank()) {
-            selection = null
-            args = null
-        } else {
-            selection = "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-            args = arrayOf("%$needle%")
-        }
+        val (selection, args) = DeviceMediaQueries.selection(spec)
         val sort = "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
         val out = ArrayList<DeviceMediaRow>(limit)
         context.contentResolver.query(collection, projection, selection, args, sort)?.use { cursor ->
@@ -125,6 +134,8 @@ object DeviceMediaStore {
             val sizeAt = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
             val durationAt = cursor.getColumnIndex(MediaStore.MediaColumns.DURATION)
             val pathAt = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            val addedAt = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+            val modifiedAt = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
             while (cursor.moveToNext() && out.size < limit) {
                 val id = cursor.getLong(idAt)
                 out += DeviceMediaRow(
@@ -135,6 +146,8 @@ object DeviceMediaStore {
                     bytes = if (sizeAt >= 0) cursor.getLong(sizeAt) else 0L,
                     durationMs = if (durationAt >= 0) cursor.getLong(durationAt) else 0L,
                     relativePath = if (pathAt >= 0) cursor.getString(pathAt).orEmpty() else "",
+                    dateAddedEpochMs = epochMs(cursor, addedAt),
+                    dateModifiedEpochMs = epochMs(cursor, modifiedAt),
                 )
             }
         }
@@ -162,9 +175,19 @@ object DeviceMediaStore {
         if (name.isBlank()) return emptyList()
         return listOf("VIDEO", "AUDIO", "IMAGE").flatMap { kind ->
             if (!kindAllowed(context, kind)) emptyList()
-            else queryCollection(context, kind, name, 10)
-                .filter { it.displayName.equals(name, ignoreCase = true) }
+            else queryCollection(
+                context,
+                kind,
+                DeviceMediaQuerySpec(displayNameQuery = name, includeDuration = false, includeRelativePath = false),
+                10,
+            ).filter { it.displayName.equals(name, ignoreCase = true) }
         }
+    }
+
+    private fun epochMs(cursor: Cursor, column: Int): Long {
+        if (column < 0) return 0L
+        val seconds = cursor.getLong(column)
+        return if (seconds <= 0L) 0L else seconds * 1000L
     }
 
     private fun collectionFor(kind: String): Uri = when (kind) {

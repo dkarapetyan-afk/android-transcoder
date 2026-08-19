@@ -210,6 +210,21 @@ object JobSettingsCodec {
         }
     }
 
+    fun canRetry(status: JobStatus): Boolean = when (status) {
+        JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.SUCCEEDED -> true
+        else -> false
+    }
+
+    fun canDiscard(status: JobStatus): Boolean = when (status) {
+        JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.RECORDING -> false
+        else -> true
+    }
+
+    fun canClone(job: CompressJob): Boolean {
+        if (job.sourceUri.isBlank() || job.sourceDeleted) return false
+        return job.status != JobStatus.RECORDING
+    }
+
     fun requireEditable(job: CompressJob) {
         if (!canEdit(job.status)) {
             error("Job ${job.id} is ${job.status.name} and cannot be edited. Cancel it first.")
@@ -220,6 +235,27 @@ object JobSettingsCodec {
         if (job.sourceUri.isBlank()) error("Job ${job.id} has no source file.")
         if (!canStart(job)) {
             error("Job ${job.id} is ${job.status.name} and cannot be started.")
+        }
+    }
+
+    fun requireRetryable(job: CompressJob) {
+        if (job.sourceDeleted) error("The source for job ${job.id} was deleted. Import the file again.")
+        if (!canRetry(job.status)) {
+            error("Job ${job.id} is ${job.status.name} and does not need a retry. Use startJob.")
+        }
+        requireStartable(job)
+    }
+
+    fun requireDiscardable(job: CompressJob) {
+        if (!canDiscard(job.status)) {
+            error("Job ${job.id} is ${job.status.name}. Cancel it before discarding history.")
+        }
+    }
+
+    fun requireCloneable(job: CompressJob) {
+        if (job.sourceDeleted) error("The source for job ${job.id} was deleted. Import the file again.")
+        if (!canClone(job)) {
+            error("Job ${job.id} is ${job.status.name} and cannot be cloned.")
         }
     }
 

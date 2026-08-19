@@ -4,6 +4,7 @@
 # Examples (from the repo root, in PowerShell):
 #   .\scripts\test-app-functions.ps1
 #   .\scripts\test-app-functions.ps1 -Query clip
+#   .\scripts\test-app-functions.ps1 -RelativePath Download
 #   .\scripts\test-app-functions.ps1 -Path /sdcard/Download/clip.mp4
 #   .\scripts\test-app-functions.ps1 -LocalFile C:\Videos\clip.mp4
 #   .\scripts\test-app-functions.ps1 -ListOnly
@@ -17,6 +18,7 @@ param(
     [ValidateSet("VIDEO", "AUDIO", "IMAGE", "ANY")]
     [string] $Kind = "VIDEO",
     [string] $Query,
+    [string] $RelativePath,
     [string] $Path,
     [string] $LocalFile,
     [string] $RemoteDir = "/sdcard/Download",
@@ -325,6 +327,8 @@ if ($listed -notmatch [regex]::Escape($Package)) {
 }
 
 $caps = Invoke-AppFunction -Name "describeCapabilities"
+$encoders = Invoke-AppFunction -Name "getEncoderCapabilities"
+Write-Host ("encoders hardwareH264={0} softwareVp9={1}" -f (Get-AfValue $encoders @("hardwareH264")), (Get-AfValue $encoders @("softwareVp9")))
 $granted = Get-AfValue $caps @("libraryAccessGranted")
 if ($null -eq $granted) {
     $defaults = Invoke-AppFunction -Name "getAppDefaults"
@@ -357,6 +361,9 @@ if ([string]::IsNullOrWhiteSpace($importTarget)) {
     if (-not [string]::IsNullOrWhiteSpace($Query)) {
         $listParams.query = $Query
     }
+    if (-not [string]::IsNullOrWhiteSpace($RelativePath)) {
+        $listParams.relativePath = $RelativePath
+    }
     $media = Invoke-AppFunction -Name "listDeviceMedia" -Parameters $listParams
     $items = @(Get-AfValue $media @("items"))
     if ($items.Count -eq 1 -and $null -eq $items[0]) { $items = @() }
@@ -377,50 +384,55 @@ if ([string]::IsNullOrWhiteSpace($importTarget)) {
     Write-Host "Importing $(Get-AfValue $items[0] @('displayName'))"
 }
 
-$imported = Invoke-AppFunction -Name "importDeviceMedia" -Parameters @{ uriOrPath = $importTarget }
-$jobId = Get-JobId $imported
-if ([string]::IsNullOrWhiteSpace($jobId)) {
-    throw "importDeviceMedia did not return a jobId.`n$(ConvertTo-CompactJson $imported)"
-}
-Write-Host "jobId = $jobId" -ForegroundColor Green
-
 $settings = @{ preset = $Preset }
 if ($Engine) { $settings.engine = $Engine }
 if ($Container) { $settings.container = $Container }
 if ($ExtraArgs) { $settings.ffmpegExtraArgs = $ExtraArgs }
-$null = Invoke-AppFunction -Name "updateJobSettings" -Parameters @{
-    jobId    = $jobId
-    settings = $settings
-}
-$preview = Invoke-AppFunction -Name "previewEncode" -Parameters @{ jobId = $jobId }
-Write-Host ("preview encoder={0} estimateBytes={1}" -f (Get-AfValue $preview @("encoderLabel")), (Get-AfValue $preview @("estimateBytes")))
 
 if ($SkipStart) {
-    Write-Host "SkipStart set; job is READY. Start it from the app or rerun without -SkipStart."
+    $imported = Invoke-AppFunction -Name "importDeviceMedia" -Parameters @{ uriOrPath = $importTarget }
+    $jobId = Get-JobId $imported
+    if ([string]::IsNullOrWhiteSpace($jobId)) {
+        throw "importDeviceMedia did not return a jobId.`n$(ConvertTo-CompactJson $imported)"
+    }
+    $null = Invoke-AppFunction -Name "updateJobSettings" -Parameters @{
+        jobId    = $jobId
+        settings = $settings
+    }
+    Write-Host "SkipStart set; job $jobId is READY. Start it from the app or rerun without -SkipStart."
     return
 }
 
-$started = Invoke-AppFunction -Name "startJob" -Parameters @{
-    jobId             = $jobId
+$chunk = [Math]::Min([Math]::Max($TimeoutSeconds, 5), 180)
+$deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+$waited = Invoke-AppFunction -Name "compressNow" -Parameters @{
+    uriOrPath         = $importTarget
+    settings          = $settings
+    wait              = $true
+    timeoutSec        = $chunk
     deleteSourceAfter = $false
 }
-Write-Host (Get-AfValue $started @("message"))
+$jobId = Get-JobId $waited
+if ([string]::IsNullOrWhiteSpace($jobId)) {
+    throw "compressNow did not return a jobId.`n$(ConvertTo-CompactJson $waited)"
+}
+Write-Host "jobId = $jobId" -ForegroundColor Green
 
-$deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-do {
+$status = [string] (Get-AfValue $waited @("status"))
+while ([bool] (Get-AfValue $waited @("timedOut"))) {
+    Write-Host ("[{0}] {1} (waiting again)" -f $status, (Get-AfValue $waited @("message")))
+    if ([DateTime]::UtcNow -ge $deadline) { break }
     Start-Sleep -Seconds $PollSeconds
-    $progress = Invoke-AppFunction -Name "getProgress" -Parameters @{ jobId = $jobId }
-    $status = [string] (Get-AfValue $progress @("status"))
-    Write-Host ("[{0}] {1}%  {2}" -f $status, (Get-AfValue $progress @("percent")), (Get-AfValue $progress @("message")))
-    if ($status -in @("SUCCEEDED", "FAILED", "CANCELLED")) { break }
-} while ([DateTime]::UtcNow -lt $deadline)
-
-if ($status -eq "FAILED") {
-    $log = Invoke-AppFunction -Name "getEncodeLog" -Parameters @{
-        jobId    = $jobId
-        maxChars = 4000
+    $waited = Invoke-AppFunction -Name "waitForJob" -Parameters @{
+        jobId      = $jobId
+        timeoutSec = $chunk
     }
-    Write-Host (Get-AfValue $log @("text"))
+    $status = [string] (Get-AfValue $waited @("status"))
+}
+
+Write-Host (Get-AfValue $waited @("message"))
+if ($status -eq "FAILED") {
+    Write-Host (Get-AfValue $waited @("text"))
     throw "Encode failed for $jobId"
 }
 if ($status -ne "SUCCEEDED") {

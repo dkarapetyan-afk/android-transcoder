@@ -63,6 +63,18 @@ class InputResolver(private val context: Context) {
         return File(dir, "$jobId.mp4")
     }
 
+    fun copyJobCache(fromJobId: String, toJobId: String) {
+        if (fromJobId.isBlank() || toJobId.isBlank() || fromJobId == toJobId) return
+        for (dirName in CACHE_DIRS) {
+            val dir = File(context.cacheDir, dirName)
+            val files = dir.listFiles() ?: continue
+            for (file in files) {
+                val remapped = remapCachedFileName(file.name, fromJobId, toJobId) ?: continue
+                file.copyTo(File(dir, remapped), overwrite = true)
+            }
+        }
+    }
+
     fun deleteImportCopy(jobId: String) {
         File(context.cacheDir, "imports/$jobId.src").delete()
         File(context.cacheDir, "imports/$jobId.audio").delete()
@@ -96,5 +108,22 @@ class InputResolver(private val context: Context) {
         private val CACHE_DIRS = listOf("imports", "encode", "record")
 
         fun cacheJobId(fileName: String): String = fileName.substringBeforeLast('.')
+
+        fun remapCachedFileName(fileName: String, fromJobId: String, toJobId: String): String? {
+            if (fromJobId.isBlank() || toJobId.isBlank() || fromJobId == toJobId) return null
+            if (cacheJobId(fileName) != fromJobId) return null
+            if (!fileName.startsWith(fromJobId)) return null
+            return toJobId + fileName.substring(fromJobId.length)
+        }
+
+        fun remapCachedUri(uriString: String, fromJobId: String, toJobId: String): String {
+            if (uriString.isBlank()) return uriString
+            val uri = Uri.parse(uriString)
+            val path = uri.path ?: return uriString
+            val file = File(path)
+            val remapped = remapCachedFileName(file.name, fromJobId, toJobId) ?: return uriString
+            val parent = file.parentFile ?: return uriString
+            return Uri.fromFile(File(parent, remapped)).toString()
+        }
     }
 }

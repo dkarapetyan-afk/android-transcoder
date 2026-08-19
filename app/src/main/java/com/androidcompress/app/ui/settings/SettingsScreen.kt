@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,7 @@ import com.androidcompress.app.ui.components.AppTopBar
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
+    promptLibraryAccess: Boolean = false,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
@@ -57,6 +59,11 @@ fun SettingsScreen(
     val libraryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grantEpoch++ }
+    LaunchedEffect(promptLibraryAccess, libraryGranted) {
+        if (promptLibraryAccess && !libraryGranted) {
+            libraryLauncher.launch(MediaLibraryAccess.requiredPermissions())
+        }
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) grantEpoch++

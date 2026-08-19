@@ -37,6 +37,8 @@ data class AppCapabilities(
     val libraryAccessGranted: Boolean,
     /** How to list and import files that are already on the device. */
     val libraryAccessNote: String,
+    /** Preferred tools for a typical request, in order. */
+    val recommendedTools: List<String>,
     /** Actions this API will not perform. */
     val restrictions: String,
 )
@@ -341,6 +343,10 @@ data class DeviceMediaItem(
     val durationMs: Long,
     /** MediaStore relative folder, such as Download/. */
     val relativePath: String,
+    /** DATE_ADDED as epoch milliseconds, or 0 if unknown. */
+    val dateAddedEpochMs: Long,
+    /** DATE_MODIFIED as epoch milliseconds, or 0 if unknown. */
+    val dateModifiedEpochMs: Long,
 )
 
 /** Result of listing on-device media. */
@@ -350,6 +356,105 @@ data class DeviceMediaList(
     val items: List<DeviceMediaItem>,
     /** Kind filter that was applied. */
     val kind: String,
+    /** Relative-path filter that was applied, if any. */
+    val relativePath: String,
+    /** DATE_ADDED lower bound that was applied, or 0. */
+    val addedAfterEpochMs: Long,
+    /** Minimum duration filter that was applied, or 0. */
+    val minDurationMs: Long,
+    /** Maximum duration filter that was applied, or 0. */
+    val maxDurationMs: Long,
     /** True when library access is granted. */
     val libraryAccessGranted: Boolean,
+)
+
+/** Result of waiting for one job or the whole queue. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class WaitResult(
+    /** Human-readable result. */
+    val message: String,
+    /** True when the job or queue was still encoding when the timeout expired. Call wait again. */
+    val timedOut: Boolean,
+    /** Jobs that were watched. */
+    val jobs: List<JobDetail>,
+    /** Latest progress for the primary watched job. */
+    val progress: ProgressSnapshot,
+    /** Encode log tail after a failure or timeout. */
+    val log: EncodeLogSnapshot,
+)
+
+/** Result of importing several files. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class BatchImportResult(
+    /** Human-readable result. */
+    val message: String,
+    /** Jobs that were created. */
+    val jobs: List<JobDetail>,
+    /** Per-file errors for items that could not be imported. */
+    val errors: List<String>,
+    /** How many files were imported. */
+    val importedCount: Int,
+    /** How many files failed. */
+    val failedCount: Int,
+)
+
+/** Hardware and software encoders this device can use. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class DeviceEncodeCaps(
+    /** True when a hardware H.264 encoder is available. */
+    val hardwareH264: Boolean,
+    /** True when a hardware HEVC encoder is available. */
+    val hardwareHevc: Boolean,
+    /** True when a hardware VP8 encoder is available. */
+    val hardwareVp8: Boolean,
+    /** True when a hardware VP9 encoder is available. */
+    val hardwareVp9: Boolean,
+    /** True when FFmpeg libvpx (VP8) is available. */
+    val softwareVp8: Boolean,
+    /** True when FFmpeg libvpx-vp9 is available. */
+    val softwareVp9: Boolean,
+    /** True when FFmpeg Opus is available. */
+    val opus: Boolean,
+    /** True when FFmpeg OpenH264 is available. */
+    val openH264: Boolean,
+    /** How an agent should use these flags. */
+    val note: String,
+)
+
+/** Probed source metadata for one job. Omits file URIs. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class SourceInfo(
+    /** Job id. */
+    val jobId: String,
+    /** Display name of the source. */
+    val displayName: String,
+    /** Duration in milliseconds. */
+    val durationMs: Long,
+    /** Width in pixels. */
+    val width: Int,
+    /** Height in pixels. */
+    val height: Int,
+    /** Source size in bytes. */
+    val sourceBytes: Long,
+    /** Detected frame rate, or 0 if unknown. */
+    val frameRate: Float,
+    /** True when the source or soundtrack has audio. */
+    val hasAudio: Boolean,
+    /** True when the source has a video track or is a still image. */
+    val hasVideo: Boolean,
+    /** True when the visual is a still image. */
+    val stillImage: Boolean,
+    /** True when this job muxes a separate soundtrack. */
+    val combine: Boolean,
+    /** Audio codec name when known. */
+    val audioCodec: String,
+)
+
+/** Result of requesting device library access. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class LibraryAccessResult(
+    /** True when videos, audio, or photos can already be listed. */
+    val granted: Boolean,
+    /** What the agent should tell the user. */
+    val message: String,
 )

@@ -160,6 +160,14 @@ class JobSettingsCodecTest {
         assertFalse(JobSettingsCodec.canStart(running))
         assertFalse(JobSettingsCodec.canEdit(running.status))
         assertFalse(JobSettingsCodec.canStart(job(JobStatus.READY, sourceUri = "")))
+        assertTrue(JobSettingsCodec.canRetry(JobStatus.FAILED))
+        assertTrue(JobSettingsCodec.canRetry(JobStatus.SUCCEEDED))
+        assertFalse(JobSettingsCodec.canRetry(JobStatus.READY))
+        assertTrue(JobSettingsCodec.canDiscard(JobStatus.READY))
+        assertFalse(JobSettingsCodec.canDiscard(JobStatus.QUEUED))
+        assertTrue(JobSettingsCodec.canClone(ready))
+        assertFalse(JobSettingsCodec.canClone(job(JobStatus.RECORDING)))
+        assertFalse(JobSettingsCodec.canClone(ready.copy(sourceDeleted = true)))
     }
 
     private fun job(status: JobStatus, sourceUri: String = "content://src") = CompressJob(
