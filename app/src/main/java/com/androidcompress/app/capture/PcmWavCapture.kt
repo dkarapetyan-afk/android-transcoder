@@ -68,11 +68,19 @@ class PcmWavCapture(
 
         @RequiresApi(29)
         @SuppressLint("MissingPermission")
-        fun internal(mediaProjection: MediaProjection, output: File): PcmWavCapture {
-            val config = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
-                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-                .addMatchingUsage(AudioAttributes.USAGE_GAME)
-                .build()
+        fun internal(
+            mediaProjection: MediaProjection,
+            output: File,
+            appUid: Int? = null,
+        ): PcmWavCapture {
+            val builder = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+            if (appUid != null) {
+                builder.addMatchingUid(appUid)
+            } else {
+                builder.addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                    .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            }
+            val config = builder.build()
             val format = AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                 .setSampleRate(SAMPLE_RATE)

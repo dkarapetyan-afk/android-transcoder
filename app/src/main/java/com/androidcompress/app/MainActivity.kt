@@ -2,6 +2,7 @@ package com.androidcompress.app
 
 import android.content.Intent
 import android.os.Bundle
+import android.service.quicksettings.TileService
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -50,7 +51,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun offerAgentUi(incoming: Intent?) {
-        agentUiRequests.value = AgentLaunch.fromIntent(incoming) ?: return
+        val intent = incoming ?: return
+        if (intent.action == TileService.ACTION_QS_TILE_PREFERENCES) {
+            agentUiRequests.value = AgentLaunch.UiRequest(AgentLaunch.OPEN_RECORD)
+            return
+        }
+        agentUiRequests.value = AgentLaunch.fromIntent(intent) ?: return
     }
 
     private fun offerShare(incoming: Intent?) {

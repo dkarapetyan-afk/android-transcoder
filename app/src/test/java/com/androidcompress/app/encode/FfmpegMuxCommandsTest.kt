@@ -37,4 +37,51 @@ class FfmpegMuxCommandsTest {
         assertTrue(args.containsAll(listOf("-c:v", "copy", "-c:a", "aac", "-b:a", "160k")))
         assertEquals("/out.mp4", args.last())
     }
+
+    @Test
+    fun recordingPostProcessSkipsWhenNothingToDo() {
+        assertEquals(
+            null,
+            FfmpegMuxCommands.recordingPostProcess(
+                videoPath = "/v.mp4",
+                outputPath = "/out.mp4",
+            ),
+        )
+    }
+
+    @Test
+    fun recordingPostProcessDefaultMixMatchesLegacy() {
+        val legacy = FfmpegMuxCommands.mixMicAndInternalAac("/v.mp4", "/int.wav", "/mic.wav", "/out.mp4")
+        val next = FfmpegMuxCommands.recordingPostProcess(
+            videoPath = "/v.mp4",
+            outputPath = "/out.mp4",
+            internalWav = "/int.wav",
+            micWav = "/mic.wav",
+        )
+        assertEquals(legacy, next)
+    }
+
+    @Test
+    fun mixFilterDuckHasNoSpacesAndUsesSidechain() {
+        val filter = FfmpegMuxCommands.mixFilter(100, 80, duckAppAudio = true)
+        assertFalse(filter.contains(' '))
+        assertTrue(filter.contains("volume=0.80"))
+        assertTrue(filter.contains("sidechaincompress"))
+        assertTrue(filter.contains("[ducked][mic]amix"))
+    }
+
+    @Test
+    fun recordingPostProcessCropsSoftwareH264() {
+        val args = FfmpegMuxCommands.recordingPostProcess(
+            videoPath = "/v.mp4",
+            outputPath = "/out.mp4",
+            crop = RecordingCrop(10, 20, 640, 360),
+            videoEncoder = "libopenh264",
+            videoBitrateKbps = 2500,
+        )!!
+        assertEquals("crop=640:360:10:20", args[args.indexOf("-vf") + 1])
+        assertEquals("libopenh264", args[args.indexOf("-c:v") + 1])
+        assertEquals("yuv420p", args[args.indexOf("-pix_fmt") + 1])
+        assertFalse(args.contains("h264_mediacodec"))
+    }
 }

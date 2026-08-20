@@ -133,6 +133,7 @@ fun CompressApp(
             AgentLaunch.OPEN_RESULT -> if (request.jobId.isNotBlank()) {
                 nav.openResult(request.jobId)
             }
+            AgentLaunch.OPEN_RECORD -> nav.navigate("record") { launchSingleTop = true }
         }
         onAgentUiConsumed(request.nonce)
     }
@@ -165,8 +166,9 @@ fun CompressApp(
                 viewModel = vm,
                 onBack = { nav.safePop() },
                 onFinished = { id ->
+                    val openResult = container.recording.state.value.openResult
                     container.recording.consumeFinished()
-                    nav.openCompressKeepingHome(id)
+                    if (openResult) nav.openResult(id) else nav.openCompressKeepingHome(id)
                 },
             )
         }

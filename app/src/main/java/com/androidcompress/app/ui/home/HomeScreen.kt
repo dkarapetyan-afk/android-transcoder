@@ -101,10 +101,13 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(recording.finishedJobId, recording.error) {
+    LaunchedEffect(recording.finishedJobId, recording.error, recording.notice) {
         recording.finishedJobId?.let { id ->
+            val openResult = recording.openResult
+            val notice = recording.notice
             viewModel.consumeRecordingEvent()
-            viewModel.openIfReadyToCompress(id, onCompress)
+            if (!notice.isNullOrBlank()) scope.launch { snackbar.showSnackbar(notice) }
+            if (openResult) onResult(id) else viewModel.openIfReadyToCompress(id, onCompress)
         }
         recording.error?.let {
             viewModel.consumeRecordingEvent()
@@ -139,14 +142,16 @@ fun HomeScreen(
             item {
                 ActionCard(
                     title = stringResource(R.string.home_record_title),
-                    body = stringResource(
-                        when {
-                            recording.saving -> R.string.home_record_body_saving
-                            recording.active && recording.paused -> R.string.home_record_body_paused
-                            recording.active -> R.string.home_record_body_active
-                            else -> R.string.home_record_body
+                    body = when {
+                            recording.saving -> stringResource(R.string.home_record_body_saving)
+                            recording.phase == com.androidcompress.app.capture.RecordPhase.REGION ->
+                                stringResource(R.string.home_record_body_region)
+                            recording.phase == com.androidcompress.app.capture.RecordPhase.COUNTDOWN ->
+                                stringResource(R.string.home_record_body_countdown, recording.countdownRemaining)
+                            recording.active && recording.paused -> stringResource(R.string.home_record_body_paused)
+                            recording.active -> stringResource(R.string.home_record_body_active)
+                            else -> stringResource(R.string.home_record_body)
                         },
-                    ),
                     icon = Icons.Default.Videocam,
                     onClick = onRecord,
                 )

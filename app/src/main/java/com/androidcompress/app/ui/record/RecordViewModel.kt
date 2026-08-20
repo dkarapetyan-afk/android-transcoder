@@ -3,28 +3,36 @@ package com.androidcompress.app.ui.record
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraManager
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.androidcompress.app.R
+import com.androidcompress.app.capture.CaptureApp
+import com.androidcompress.app.capture.CaptureApps
+import com.androidcompress.app.capture.RecordOptions
+import com.androidcompress.app.capture.RecordVideoCodec
+import com.androidcompress.app.capture.RecordingSession
 import com.androidcompress.app.capture.ScreenRecordService
-import com.androidcompress.app.data.CompressJob
-import com.androidcompress.app.data.EncodeSettings
-import com.androidcompress.app.data.JobStatus
-import com.androidcompress.app.data.JobType
+import com.androidcompress.app.capture.TapHighlightService
+import com.androidcompress.app.data.EncoderCapabilities
 import com.androidcompress.app.data.RecordAudioMode
 import com.androidcompress.app.data.RecordResolution
-import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.di.AppContainer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.UUID
+import kotlinx.coroutines.withContext
 
 data class RecordUiState(
-    val audioMode: RecordAudioMode = RecordAudioMode.NONE,
-    val resolution: RecordResolution = RecordResolution.P1080,
+    val options: RecordOptions = RecordOptions(),
     val starting: Boolean = false,
+    val apps: List<CaptureApp> = emptyList(),
+    val appsLoaded: Boolean = false,
+    val hasHevc: Boolean = false,
+    val hasAv1: Boolean = false,
+    val hasFrontCamera: Boolean = false,
+    val tapsServiceEnabled: Boolean = TapHighlightService.isEnabled(),
 )
 
 class RecordViewModel(private val container: AppContainer) : ViewModel() {
@@ -35,21 +43,55 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
     init {
         viewModelScope.launch {
             val prefs = container.prefs.current()
+            val stored = container.prefs.recordOptionsJson()
+            val options = RecordOptions.fromJson(stored).let { parsed ->
+                if (stored.isNullOrBlank()) {
+                    parsed.copy(
+                        audioMode = prefs.lastRecordAudioMode,
+                        resolution = prefs.lastRecordResolution,
+                    )
+                } else {
+                    parsed
+                }
+            }
+            val caps = runCatching { container.encoderCapabilities() }.getOrElse { EncoderCapabilities() }
+            val cameras = container.appContext.getSystemService(CameraManager::class.java)
             _ui.value = _ui.value.copy(
-                audioMode = prefs.lastRecordAudioMode,
-                resolution = prefs.lastRecordResolution,
+                options = options,
+                hasHevc = caps.hasHevcMediaCodec,
+                hasAv1 = caps.hasAv1MediaCodec && Build.VERSION.SDK_INT >= 33,
+                hasFrontCamera = cameras?.let { CaptureApps.hasFrontCamera(it) } == true,
+                tapsServiceEnabled = TapHighlightService.isEnabled(),
             )
         }
     }
 
-    fun setAudioMode(mode: RecordAudioMode) {
-        _ui.value = _ui.value.copy(audioMode = mode)
-        viewModelScope.launch { container.prefs.setRecordAudioMode(mode) }
+    fun refreshTapsService() {
+        _ui.value = _ui.value.copy(tapsServiceEnabled = TapHighlightService.isEnabled())
     }
 
-    fun setResolution(resolution: RecordResolution) {
-        _ui.value = _ui.value.copy(resolution = resolution)
-        viewModelScope.launch { container.prefs.setRecordResolution(resolution) }
+    fun update(transform: (RecordOptions) -> RecordOptions) {
+        val next = transform(_ui.value.options)
+        _ui.value = _ui.value.copy(options = next)
+        viewModelScope.launch {
+            container.prefs.setRecordOptionsJson(next.toJson())
+            container.prefs.setRecordAudioMode(next.audioMode)
+            container.prefs.setRecordResolution(next.resolution)
+        }
+    }
+
+    fun setAudioMode(mode: RecordAudioMode) = update { it.copy(audioMode = mode) }
+
+    fun setResolution(resolution: RecordResolution) = update { it.copy(resolution = resolution) }
+
+    fun loadApps() {
+        if (_ui.value.appsLoaded) return
+        viewModelScope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                CaptureApps.launchers(container.appContext.packageManager)
+            }
+            _ui.value = _ui.value.copy(apps = apps, appsLoaded = true)
+        }
     }
 
     fun onConsentResult(context: Context, resultCode: Int, data: Intent?) {
@@ -58,35 +100,12 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
             return
         }
         viewModelScope.launch {
-            val id = UUID.randomUUID().toString()
-            val prefs = container.prefs.current()
-            container.jobs.upsert(
-                CompressJob(
-                    id = id,
-                    type = JobType.RECORD,
-                    status = JobStatus.DRAFT,
-                    sourceUri = "",
-                    outputUri = null,
-                    displayName = container.appContext.getString(R.string.display_name_screen_recording),
-                    sourceBytes = 0,
-                    outputBytes = null,
-                    durationMs = 0,
-                    width = 0,
-                    height = 0,
-                    settingsJson = SettingsJson.encode(EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine)),
-                    error = null,
-                    createdAt = System.currentTimeMillis(),
-                    finishedAt = null,
-                ),
-            )
-            runCatching { container.history.prune() }
-            ScreenRecordService.start(
+            RecordingSession.startAfterConsent(
                 context = context,
-                jobId = id,
+                container = container,
                 resultCode = resultCode,
                 data = data,
-                audioMode = _ui.value.audioMode,
-                resolution = _ui.value.resolution,
+                options = _ui.value.options,
             )
             _ui.value = _ui.value.copy(starting = false)
         }
@@ -109,4 +128,10 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun supportsInternalAudio(): Boolean = Build.VERSION.SDK_INT >= 29
+
+    fun availableCodecs(): List<RecordVideoCodec> = buildList {
+        add(RecordVideoCodec.H264)
+        if (_ui.value.hasHevc) add(RecordVideoCodec.HEVC)
+        if (_ui.value.hasAv1) add(RecordVideoCodec.AV1)
+    }
 }

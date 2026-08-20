@@ -24,6 +24,7 @@ class PreferencesRepository(private val context: Context) {
     private val defaultEngine = stringPreferencesKey("default_engine")
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
     private val lastHardwareProfile = stringPreferencesKey("last_hardware_profile")
+    private val lastRecordOptions = stringPreferencesKey("last_record_options")
 
     val settings: Flow<UserSettings> = context.dataStore.data.map { prefs ->
         UserSettings(
@@ -93,6 +94,12 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setLastHardwareProfileJson(json: String) {
         context.dataStore.edit { it[lastHardwareProfile] = json }
+    }
+
+    suspend fun recordOptionsJson(): String? = context.dataStore.data.map { it[lastRecordOptions] }.first()
+
+    suspend fun setRecordOptionsJson(json: String) {
+        context.dataStore.edit { it[lastRecordOptions] = json }
     }
 }
 

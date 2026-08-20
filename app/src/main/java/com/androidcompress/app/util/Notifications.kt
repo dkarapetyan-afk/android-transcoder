@@ -48,10 +48,12 @@ object Notifications {
         pauseResumeIntent: PendingIntent? = null,
         paused: Boolean = false,
         saving: Boolean = false,
+        preparing: Boolean = false,
     ): Notification {
         ensureChannels(context)
         val title = when {
             saving -> context.getString(R.string.notif_recording_saving)
+            preparing -> context.getString(R.string.notif_recording_starting)
             paused -> context.getString(R.string.notif_recording_paused)
             else -> context.getString(R.string.notif_recording)
         }
@@ -68,7 +70,7 @@ object Notifications {
             .setOnlyAlertOnce(true)
             .setContentIntent(openApp(context))
         if (!saving) {
-            if (pauseResumeIntent != null) {
+            if (pauseResumeIntent != null && !preparing) {
                 val pauseResumeLabel = if (paused) {
                     context.getString(R.string.action_resume)
                 } else {

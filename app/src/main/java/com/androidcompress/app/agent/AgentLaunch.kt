@@ -10,6 +10,7 @@ object AgentLaunch {
     const val EXTRA_JOB_ID = "com.androidcompress.app.JOB_ID"
     const val OPEN_SETTINGS = "settings"
     const val OPEN_RESULT = "result"
+    const val OPEN_RECORD = "record"
 
     data class UiRequest(
         val destination: String,

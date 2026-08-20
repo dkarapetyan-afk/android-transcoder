@@ -4,38 +4,68 @@ import android.Manifest
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.R
+import com.androidcompress.app.capture.RecordPhase
+import com.androidcompress.app.capture.RecordVideoCodec
+import com.androidcompress.app.capture.canDrawOverlays
+import com.androidcompress.app.capture.requestOverlayPermission
 import com.androidcompress.app.data.RecordAudioMode
 import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.ui.components.AppTopBar
 import com.androidcompress.app.util.formatDuration
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -47,6 +77,11 @@ fun RecordScreen(
     val context = LocalContext.current
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val recording by viewModel.recording.collectAsStateWithLifecycle()
+    val options = ui.options
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var appPicker by remember { mutableStateOf(false) }
+    val overlayNeeded = stringResource(R.string.record_overlay_needed)
 
     val captureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         viewModel.onConsentResult(context, result.resultCode, result.data)
@@ -56,80 +91,304 @@ fun RecordScreen(
         if (granted) launchCapture(context, captureLauncher)
         else viewModel.markStarting(false)
     }
-
-    LaunchedEffect(recording.finishedJobId) {
-        recording.finishedJobId?.let(onFinished)
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) {
+            viewModel.markStarting(false)
+            return@rememberLauncherForActivityResult
+        }
+        if (options.audioMode.needsRecordAudioPermission) {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            launchCapture(context, captureLauncher)
+        }
     }
 
-    Scaffold(topBar = { AppTopBar(stringResource(R.string.record_title), onBack = onBack) }) { padding ->
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshTapsService()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(recording.finishedJobId) {
+        val id = recording.finishedJobId ?: return@LaunchedEffect
+        val notice = recording.notice
+        if (!notice.isNullOrBlank()) snackbar.showSnackbar(notice)
+        onFinished(id)
+    }
+
+    fun beginStart() {
+        viewModel.markStarting()
+        if (Build.VERSION.SDK_INT >= 33) {
+            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (options.needsOverlay && !canDrawOverlays(context)) {
+            requestOverlayPermission(context)
+            viewModel.markStarting(false)
+            scope.launch { snackbar.showSnackbar(overlayNeeded) }
+            return
+        }
+        if (options.needsCamera) {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        } else if (options.audioMode.needsRecordAudioPermission) {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            launchCapture(context, captureLauncher)
+        }
+    }
+
+    val controlsEnabled = !recording.active
+    Scaffold(
+        topBar = { AppTopBar(stringResource(R.string.record_title), onBack = onBack) },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            val controlsEnabled = !recording.active
             Text(stringResource(R.string.record_audio), style = MaterialTheme.typography.titleMedium)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilterChip(
-                    selected = ui.audioMode == RecordAudioMode.NONE,
+                    selected = options.audioMode == RecordAudioMode.NONE,
                     onClick = { viewModel.setAudioMode(RecordAudioMode.NONE) },
                     enabled = controlsEnabled,
                     label = { Text(stringResource(R.string.record_audio_none)) },
                 )
                 FilterChip(
-                    selected = ui.audioMode == RecordAudioMode.MICROPHONE,
+                    selected = options.audioMode == RecordAudioMode.MICROPHONE,
                     onClick = { viewModel.setAudioMode(RecordAudioMode.MICROPHONE) },
                     enabled = controlsEnabled,
                     label = { Text(stringResource(R.string.record_audio_mic)) },
                 )
                 if (viewModel.supportsInternalAudio()) {
                     FilterChip(
-                        selected = ui.audioMode == RecordAudioMode.INTERNAL,
+                        selected = options.audioMode == RecordAudioMode.INTERNAL,
                         onClick = { viewModel.setAudioMode(RecordAudioMode.INTERNAL) },
                         enabled = controlsEnabled,
                         label = { Text(stringResource(R.string.record_audio_internal)) },
                     )
                     FilterChip(
-                        selected = ui.audioMode == RecordAudioMode.BOTH,
+                        selected = options.audioMode == RecordAudioMode.BOTH,
                         onClick = { viewModel.setAudioMode(RecordAudioMode.BOTH) },
                         enabled = controlsEnabled,
                         label = { Text(stringResource(R.string.record_audio_both)) },
                     )
                 }
             }
-            if (ui.audioMode == RecordAudioMode.BOTH && !recording.active) {
+            if (options.audioMode == RecordAudioMode.BOTH && !recording.active) {
                 Text(
                     stringResource(R.string.record_audio_both_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
+            if (options.audioMode.usesInternalAudio && viewModel.supportsInternalAudio()) {
+                Text(stringResource(R.string.record_internal_app), style = MaterialTheme.typography.titleMedium)
+                TextButton(
+                    enabled = controlsEnabled,
+                    onClick = {
+                        viewModel.loadApps()
+                        appPicker = true
+                    },
+                ) {
+                    Text(
+                        options.internalAudioLabel.ifBlank { stringResource(R.string.record_internal_any) },
+                    )
+                }
+                Text(
+                    stringResource(R.string.record_internal_app_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (options.audioMode == RecordAudioMode.BOTH ||
+                options.audioMode == RecordAudioMode.MICROPHONE ||
+                options.audioMode == RecordAudioMode.INTERNAL
+            ) {
+                Text(stringResource(R.string.record_mix), style = MaterialTheme.typography.titleMedium)
+                if (options.audioMode.usesMicrophone) {
+                    Text(stringResource(R.string.record_mic_gain, options.micGainPercent))
+                    Slider(
+                        value = options.micGainPercent.toFloat(),
+                        onValueChange = { viewModel.update { o -> o.copy(micGainPercent = it.toInt()) } },
+                        valueRange = 0f..200f,
+                        enabled = controlsEnabled,
+                    )
+                }
+                if (options.audioMode.usesInternalAudio) {
+                    Text(stringResource(R.string.record_internal_gain, options.internalGainPercent))
+                    Slider(
+                        value = options.internalGainPercent.toFloat(),
+                        onValueChange = { viewModel.update { o -> o.copy(internalGainPercent = it.toInt()) } },
+                        valueRange = 0f..200f,
+                        enabled = controlsEnabled,
+                    )
+                }
+                if (options.audioMode == RecordAudioMode.BOTH) {
+                    SwitchRow(
+                        title = stringResource(R.string.record_duck),
+                        hint = stringResource(R.string.record_duck_hint),
+                        checked = options.duckAppAudio,
+                        enabled = controlsEnabled,
+                        onChecked = { viewModel.update { o -> o.copy(duckAppAudio = it) } },
+                    )
+                }
+            }
+
             Text(stringResource(R.string.record_resolution), style = MaterialTheme.typography.titleMedium)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 FilterChip(
-                    selected = ui.resolution == RecordResolution.P720,
+                    selected = options.resolution == RecordResolution.P720,
                     onClick = { viewModel.setResolution(RecordResolution.P720) },
                     enabled = controlsEnabled,
                     label = { Text(stringResource(R.string.height_p, 720)) },
                 )
                 FilterChip(
-                    selected = ui.resolution == RecordResolution.P1080,
+                    selected = options.resolution == RecordResolution.P1080,
                     onClick = { viewModel.setResolution(RecordResolution.P1080) },
                     enabled = controlsEnabled,
                     label = { Text(stringResource(R.string.height_p, 1080)) },
                 )
                 FilterChip(
-                    selected = ui.resolution == RecordResolution.DISPLAY,
+                    selected = options.resolution == RecordResolution.DISPLAY,
                     onClick = { viewModel.setResolution(RecordResolution.DISPLAY) },
                     enabled = controlsEnabled,
                     label = { Text(stringResource(R.string.record_res_display)) },
                 )
             }
+
+            Text(stringResource(R.string.record_output), style = MaterialTheme.typography.titleMedium)
+            SwitchRow(
+                title = stringResource(R.string.record_direct),
+                hint = stringResource(R.string.record_direct_hint),
+                checked = options.directEncode,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(directEncode = it) } },
+            )
+            if (options.directEncode) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    viewModel.availableCodecs().forEach { codec ->
+                        FilterChip(
+                            selected = options.videoCodec == codec,
+                            onClick = { viewModel.update { o -> o.copy(videoCodec = codec) } },
+                            enabled = controlsEnabled,
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (codec) {
+                                            RecordVideoCodec.H264 -> R.string.codec_h264
+                                            RecordVideoCodec.HEVC -> R.string.codec_hevc
+                                            RecordVideoCodec.AV1 -> R.string.codec_av1
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            Text(stringResource(R.string.record_session), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.record_countdown), style = MaterialTheme.typography.bodyMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0, 3, 5, 10).forEach { seconds ->
+                    FilterChip(
+                        selected = options.countdownSeconds == seconds,
+                        onClick = { viewModel.update { o -> o.copy(countdownSeconds = seconds) } },
+                        enabled = controlsEnabled,
+                        label = {
+                            Text(
+                                if (seconds == 0) stringResource(R.string.record_countdown_off)
+                                else stringResource(R.string.record_countdown_s, seconds),
+                            )
+                        },
+                    )
+                }
+            }
+            Text(stringResource(R.string.record_max_duration), style = MaterialTheme.typography.bodyMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0, 1, 3, 10, 30).forEach { minutes ->
+                    FilterChip(
+                        selected = options.maxDurationMinutes == minutes,
+                        onClick = { viewModel.update { o -> o.copy(maxDurationMinutes = minutes) } },
+                        enabled = controlsEnabled,
+                        label = {
+                            Text(
+                                if (minutes == 0) stringResource(R.string.record_max_off)
+                                else stringResource(R.string.record_max_minutes, minutes),
+                            )
+                        },
+                    )
+                }
+            }
+            SwitchRow(
+                title = stringResource(R.string.record_low_storage),
+                hint = stringResource(R.string.record_low_storage_hint),
+                checked = options.autoStopLowStorage,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(autoStopLowStorage = it) } },
+            )
+
+            Text(stringResource(R.string.record_overlays), style = MaterialTheme.typography.titleMedium)
+            SwitchRow(
+                title = stringResource(R.string.record_region),
+                hint = stringResource(R.string.record_region_hint),
+                checked = options.captureRegion,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(captureRegion = it) } },
+            )
+            if (ui.hasFrontCamera) {
+                SwitchRow(
+                    title = stringResource(R.string.record_facecam),
+                    hint = stringResource(R.string.record_facecam_hint),
+                    checked = options.facecam,
+                    enabled = controlsEnabled,
+                    onChecked = { viewModel.update { o -> o.copy(facecam = it) } },
+                )
+            }
+            SwitchRow(
+                title = stringResource(R.string.record_taps),
+                hint = stringResource(R.string.record_taps_hint),
+                checked = options.showTaps,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(showTaps = it) } },
+            )
+            if (options.showTaps && !ui.tapsServiceEnabled) {
+                TextButton(onClick = {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }) {
+                    Text(stringResource(R.string.record_taps_enable))
+                }
+            }
+            SwitchRow(
+                title = stringResource(R.string.record_bubble),
+                hint = stringResource(R.string.record_bubble_hint),
+                checked = options.showBubble,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(showBubble = it) } },
+            )
+
             if (recording.active) {
                 val elapsed by produceState(0L, recording) {
                     while (true) {
@@ -138,19 +397,25 @@ fun RecordScreen(
                     }
                 }
                 Text(
-                    if (recording.saving) {
-                        stringResource(R.string.record_elapsed_saving)
-                    } else {
-                        stringResource(
-                            if (recording.paused) R.string.record_elapsed_paused else R.string.record_elapsed,
-                            formatDuration(elapsed),
+                    when {
+                        recording.saving -> stringResource(R.string.record_elapsed_saving)
+                        recording.phase == RecordPhase.REGION -> stringResource(R.string.record_phase_region)
+                        recording.phase == RecordPhase.COUNTDOWN -> stringResource(
+                            R.string.record_hint_countdown,
+                            recording.countdownRemaining,
                         )
+                        recording.paused -> stringResource(R.string.record_elapsed_paused, formatDuration(elapsed))
+                        else -> stringResource(R.string.record_elapsed, formatDuration(elapsed))
                     },
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Text(
                     stringResource(
-                        if (recording.saving) R.string.record_hint_saving else R.string.record_hint_active,
+                        when {
+                            recording.saving -> R.string.record_hint_saving
+                            recording.phase == RecordPhase.REGION -> R.string.record_hint_region
+                            else -> R.string.record_hint_active
+                        },
                     ),
                 )
             } else {
@@ -161,7 +426,7 @@ fun RecordScreen(
             }
             Spacer(Modifier.height(12.dp))
             if (recording.active) {
-                if (!recording.saving) {
+                if (!recording.saving && recording.capturing) {
                     OutlinedButton(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
@@ -187,23 +452,95 @@ fun RecordScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !ui.starting,
-                    onClick = {
-                        viewModel.markStarting()
-                        if (Build.VERSION.SDK_INT >= 33) {
-                            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                        if (ui.audioMode.needsRecordAudioPermission) {
-                            micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                        } else {
-                            launchCapture(context, captureLauncher)
-                        }
-                    },
+                    onClick = { beginStart() },
                 ) {
                     Text(stringResource(R.string.record_start))
                 }
             }
         }
     }
+
+    if (appPicker) {
+        CaptureAppDialog(
+            apps = ui.apps,
+            onAny = {
+                viewModel.update { o -> o.copy(internalAudioPackage = "", internalAudioLabel = "") }
+                appPicker = false
+            },
+            onPick = { pkg, label ->
+                viewModel.update { o -> o.copy(internalAudioPackage = pkg, internalAudioLabel = label) }
+                appPicker = false
+            },
+            onDismiss = { appPicker = false },
+        )
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChecked: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            Text(
+                hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onChecked, enabled = enabled)
+    }
+}
+
+@Composable
+private fun CaptureAppDialog(
+    apps: List<com.androidcompress.app.capture.CaptureApp>,
+    onAny: () -> Unit,
+    onPick: (String, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(apps, query) {
+        val q = query.trim()
+        if (q.isEmpty()) apps else apps.filter {
+            it.label.contains(q, ignoreCase = true) || it.packageName.contains(q, ignoreCase = true)
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.record_internal_pick)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.record_internal_search)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                )
+                TextButton(onClick = onAny) { Text(stringResource(R.string.record_internal_any)) }
+                LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                    items(filtered, key = { it.packageName }) { app ->
+                        TextButton(
+                            onClick = { onPick(app.packageName, app.label) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(app.label, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 private fun launchCapture(

@@ -7,13 +7,16 @@
 </head>
 <body>
   <h1>Recording Compressor privacy policy</h1>
-  <p>Last updated: 17 August 2026</p>
+  <p>Last updated: 20 August 2026</p>
   <p>Recording Compressor processes video entirely on your device. The app does not create accounts, does not include advertising or analytics SDKs, and does not send recordings to a server. If you optionally paste a Google Gemini API key and use “Generate extra args,” only the text prompt and encode settings are sent to Google. The video file is not uploaded.</p>
   <h2>Data the app uses</h2>
   <ul>
     <li>Videos you import or record, stored in app cache and, after compression, in <code>Movies/RecordingCompressor</code> on the device.</li>
     <li>Optional microphone audio, only when you enable microphone capture.</li>
-    <li>Optional internal playback audio (Android 10+), only when you enable internal capture. This uses the same screen-capture consent dialog.</li>
+    <li>Optional internal playback audio (Android 10+), only when you enable internal capture. You can capture all media/game playback or limit capture to one app you pick.</li>
+    <li>Optional front-camera preview (camera inset) while recording, only when you turn it on. The preview is part of the captured video.</li>
+    <li>Optional tap-highlight overlay. If you enable the accessibility service for this purpose, it only draws ripples or a pointer during a recording. It does not read on-screen text or passwords.</li>
+    <li>Optional overlay windows (region selector, camera inset, floating pause/stop) that require “Display over other apps.”</li>
     <li>Job history (file names, sizes, status) stored locally in an on-device database.</li>
     <li>If you turn on “Delete original after compress,” the app attempts to remove the source video after the compressed copy is saved. This stays on the device and is never uploaded.</li>
     <li>Optional Gemini API key, stored locally, used only when you ask Gemini to write extra FFmpeg arguments.</li>
@@ -24,8 +27,12 @@
   <ul>
     <li><strong>Internet</strong> — only for the optional Gemini extra-args generator. Encoding and recording stay on-device.</li>
     <li><strong>Screen capture</strong> — Android MediaProjection consent, requested every recording session.</li>
-    <li><strong>Microphone</strong> — only if you record microphone or internal audio.</li>
+    <li><strong>Microphone</strong> — only if you record microphone or mixed mic + internal audio.</li>
+    <li><strong>Camera</strong> — only if you turn on the camera inset while recording.</li>
+    <li><strong>Display over other apps</strong> — region selection, camera inset, and floating recording controls.</li>
+    <li><strong>Accessibility</strong> — optional, only to draw tap ripples / a pointer during recording. Not used to read content.</li>
     <li><strong>Notifications</strong> — progress for recording and compression that continue when you leave the app.</li>
+    <li><strong>Quick Settings tile</strong> — start, pause, or resume a recording from the system shade (screen-capture consent still appears).</li>
     <li><strong>Photos, videos, and audio</strong> — optional. Used only after you enable Device library access so the app or an assistant can open files already on the device. The system picker and Share still work without this.</li>
   </ul>
   <p>You can keep using the system picker and Share without granting library access.</p>

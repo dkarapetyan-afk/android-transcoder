@@ -56,6 +56,31 @@ class RecordingStateTest {
         assertTrue(store.state.value.saving)
         assertFalse(store.state.value.paused)
         assertTrue(store.state.value.active)
+        assertEquals(RecordPhase.SAVING, store.state.value.phase)
+    }
+
+    @Test
+    fun prepareThenStartCapturingSetsElapsedClock() {
+        val store = RecordingStore()
+        store.prepare("job", RecordPhase.COUNTDOWN)
+        assertTrue(store.state.value.active)
+        assertEquals(0L, store.state.value.elapsedMs(now = 50_000L))
+        store.startCapturing()
+        assertEquals(RecordPhase.RECORDING, store.state.value.phase)
+        assertTrue(store.state.value.startedAt > 0L)
+        assertTrue(store.state.value.capturing)
+    }
+
+    @Test
+    fun finishCanOpenResult() {
+        val store = RecordingStore()
+        store.finish("job", openResult = true, notice = "Stopped")
+        assertEquals("job", store.state.value.finishedJobId)
+        assertTrue(store.state.value.openResult)
+        assertEquals("Stopped", store.state.value.notice)
+        store.consumeFinished()
+        assertEquals(null, store.state.value.finishedJobId)
+        assertFalse(store.state.value.openResult)
     }
 }
 

@@ -14,7 +14,13 @@ data class RecordingState(
     val pauseStartedAt: Long = 0L,
     val finishedJobId: String? = null,
     val error: String? = null,
+    val notice: String? = null,
+    val openResult: Boolean = false,
+    val phase: RecordPhase = RecordPhase.IDLE,
+    val countdownRemaining: Int = 0,
 ) {
+    val capturing: Boolean get() = active && phase == RecordPhase.RECORDING && !saving
+
     fun elapsedMs(now: Long = System.currentTimeMillis()): Long {
         if (!active || startedAt <= 0L) return 0L
         val extraPaused = if (paused && pauseStartedAt > 0L) {
@@ -30,8 +36,36 @@ class RecordingStore {
     private val _state = MutableStateFlow(RecordingState())
     val state: StateFlow<RecordingState> = _state.asStateFlow()
 
+    fun prepare(jobId: String, phase: RecordPhase) {
+        _state.value = RecordingState(active = true, jobId = jobId, phase = phase)
+    }
+
+    fun setPhase(phase: RecordPhase, countdownRemaining: Int = 0) {
+        val cur = _state.value
+        if (!cur.active || cur.saving) return
+        _state.value = cur.copy(phase = phase, countdownRemaining = countdownRemaining.coerceAtLeast(0))
+    }
+
     fun start(jobId: String) {
-        _state.value = RecordingState(active = true, jobId = jobId, startedAt = System.currentTimeMillis())
+        _state.value = RecordingState(
+            active = true,
+            jobId = jobId,
+            startedAt = System.currentTimeMillis(),
+            phase = RecordPhase.RECORDING,
+        )
+    }
+
+    fun startCapturing() {
+        val cur = _state.value
+        if (!cur.active || cur.saving) return
+        _state.value = cur.copy(
+            phase = RecordPhase.RECORDING,
+            startedAt = System.currentTimeMillis(),
+            countdownRemaining = 0,
+            paused = false,
+            pausedAccumulatedMs = 0L,
+            pauseStartedAt = 0L,
+        )
     }
 
     fun setPaused(paused: Boolean, now: Long = System.currentTimeMillis()) {
@@ -61,20 +95,26 @@ class RecordingStore {
         _state.value = cur.copy(
             paused = false,
             saving = true,
+            phase = RecordPhase.SAVING,
             pauseStartedAt = 0L,
             pausedAccumulatedMs = cur.pausedAccumulatedMs + extra,
+            countdownRemaining = 0,
         )
     }
 
-    fun finish(jobId: String) {
-        _state.value = RecordingState(active = false, finishedJobId = jobId)
+    fun finish(jobId: String, openResult: Boolean = false, notice: String? = null) {
+        _state.value = RecordingState(
+            finishedJobId = jobId,
+            openResult = openResult,
+            notice = notice,
+        )
     }
 
     fun fail(message: String) {
-        _state.value = RecordingState(active = false, error = message)
+        _state.value = RecordingState(error = message)
     }
 
     fun consumeFinished() {
-        _state.value = _state.value.copy(finishedJobId = null, error = null)
+        _state.value = RecordingState()
     }
 }
