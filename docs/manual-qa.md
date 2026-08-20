@@ -14,6 +14,7 @@ These cannot be fully automated in this workspace.
 - Start compress on API 35+ (Pixel 10 / Android 16): must not crash with InvalidForegroundServiceTypeException.
 - Hardware encoder path and software fallback (toggle hardware off). After the FFmpeg 8.1 AAR swap, confirm FFmpeg still lists h264_mediacodec / libvpx / libopus. If the device has AV1, confirm av1_mediacodec (and libaom-av1 if the kit includes it).
 - FFmpeg WebM video looks correct (not scrambled). Command should use libvpx-vp9 or libvpx and yuv420p, not vp9_mediacodec.
+- FFmpeg H.264 of a portrait screen recording looks correct (not scrambled, not missing ~half the frames). Command should use libopenh264 or mpeg4 with yuv420p and a CFR `-r`, not h264_mediacodec. Device hardware H.264 is the Media3 engine. Progress should move past 1%; Cancel should return to Home.
 - Device (Media3) engine: pick it on the compress screen, confirm progress, output, and cancel still work without FFmpeg.
 - Device (Media3) clip: set start/end on a known source, confirm the output is only that range and progress uses the clipped duration. Whole-video reset clears the clip.
 - Audio only from a video (both engines): output is an AAC .m4a in Music/RecordingCompressor; Open/Share use audio MIME.

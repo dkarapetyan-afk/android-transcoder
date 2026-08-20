@@ -30,8 +30,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class CompressService : Service() {
 
@@ -342,10 +346,13 @@ class CompressService : Service() {
         log: StringBuilder,
     ): EncodeResult {
         log.appendLine("FFmpeg command: ${quoteArgs(plan.args)}")
+        val lastStatsAt = AtomicLong(System.currentTimeMillis())
+        val stalled = AtomicBoolean(false)
         val current = container().ffmpeg.encode(
             args = plan.args,
             onLog = { line -> if (line.isNotBlank()) log.appendLine(line) },
             onStats = { stats ->
+                lastStatsAt.set(System.currentTimeMillis())
                 val durationMs = Media3EncodePlanner.outputDurationMs(settings, source)
                 val fraction = if (durationMs > 0) {
                     (stats.timeMs.toFloat() / durationMs).coerceIn(0f, 0.99f)
@@ -357,9 +364,33 @@ class CompressService : Service() {
             },
         )
         session = current
-        val result = current.await()
+        val watchdog = scope.launch {
+            while (isActive) {
+                delay(2_000)
+                if (System.currentTimeMillis() - lastStatsAt.get() > STALL_MS) {
+                    stalled.set(true)
+                    current.cancel()
+                    break
+                }
+            }
+        }
+        val result = try {
+            current.await()
+        } finally {
+            watchdog.cancel()
+        }
+        if (stalled.get()) {
+            log.appendLine("encoder stalled; cancelling so a fallback can run")
+        }
         appendResult(log, result)
-        return result
+        return if (stalled.get() && !result.success) {
+            result.copy(
+                cancelled = false,
+                error = result.error ?: getString(R.string.error_compression_failed),
+            )
+        } else {
+            result
+        }
     }
 
     private fun appendResult(log: StringBuilder, result: EncodeResult) {
@@ -431,6 +462,7 @@ class CompressService : Service() {
         const val ACTION_CANCEL_ALL = "com.androidcompress.app.ENCODE_CANCEL_ALL"
         const val ACTION_CANCEL_JOB = "com.androidcompress.app.ENCODE_CANCEL_JOB"
         const val EXTRA_JOB_ID = "jobId"
+        private const val STALL_MS = 20_000L
 
         fun start(context: Context, jobId: String) = enqueue(context, jobId)
 

@@ -42,7 +42,7 @@ class FfmpegCommandBuilderTest {
     )
 
     @Test
-    fun balancedUses1080AndHardwareH264() {
+    fun balancedUses1080AndSoftwareH264() {
         val plan = FfmpegCommandBuilder.build(
             input = "in.mp4",
             output = "out.mp4",
@@ -50,13 +50,24 @@ class FfmpegCommandBuilderTest {
             source = source,
             capabilities = hardwareCaps,
         )
-        assertEquals("h264_mediacodec", plan.videoEncoder)
-        assertEquals("nv12", plan.pixFmt)
+        assertEquals("mpeg4", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
         assertTrue(plan.args.contains("-c:v"))
-        assertEquals("h264_mediacodec", plan.args[plan.args.indexOf("-c:v") + 1])
+        assertEquals("mpeg4", plan.args[plan.args.indexOf("-c:v") + 1])
         assertTrue(plan.args.contains("-movflags"))
         assertEquals("out.mp4", plan.args.last())
         assertEquals(2500, plan.videoBitrateKbps)
+    }
+
+    @Test
+    fun ffmpegH264PrefersOpenH264OverMediaCodec() {
+        val caps = hardwareCaps.copy(hasOpenH264 = true)
+        val settings = EncodeSettings.forPreset(Preset.BALANCED)
+        assertEquals("libopenh264", FfmpegCommandBuilder.selectVideoEncoder(settings, caps))
+        assertEquals(
+            "libopenh264",
+            FfmpegCommandBuilder.selectVideoEncoder(settings.copy(preferHardware = true), caps),
+        )
     }
 
     @Test
@@ -70,7 +81,8 @@ class FfmpegCommandBuilderTest {
         )
         assertEquals(720, plan.outputHeight)
         assertEquals(1280, plan.outputWidth)
-        assertTrue(plan.args.contains("scale=1280:720"))
+        val vf = plan.args[plan.args.indexOf("-vf") + 1]
+        assertTrue(vf.contains("scale=1280:720"))
         assertTrue(plan.args.contains("-r"))
         assertEquals("30", plan.args[plan.args.indexOf("-r") + 1])
     }
@@ -102,7 +114,7 @@ class FfmpegCommandBuilderTest {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.HEVC)
         val caps = hardwareCaps.copy(hasHevcMediaCodec = false)
         val encoder = FfmpegCommandBuilder.selectVideoEncoder(settings, caps)
-        assertEquals("h264_mediacodec", encoder)
+        assertEquals("mpeg4", encoder)
     }
 
     @Test
@@ -128,15 +140,40 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
-    fun fallbackChangesPixFmtThenEncoder() {
-        val first = FfmpegCommandBuilder.build("in.mp4", "out.mp4", EncodeSettings.forPreset(Preset.BALANCED), source, hardwareCaps)
-        val second = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.mp4", EncodeSettings.forPreset(Preset.BALANCED), source, hardwareCaps)
-        assertNotNull(second)
-        assertEquals("yuv420p", second!!.pixFmt)
-        val third = FfmpegCommandBuilder.fallbackPlan(second, "in.mp4", "out.mp4", EncodeSettings.forPreset(Preset.BALANCED), source, hardwareCaps)
-        assertEquals("mpeg4", third?.videoEncoder)
-        val last = FfmpegCommandBuilder.fallbackPlan(third!!, "in.mp4", "out.mp4", EncodeSettings.forPreset(Preset.BALANCED), source, hardwareCaps)
-        assertNull(last)
+    fun fallbackFromMediaCodecGoesToMpeg4() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED)
+        val hardware = FfmpegCommandBuilder.build(
+            "in.mp4", "out.mp4", settings, source, hardwareCaps,
+            encoderOverride = "h264_mediacodec",
+        )
+        assertEquals("h264_mediacodec", hardware.videoEncoder)
+        val software = FfmpegCommandBuilder.fallbackPlan(
+            hardware, "in.mp4", "out.mp4", settings, source, hardwareCaps,
+        )
+        assertEquals("mpeg4", software?.videoEncoder)
+        assertEquals("yuv420p", software!!.pixFmt)
+        assertNull(FfmpegCommandBuilder.fallbackPlan(software, "in.mp4", "out.mp4", settings, source, hardwareCaps))
+    }
+
+    @Test
+    fun screenRecordingUsesCfrSoftwareH264() {
+        val recorded = source.copy(width = 480, height = 1080, frameRate = 21.45f)
+        val plan = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            EncodeSettings.forPreset(Preset.BALANCED),
+            recorded,
+            hardwareCaps.copy(hasOpenH264 = true),
+        )
+        assertEquals("libopenh264", plan.videoEncoder)
+        assertEquals("yuv420p", plan.pixFmt)
+        assertFalse(plan.args.contains("nv12"))
+        assertFalse(plan.args.contains("h264_mediacodec"))
+        val vf = plan.args[plan.args.indexOf("-vf") + 1]
+        assertTrue(vf.contains("format=yuv420p"))
+        assertEquals("21", plan.args[plan.args.indexOf("-r") + 1])
+        assertEquals("bt709", plan.args[plan.args.indexOf("-colorspace") + 1])
+        assertEquals("tv", plan.args[plan.args.indexOf("-color_range") + 1])
     }
 
     @Test
@@ -375,7 +412,7 @@ class FfmpegCommandBuilderTest {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, caps)
         assertEquals("av1_mediacodec", plan.videoEncoder)
-        assertEquals("nv12", plan.pixFmt)
+        assertEquals("yuv420p", plan.pixFmt)
         assertEquals("av01", plan.args[plan.args.indexOf("-tag:v") + 1])
         assertFalse(plan.args.contains("-bf"))
     }
@@ -399,7 +436,7 @@ class FfmpegCommandBuilderTest {
     fun av1FallsBackToH264WithoutAv1Encoders() {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
         val encoder = FfmpegCommandBuilder.selectVideoEncoder(settings, hardwareCaps)
-        assertEquals("h264_mediacodec", encoder)
+        assertEquals("mpeg4", encoder)
     }
 
     @Test
@@ -442,10 +479,9 @@ class FfmpegCommandBuilderTest {
         val caps = hardwareCaps.copy(hasAv1MediaCodec = true, hasLibaomAv1 = true)
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(codec = VideoCodec.AV1)
         val first = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, caps)
-        val yuv = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.mp4", settings, source, caps)
-        assertEquals("yuv420p", yuv?.pixFmt)
-        assertEquals("av1_mediacodec", yuv?.videoEncoder)
-        val software = FfmpegCommandBuilder.fallbackPlan(yuv!!, "in.mp4", "out.mp4", settings, source, caps)
+        assertEquals("av1_mediacodec", first.videoEncoder)
+        assertEquals("yuv420p", first.pixFmt)
+        val software = FfmpegCommandBuilder.fallbackPlan(first, "in.mp4", "out.mp4", settings, source, caps)
         assertEquals("libaom-av1", software?.videoEncoder)
     }
 
@@ -484,7 +520,8 @@ class FfmpegCommandBuilderTest {
     fun toneMapAddsRec709() {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(hdrMode = HdrMode.TONE_MAP)
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
-        assertTrue(plan.args.contains("format=yuv420p"))
+        val vf = plan.args[plan.args.indexOf("-vf") + 1]
+        assertTrue(vf.contains("format=yuv420p"))
         assertEquals("bt709", plan.args[plan.args.indexOf("-colorspace") + 1])
     }
 

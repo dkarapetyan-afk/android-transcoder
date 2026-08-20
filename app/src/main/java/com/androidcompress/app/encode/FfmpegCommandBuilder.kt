@@ -133,12 +133,13 @@ object FfmpegCommandBuilder {
             VideoCodec.AV1 -> selectAv1Encoder(settings, capabilities)
             VideoCodec.HEVC -> when {
                 settings.preferHardware && capabilities.hasHevcMediaCodec -> "hevc_mediacodec"
-                settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
                 capabilities.hasOpenH264 -> "libopenh264"
                 else -> "mpeg4"
             }
+            // FFmpeg 8 h264_mediacodec writes scrambled frames (gbr graph,
+            // NV12 layout, dropped PTS) while exiting 0. Same class of bug as
+            // vp8/vp9_mediacodec. Use software H.264; Media3 is the hardware path.
             VideoCodec.H264 -> when {
-                settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
                 capabilities.hasOpenH264 -> "libopenh264"
                 else -> "mpeg4"
             }
@@ -160,7 +161,6 @@ object FfmpegCommandBuilder {
             }
         }
         return when {
-            settings.preferHardware && capabilities.hasH264MediaCodec -> "h264_mediacodec"
             capabilities.hasOpenH264 -> "libopenh264"
             else -> "mpeg4"
         }
@@ -190,19 +190,18 @@ object FfmpegCommandBuilder {
         val outW = outputWidth(source, outH)
         val videoBitrate = scaledVideoBitrate(source, settings)
         val needsScale = outH != source.height || even(source.width) != source.width
-        val needsFps = !source.stillImage && settings.fpsCap != null && source.frameRate > settings.fpsCap + 0.1f
         val toneMap = settings.hdrMode == HdrMode.TONE_MAP
         val isHardware = encoder.endsWith("_mediacodec")
         val isLibvpx = encoder == "libvpx" || encoder == "libvpx-vp9"
-        val isVpxMediaCodec = encoder == "vp8_mediacodec" || encoder == "vp9_mediacodec"
-        val isSoftwareAv1 = encoder == "libaom-av1" || encoder == "libsvtav1"
-        val pixFmt = when {
-            pixFmtOverride != null -> pixFmtOverride
-            isLibvpx || isVpxMediaCodec || isSoftwareAv1 -> "yuv420p"
-            encoder == "av1_mediacodec" && settings.usesWebm() -> "yuv420p"
-            isHardware -> "nv12"
-            else -> null
-        }
+        val pixFmt = pixFmtOverride ?: "yuv420p"
+        val fpsOut = outputFrameRate(source, settings).roundToInt().coerceIn(1, 120)
+        // Software must set -r: screen recordings remuxed at a 90k timescale
+        // report tbr=90k and otherwise drop/duplicate frames. Do not force -r
+        // on mediacodec; that can hang the encoder after the first stats tick.
+        val needsFps = !source.stillImage && (
+            !isHardware ||
+                (settings.fpsCap != null && source.frameRate > settings.fpsCap + 0.1f)
+            )
         val volume = audioVolume(settings)
         val changeVolume = volume != 1f && settings.audio != AudioOption.MUTE && source.hasAudio
         val clip = Media3EncodePlanner.clipWindow(settings, source.durationMs)
@@ -215,13 +214,16 @@ object FfmpegCommandBuilder {
             args += listOf("-i", input)
         }
         val vf = mutableListOf<String>()
-        if (needsScale) vf += "scale=$outW:$outH"
-        if (toneMap || settings.usesWebm()) vf += "format=yuv420p"
+        if (needsScale) {
+            vf += "scale=$outW:$outH:in_color_matrix=bt709:out_color_matrix=bt709:in_range=tv:out_range=tv"
+        }
+        if (toneMap || settings.usesWebm() || pixFmt == "yuv420p") vf += "format=yuv420p"
+        if (pixFmt == "nv12") vf += "format=nv12"
         if (vf.isNotEmpty()) {
             args += listOf("-vf", vf.joinToString(","))
         }
         if (needsFps) {
-            args += listOf("-r", settings.fpsCap!!.toString())
+            args += listOf("-r", fpsOut.toString())
         }
         args += listOf("-c:v", encoder, "-b:v", "${videoBitrate}k")
         if (isLibvpx) {
@@ -243,9 +245,7 @@ object FfmpegCommandBuilder {
                 args += listOf("-maxrate", "${videoBitrate}k", "-bufsize", "${videoBitrate * 2}k")
             }
         }
-        if (pixFmt != null) {
-            args += listOf("-pix_fmt", pixFmt)
-        }
+        args += listOf("-pix_fmt", pixFmt)
         if (encoder == "hevc_mediacodec") {
             args += listOf("-tag:v", "hvc1")
         }
@@ -260,18 +260,19 @@ object FfmpegCommandBuilder {
                 H264Profile.AUTO -> Unit
             }
         }
-        keyframeSeconds(settings)?.let { seconds ->
-            val gop = (outputFrameRate(source, settings) * seconds).roundToInt().coerceAtLeast(1)
+        val gopSeconds = keyframeSeconds(settings)
+        if (gopSeconds != null) {
+            val gop = (outputFrameRate(source, settings) * gopSeconds).roundToInt().coerceAtLeast(1)
             args += listOf("-g", gop.toString())
+        } else if (isHardware) {
+            args += listOf("-g", fpsOut.toString())
         }
         if (!settings.usesWebm() && settings.effectiveVideoCodec() != VideoCodec.AV1) {
             maxBFrames(settings)?.let { frames ->
                 args += listOf("-bf", frames.toString())
             }
         }
-        if (toneMap) {
-            args += listOf("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709")
-        }
+        args += listOf("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv")
         if (changeVolume) {
             args += listOf("-filter:a", "volume=$volume")
         }

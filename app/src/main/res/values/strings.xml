@@ -136,7 +136,7 @@
     <string name="compress_preset">Preset</string>
     <string name="compress_engine">Engine</string>
     <string name="compress_engine_media3_hint">Uses Android Media3 Transformer and the hardware encoder. No FFmpeg.</string>
-    <string name="compress_engine_ffmpeg_hint">Uses the bundled FFmpeg build, including software fallback if the hardware encoder fails.</string>
+    <string name="compress_engine_ffmpeg_hint">Uses the bundled FFmpeg build. H.264 is software (libopenh264/mpeg4) because FFmpeg’s h264_mediacodec writes scrambled frames. Use the Device engine for hardware H.264. HEVC/AV1 can still use a hardware encoder when present.</string>
     <string name="compress_output">Output</string>
     <string name="compress_output_video">Video</string>
     <string name="compress_output_audio">Audio only</string>

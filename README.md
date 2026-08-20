@@ -28,6 +28,14 @@ export ANDROID_HOME=$HOME/Android/Sdk
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
+Release builds sign with `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` when those env vars are set. Otherwise they read `keystore.properties` at the repo root (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Neither `release.jks` nor `keystore.properties` is committed.
+
+```bash
+./gradlew :app:assembleRelease :app:bundleRelease
+```
+
+The signed APK is `app/build/outputs/apk/release/`, the Play upload is `app/build/outputs/bundle/release/`.
+
 ## App Functions (Android 16+)
 
 Privileged system agents can drive imported jobs without opening the UI. The service is `com.androidcompress.app.agent.CompressAppFunctionService` (`.debug` in debug builds).

@@ -1,8 +1,23 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+val keystoreProperties = Properties().apply {
+    val local = rootProject.file("keystore.properties")
+    if (local.exists()) {
+        local.inputStream().use(::load)
+    }
+}
+
+fun signingValue(envName: String, propertyName: String, default: String? = null): String? =
+    System.getenv(envName)?.takeIf { it.isNotEmpty() }
+        ?: keystoreProperties.getProperty(propertyName)?.takeIf { it.isNotEmpty() }
+        ?: default
 
 android {
     namespace = "com.androidcompress.app"
@@ -20,8 +35,20 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val storePath = signingValue("KEYSTORE_PATH", "storeFile", "release.jks")!!
+            val store = File(storePath)
+            storeFile = if (store.isAbsolute) store else rootProject.file(storePath)
+            storePassword = signingValue("KEYSTORE_PASSWORD", "storePassword")
+            keyAlias = signingValue("KEY_ALIAS", "keyAlias", "recordingcompressor")
+            keyPassword = signingValue("KEY_PASSWORD", "keyPassword")
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

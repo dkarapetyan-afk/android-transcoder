@@ -46,7 +46,27 @@ class FfmpegKitGateway : FfmpegGateway {
             override val id: Long = session.sessionId
             override suspend fun await(): EncodeResult = deferred.await()
             override fun cancel() {
-                FFmpegKit.cancel(session.sessionId)
+                runCatching { FFmpegKit.cancel(session.sessionId) }
+                runCatching { FFmpegKit.cancel() }
+                Thread({
+                    try {
+                        Thread.sleep(2_000)
+                    } catch (_: InterruptedException) {
+                        return@Thread
+                    }
+                    deferred.complete(
+                        EncodeResult(
+                            success = false,
+                            cancelled = true,
+                            outputPath = null,
+                            error = null,
+                            logs = "FFmpeg cancel requested",
+                        ),
+                    )
+                }, "ffmpeg-cancel").apply {
+                    isDaemon = true
+                    start()
+                }
             }
         }
     }
