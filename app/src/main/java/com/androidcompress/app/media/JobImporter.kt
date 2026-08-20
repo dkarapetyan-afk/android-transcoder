@@ -92,21 +92,35 @@ class JobImporter(
     }
 
     suspend fun importShared(uris: List<Uri>, mimeOf: (Uri) -> String?): Batch {
-        val plan = CombinePairing.plan(uris, mimeOf) { uri ->
+        val plan = planCombine(uris, mimeOf)
+        if (plan.pairs.isEmpty()) return importAll(uris)
+        val combined = importPairs(plan.pairs)
+        if (plan.leftovers.isEmpty()) return combined
+        val extra = importAll(plan.leftovers)
+        return Batch(combined.jobIds + extra.jobIds, combined.errors + extra.errors)
+    }
+
+    /** Home combine: same pairing as Share, but unpaired files are an error, not compress jobs. */
+    suspend fun importCombinePicks(uris: List<Uri>, mimeOf: (Uri) -> String?): Batch {
+        val plan = planCombine(uris, mimeOf)
+        if (plan.pairs.isEmpty()) {
+            return Batch(emptyList(), listOf(context.getString(R.string.error_combine_need_pair)))
+        }
+        return importPairs(plan.pairs)
+    }
+
+    private fun planCombine(uris: List<Uri>, mimeOf: (Uri) -> String?): CombinePlan =
+        CombinePairing.plan(uris, mimeOf) { uri ->
             runCatching { probe.displayName(uri) }.getOrNull()
         }
-        if (plan.pairs.isEmpty()) return importAll(uris)
-        val ids = ArrayList<String>(plan.pairs.size + plan.leftovers.size)
+
+    private suspend fun importPairs(pairs: List<CombinePair>): Batch {
+        val ids = ArrayList<String>(pairs.size)
         val errors = ArrayList<String>()
-        for (pair in plan.pairs) {
+        for (pair in pairs) {
             runCatching { importCombine(pair.visual, pair.audio) }
                 .onSuccess(ids::add)
                 .onFailure { errors.add(it.message ?: context.getString(R.string.error_combine)) }
-        }
-        if (plan.leftovers.isNotEmpty()) {
-            val extra = importAll(plan.leftovers)
-            ids.addAll(extra.jobIds)
-            errors.addAll(extra.errors)
         }
         return Batch(ids, errors)
     }

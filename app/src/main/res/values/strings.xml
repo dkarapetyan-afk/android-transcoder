@@ -98,7 +98,7 @@
     <string name="home_compress_title">Compress a file</string>
     <string name="home_compress_body">Pick a video or audio file, or share one to this app. You can switch to audio-only on the next screen.</string>
     <string name="home_combine_title">Combine audio and video</string>
-    <string name="home_combine_body">Pick a picture or video, then a soundtrack. The output is one video. A still image lasts as long as the audio.</string>
+    <string name="home_combine_body">Pick pictures or videos together with soundtrack files in one picker. Each pair becomes a job, same as Share. A still image lasts as long as the audio.</string>
     <string name="home_recent">Recent</string>
     <string name="home_clear_all">Clear all</string>
     <string name="home_view_last_log">View last encode log</string>
@@ -405,6 +405,7 @@
 
     <string name="error_read_file">Unable to read that file</string>
     <string name="error_combine">Unable to combine those files</string>
+    <string name="error_combine_need_pair">Select a picture or video and a soundtrack in the same picker. You can pick several of each.</string>
     <string name="error_capture_denied">Screen capture was denied</string>
     <string name="error_start_capture">Unable to start screen capture</string>
     <string name="error_start_recorder">Unable to start recorder</string>

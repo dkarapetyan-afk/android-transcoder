@@ -35,16 +35,37 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun createCombineJob(
-        visual: Uri,
-        audio: Uri,
+    fun createCombineJobs(
+        uris: List<Uri>,
+        mimeOf: (Uri) -> String?,
         onReady: (String) -> Unit,
-        onError: (String) -> Unit,
+        onMessage: (String) -> Unit,
     ) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
-            runCatching { container.importer.importCombine(visual, audio) }
-                .onSuccess(onReady)
-                .onFailure { onError(it.message ?: container.appContext.getString(R.string.error_combine)) }
+            val ctx = container.appContext
+            val batch = runCatching { container.importer.importCombinePicks(uris, mimeOf) }
+                .getOrElse {
+                    onMessage(it.message ?: ctx.getString(R.string.error_combine))
+                    return@launch
+                }
+            when {
+                batch.jobIds.isNotEmpty() -> {
+                    onReady(batch.jobIds.first())
+                    if (batch.errors.isNotEmpty()) {
+                        onMessage(
+                            ctx.getString(
+                                R.string.share_opened_partial,
+                                batch.jobIds.size,
+                                batch.errors.size,
+                            ),
+                        )
+                    } else if (batch.jobIds.size > 1) {
+                        onMessage(ctx.getString(R.string.share_opened_rest, batch.jobIds.size))
+                    }
+                }
+                else -> onMessage(batch.errors.firstOrNull() ?: ctx.getString(R.string.error_combine))
+            }
         }
     }
 

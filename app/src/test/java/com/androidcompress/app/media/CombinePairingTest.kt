@@ -81,6 +81,13 @@ class CombinePairingTest {
     }
 
     @Test
+    fun oneFileOrTwoVideosCannotCombine() {
+        assertEquals(0, CombinePairing.planItems(listOf("clip")) { MediaKind.VIDEO }.pairs.size)
+        assertEquals(0, CombinePairing.planItems(listOf("a", "b")) { MediaKind.VIDEO }.pairs.size)
+        assertEquals(0, CombinePairing.planItems(listOf("song", "track")) { MediaKind.AUDIO }.pairs.size)
+    }
+
+    @Test
     fun stillUsesAudioDuration() {
         assertEquals(12_000L, CombinePairing.outputDurationMs(0, 12_000, stillImage = true))
         assertEquals(8_000L, CombinePairing.outputDurationMs(8_000, 20_000, stillImage = false))

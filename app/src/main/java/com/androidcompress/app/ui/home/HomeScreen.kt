@@ -1,6 +1,5 @@
 package com.androidcompress.app.ui.home
 
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -79,26 +78,19 @@ fun HomeScreen(
     val context = LocalContext.current
     var confirmClear by remember { mutableStateOf(false) }
 
-    var pendingVisual by remember { mutableStateOf<Uri?>(null) }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.createImportJob(uri, onReady = onCompress) { msg ->
             scope.launch { snackbar.showSnackbar(msg) }
         }
     }
-    val combineAudioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { audio ->
-        val visual = pendingVisual
-        pendingVisual = null
-        if (audio != null && visual != null) {
-            viewModel.createCombineJob(visual, audio, onReady = onCompress) { msg ->
-                scope.launch { snackbar.showSnackbar(msg) }
-            }
-        }
-    }
-    val combineVisualPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { visual ->
-        if (visual != null) {
-            pendingVisual = visual
-            combineAudioPicker.launch(arrayOf("audio/*", "video/*"))
-        }
+    val combinePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        viewModel.createCombineJobs(
+            uris = uris,
+            mimeOf = { uri -> context.contentResolver.getType(uri) },
+            onReady = onCompress,
+            onMessage = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+        )
     }
 
     LaunchedEffect(recording.finishedJobId, recording.error, recording.notice) {
@@ -169,7 +161,7 @@ fun HomeScreen(
                     title = stringResource(R.string.home_combine_title),
                     body = stringResource(R.string.home_combine_body),
                     icon = Icons.Default.MusicVideo,
-                    onClick = { combineVisualPicker.launch(arrayOf("image/*", "video/*")) },
+                    onClick = { combinePicker.launch(arrayOf("image/*", "video/*", "audio/*")) },
                 )
             }
             item {
