@@ -30,6 +30,22 @@ class RecordOptionsTest {
             micGainPercent = 80,
             internalGainPercent = 120,
             duckAppAudio = true,
+            frameRate = 60,
+            videoBitrateKbps = 8000,
+            container = RecordContainer.WEBM,
+            echoCancel = false,
+            noiseSuppress = false,
+            micDevice = RecordMicDevice.BLUETOOTH,
+            facecamLens = FacecamLens.BACK,
+            facecamShape = FacecamShape.ROUND,
+            facecamSize = FacecamSize.LARGE,
+            facecamHideOnPause = false,
+            showLaser = true,
+            showAnnotation = true,
+            pipControls = true,
+            coverStatusBar = true,
+            quietNotification = true,
+            bookmarkMode = BookmarkMode.SPLIT,
         )
         val restored = RecordOptions.fromJson(original.toJson())
         assertEquals(original.audioMode, restored.audioMode)
@@ -43,6 +59,16 @@ class RecordOptionsTest {
         assertEquals(80, restored.micGainPercent)
         assertEquals(120, restored.internalGainPercent)
         assertTrue(restored.duckAppAudio)
+        assertEquals(60, restored.frameRate)
+        assertEquals(8000, restored.videoBitrateKbps)
+        assertEquals(RecordContainer.WEBM, restored.container)
+        assertFalse(restored.echoCancel)
+        assertEquals(RecordMicDevice.BLUETOOTH, restored.micDevice)
+        assertEquals(FacecamLens.BACK, restored.facecamLens)
+        assertEquals(FacecamShape.ROUND, restored.facecamShape)
+        assertTrue(restored.showLaser)
+        assertTrue(restored.pipControls)
+        assertEquals(BookmarkMode.SPLIT, restored.bookmarkMode)
         val region = restored.region
         assertEquals(0.1f, region?.left ?: -1f, 0.001f)
         assertEquals(0.9f, region?.bottom ?: -1f, 0.001f)
@@ -72,6 +98,21 @@ class RecordOptionsTest {
         assertEquals(270, crop.y)
         assertEquals(960, crop.width)
         assertEquals(540, crop.height)
+    }
+
+    @Test
+    fun liveEncoderCropAlignsTo16() {
+        val crop = RecordRegion(0.25f, 0.25f, 0.75f, 0.75f).liveEncoderCrop(1920, 1080)!!
+        assertEquals(0, crop.width % 16)
+        assertEquals(0, crop.height % 16)
+        assertTrue(crop.width >= 16)
+        assertTrue(crop.height >= 16)
+    }
+
+    @Test
+    fun overrideBitrateWins() {
+        val bps = RecordVideoCodec.H264.videoBitrate(1920, 1080, true, overrideKbps = 8000, frameRate = 60)
+        assertEquals(8_000_000, bps)
     }
 
     @Test

@@ -70,12 +70,15 @@ fun CompressApp(
     onShareConsumed: (Long) -> Unit,
     agentUiRequests: StateFlow<AgentLaunch.UiRequest?> = MutableStateFlow(null),
     onAgentUiConsumed: (Long) -> Unit = {},
+    pipMode: StateFlow<Boolean> = MutableStateFlow(false),
 ) {
     val nav = rememberNavController()
     val context = LocalContext.current
     val container = remember { context.container() }
     val shareRequest by shareRequests.collectAsStateWithLifecycle()
     val agentUiRequest by agentUiRequests.collectAsStateWithLifecycle()
+    val inPip by pipMode.collectAsStateWithLifecycle()
+    val recording by container.recording.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var importing by remember { mutableStateOf(false) }
     val blockClicks = remember { MutableInteractionSource() }
@@ -262,6 +265,9 @@ fun CompressApp(
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding(),
         )
+        if (inPip && recording.active) {
+            com.androidcompress.app.ui.record.RecordPipControls(recording)
+        }
         if (importing) {
             Box(
                 modifier = Modifier

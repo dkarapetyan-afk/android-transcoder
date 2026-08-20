@@ -18,6 +18,8 @@ data class RecordingState(
     val openResult: Boolean = false,
     val phase: RecordPhase = RecordPhase.IDLE,
     val countdownRemaining: Int = 0,
+    val bookmarks: List<Long> = emptyList(),
+    val pipEnabled: Boolean = false,
 ) {
     val capturing: Boolean get() = active && phase == RecordPhase.RECORDING && !saving
 
@@ -36,8 +38,8 @@ class RecordingStore {
     private val _state = MutableStateFlow(RecordingState())
     val state: StateFlow<RecordingState> = _state.asStateFlow()
 
-    fun prepare(jobId: String, phase: RecordPhase) {
-        _state.value = RecordingState(active = true, jobId = jobId, phase = phase)
+    fun prepare(jobId: String, phase: RecordPhase, pipEnabled: Boolean = _state.value.pipEnabled) {
+        _state.value = RecordingState(active = true, jobId = jobId, phase = phase, pipEnabled = pipEnabled)
     }
 
     fun setPhase(phase: RecordPhase, countdownRemaining: Int = 0) {
@@ -46,12 +48,13 @@ class RecordingStore {
         _state.value = cur.copy(phase = phase, countdownRemaining = countdownRemaining.coerceAtLeast(0))
     }
 
-    fun start(jobId: String) {
+    fun start(jobId: String, pipEnabled: Boolean = _state.value.pipEnabled) {
         _state.value = RecordingState(
             active = true,
             jobId = jobId,
             startedAt = System.currentTimeMillis(),
             phase = RecordPhase.RECORDING,
+            pipEnabled = pipEnabled,
         )
     }
 
@@ -65,6 +68,7 @@ class RecordingStore {
             paused = false,
             pausedAccumulatedMs = 0L,
             pauseStartedAt = 0L,
+            bookmarks = emptyList(),
         )
     }
 
@@ -81,6 +85,21 @@ class RecordingStore {
                 pausedAccumulatedMs = cur.pausedAccumulatedMs + extra,
             )
         }
+    }
+
+    fun setPipEnabled(enabled: Boolean) {
+        val cur = _state.value
+        if (!cur.active) return
+        _state.value = cur.copy(pipEnabled = enabled)
+    }
+
+    fun addBookmark(now: Long = System.currentTimeMillis()): Long? {
+        val cur = _state.value
+        if (!cur.active || cur.saving || cur.phase != RecordPhase.RECORDING) return null
+        val time = cur.elapsedMs(now)
+        if (RecordBookmarks.nearExisting(cur.bookmarks, time)) return cur.bookmarks.lastOrNull()
+        _state.value = cur.copy(bookmarks = cur.bookmarks + time)
+        return time
     }
 
     fun markSaving() {

@@ -44,10 +44,13 @@ object CaptureApps {
         }.getOrNull()
     }
 
-    fun hasFrontCamera(cameras: CameraManager): Boolean = runCatching {
+    fun hasFrontCamera(cameras: CameraManager): Boolean = hasCamera(cameras, CameraCharacteristics.LENS_FACING_FRONT)
+
+    fun hasBackCamera(cameras: CameraManager): Boolean = hasCamera(cameras, CameraCharacteristics.LENS_FACING_BACK)
+
+    fun hasCamera(cameras: CameraManager, facing: Int): Boolean = runCatching {
         cameras.cameraIdList.any { id ->
-            cameras.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) ==
-                CameraCharacteristics.LENS_FACING_FRONT
+            cameras.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == facing
         }
     }.getOrDefault(false)
 }

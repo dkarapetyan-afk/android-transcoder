@@ -1,6 +1,8 @@
 package com.androidcompress.app
 
 import android.content.Intent
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.service.quicksettings.TileService
 import androidx.activity.ComponentActivity
@@ -10,6 +12,7 @@ import com.androidcompress.app.agent.AgentLaunch
 import com.androidcompress.app.media.ShareIntents
 import com.androidcompress.app.media.ShareRequest
 import com.androidcompress.app.ui.CompressApp
+import com.androidcompress.app.ui.record.RecordPip
 import com.androidcompress.app.ui.theme.RecordingCompressorTheme
 import com.androidcompress.app.util.Notifications
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class MainActivity : ComponentActivity() {
     private val shareRequests = MutableStateFlow<ShareRequest?>(null)
     private val agentUiRequests = MutableStateFlow<AgentLaunch.UiRequest?>(null)
+    private val pipMode = MutableStateFlow(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,9 +42,27 @@ class MainActivity : ComponentActivity() {
                     onAgentUiConsumed = { nonce ->
                         agentUiRequests.value = agentUiRequests.value?.takeUnless { it.nonce == nonce }
                     },
+                    pipMode = pipMode.asStateFlow(),
                 )
             }
         }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        enterRecordPip()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipMode.value = isInPictureInPictureMode
+    }
+
+    private fun enterRecordPip() {
+        if (Build.VERSION.SDK_INT < 26) return
+        val recording = container().recording.state.value
+        if (!recording.capturing || !recording.pipEnabled || isInPictureInPictureMode) return
+        enterPictureInPictureMode(RecordPip.params(this, recording))
     }
 
     override fun onNewIntent(intent: Intent) {

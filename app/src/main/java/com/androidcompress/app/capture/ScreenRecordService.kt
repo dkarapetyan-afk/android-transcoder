@@ -56,11 +56,11 @@ class ScreenRecordService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var recorder: MediaRecorder? = null
-    private var internalAudio: PcmWavCapture? = null
-    private var micAudio: PcmWavCapture? = null
+    private var mixer: LiveAudioMixer? = null
+    private var cropPipe: CropDisplayPipe? = null
     private var outputFile: File? = null
-    private var audioFile: File? = null
-    private var micAudioFile: File? = null
+    private var mixedAudioFile: File? = null
+    private var liveCropped = false
     private var jobId: String? = null
     private var ticker: Job? = null
     private var sessionJob: Job? = null
@@ -98,6 +98,10 @@ class ScreenRecordService : Service() {
             }
             ACTION_RESUME -> {
                 resumeRecording()
+                return START_NOT_STICKY
+            }
+            ACTION_BOOKMARK -> {
+                addBookmark()
                 return START_NOT_STICKY
             }
             ACTION_START -> {
@@ -140,8 +144,9 @@ class ScreenRecordService : Service() {
         mediaProjection = projection
 
         val store = container().recording
+        store.setPipEnabled(options.pipControls)
         if (options.captureRegion) {
-            store.prepare(id, RecordPhase.REGION)
+            store.prepare(id, RecordPhase.REGION, pipEnabled = options.pipControls)
             startAsForeground(0)
             RecordTileService.requestListening(this)
             val confirmed = awaitRegion()
@@ -182,42 +187,62 @@ class ScreenRecordService : Service() {
     }
 
     private fun beginEncoder(id: String, projection: MediaProjection) {
-        val size = captureSize(options.resolution)
-        encodeSize = size
-        val file = container().inputs.recordOutputFile(id)
+        val full = captureSize(options.resolution)
+        val liveCrop = options.region?.liveEncoderCrop(full.first, full.second)
+        val encW = liveCrop?.width ?: full.first
+        val encH = liveCrop?.height ?: full.second
+        encodeSize = full
+        val file = container().inputs.recordOutputFile(id, options.outputExtension)
         outputFile = file
         try {
-            val rec = prepareRecorder(file, size.first, size.second, options)
+            val rec = prepareRecorder(file, encW, encH, options)
             recorder = rec
+            var displaySurface = rec.surface
+            if (liveCrop != null) {
+                val pipe = runCatching {
+                    CropDisplayPipe.start(rec.surface, full.first, full.second, liveCrop)
+                }.getOrNull()
+                if (pipe != null) {
+                    cropPipe = pipe
+                    displaySurface = pipe.inputSurface
+                    liveCropped = true
+                    encodeSize = encW to encH
+                } else {
+                    runCatching { rec.reset() }
+                    runCatching { rec.release() }
+                    val fullRec = prepareRecorder(file, full.first, full.second, options)
+                    recorder = fullRec
+                    displaySurface = fullRec.surface
+                    liveCropped = false
+                    encodeSize = full
+                }
+            }
+            val activeRec = recorder ?: error(getString(R.string.error_start_recorder))
             virtualDisplay = projection.createVirtualDisplay(
                 "RecordingCompressor",
-                size.first,
-                size.second,
+                full.first,
+                full.second,
                 densityDpi(),
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                rec.surface,
+                displaySurface,
                 null,
                 handler,
             )
-            val audioMode = options.audioMode
-            if (audioMode.usesInternalAudio && Build.VERSION.SDK_INT >= 29) {
+            if (options.audioMode != RecordAudioMode.NONE) {
                 val wav = container().inputs.recordAudioFile(id)
-                audioFile = wav
+                mixedAudioFile = wav
                 val uid = CaptureApps.uid(packageManager, options.internalAudioPackage)
-                internalAudio = PcmWavCapture.internal(projection, wav, uid).also { it.start() }
+                mixer = LiveAudioMixer.start(this, projection, wav, options, uid).also { it.start() }
             }
-            if (audioMode == RecordAudioMode.BOTH) {
-                val micWav = container().inputs.recordMicAudioFile(id)
-                micAudioFile = micWav
-                micAudio = PcmWavCapture.microphone(micWav).also { it.start() }
-            }
-            rec.start()
+            activeRec.start()
             encoderStarted = true
+            container().recording.setPipEnabled(options.pipControls)
             container().recording.startCapturing()
             if (container().recording.state.value.jobId == null) {
-                container().recording.start(id)
+                container().recording.start(id, pipEnabled = options.pipControls)
             }
             scope.launch { container().jobs.updateStatus(id, JobStatus.RECORDING) }
+            if (options.coverStatusBar) overlays?.showStatusCover()
             if (options.showBubble) {
                 overlays?.showBubble(
                     paused = false,
@@ -225,14 +250,24 @@ class ScreenRecordService : Service() {
                         if (paused) resumeRecording() else pauseRecording()
                     },
                     onStop = { requestStop() },
+                    onBookmark = if (options.bookmarkMode != BookmarkMode.OFF) {
+                        { addBookmark() }
+                    } else {
+                        null
+                    },
                 )
             }
             if (options.facecam && hasCameraPermission()) {
                 usesCamera = true
                 startAsForeground(0)
-                overlays?.showFacecam()
+                overlays?.showFacecam(options)
             }
-            TapHighlightService.setRecording(true, options.showTaps)
+            TapHighlightService.setRecording(
+                active = true,
+                showTaps = options.showTaps,
+                showLaser = options.showLaser,
+                showAnnotation = options.showAnnotation,
+            )
             RecordTileService.requestListening(this)
             ticker = scope.launch {
                 while (isActive && !stopping) {
@@ -273,17 +308,18 @@ class ScreenRecordService : Service() {
         if (stopping || paused || !encoderStarted || recorder == null) return
         try {
             recorder?.pause()
-            internalAudio?.pause()
-            micAudio?.pause()
+            mixer?.pause()
+            cropPipe?.setPaused(true)
             paused = true
             container().recording.setPaused(true)
             overlays?.updateBubble(true)
+            if (options.facecamHideOnPause) overlays?.setFacecamVisible(false)
             startAsForeground(container().recording.state.value.elapsedMs(), paused = true)
             RecordTileService.requestListening(this)
         } catch (_: Throwable) {
             runCatching { recorder?.resume() }
-            internalAudio?.resume()
-            micAudio?.resume()
+            mixer?.resume()
+            cropPipe?.setPaused(false)
             paused = false
         }
     }
@@ -292,16 +328,23 @@ class ScreenRecordService : Service() {
         if (stopping || !paused || recorder == null) return
         try {
             recorder?.resume()
-            internalAudio?.resume()
-            micAudio?.resume()
+            mixer?.resume()
+            cropPipe?.setPaused(false)
             paused = false
             container().recording.setPaused(false)
             overlays?.updateBubble(false)
+            if (options.facecam) overlays?.setFacecamVisible(true)
             startAsForeground(container().recording.state.value.elapsedMs(), paused = false)
             RecordTileService.requestListening(this)
         } catch (_: Throwable) {
             // Leave the session paused if the encoder cannot resume.
         }
+    }
+
+    private fun addBookmark() {
+        if (stopping || !encoderStarted) return
+        container().recording.addBookmark()
+        startAsForeground(container().recording.state.value.elapsedMs())
     }
 
     private fun requestStop(notice: String? = null) {
@@ -323,11 +366,11 @@ class ScreenRecordService : Service() {
 
     private suspend fun saveRecording(cancelledBeforeStart: Boolean) {
         overlays?.dismissAll()
-        TapHighlightService.setRecording(false, false)
+        TapHighlightService.setRecording(false, false, false, false)
         val id = jobId
         val video = outputFile
-        val wav = audioFile
-        val micWav = micAudioFile
+        val wav = mixedAudioFile
+        val bookmarks = container().recording.state.value.bookmarks
         val started = encoderStarted
         if (!started || cancelledBeforeStart) {
             teardown()
@@ -349,12 +392,12 @@ class ScreenRecordService : Service() {
             runCatching { recorder?.reset() }
             runCatching { recorder?.release() }
             recorder = null
-            internalAudio?.stop()
-            internalAudio = null
-            micAudio?.stop()
-            micAudio = null
+            mixer?.stop()
+            mixer = null
             virtualDisplay?.release()
             virtualDisplay = null
+            cropPipe?.release()
+            cropPipe = null
             mediaProjection?.unregisterCallback(projectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
@@ -367,12 +410,20 @@ class ScreenRecordService : Service() {
             }
 
             var finalFile = video
-            val processed = File(video.parentFile, "${video.nameWithoutExtension}-muxed.mp4")
-            val usableInternal = wav.takeIf { it != null && it.exists() && it.length() > 44 }
-            val usableMic = micWav.takeIf { it != null && it.exists() && it.length() > 44 }
-            val crop = options.region?.encoderCrop(encodeSize.first, encodeSize.second)
+            val processed = File(
+                video.parentFile,
+                "${video.nameWithoutExtension}-muxed.${options.outputExtension}",
+            )
+            val usableMix = wav.takeIf { it != null && it.exists() && it.length() > 44 }
+            val crop = if (liveCropped) {
+                null
+            } else {
+                options.region?.encoderCrop(encodeSize.first, encodeSize.second)
+            }
             val caps = runCatching { container().encoderCapabilities() }.getOrNull()
             val cropEncoder = when {
+                options.usesWebm && caps?.hasLibvpxVp9 == true -> "libvpx-vp9"
+                options.usesWebm -> "libvpx"
                 caps?.hasOpenH264 == true -> "libopenh264"
                 else -> "mpeg4"
             }
@@ -381,15 +432,18 @@ class ScreenRecordService : Service() {
             val post = FfmpegMuxCommands.recordingPostProcess(
                 videoPath = video.absolutePath,
                 outputPath = processed.absolutePath,
-                internalWav = usableInternal?.absolutePath,
-                micWav = usableMic?.absolutePath,
+                internalWav = usableMix?.absolutePath,
+                micWav = null,
                 crop = crop,
-                videoHasAudio = options.audioMode == RecordAudioMode.MICROPHONE,
-                internalGainPercent = options.internalGainPercent,
-                micGainPercent = options.micGainPercent,
-                duckAppAudio = options.duckAppAudio && usableInternal != null && usableMic != null,
+                videoHasAudio = false,
+                internalGainPercent = 100,
+                micGainPercent = 100,
+                duckAppAudio = false,
                 videoEncoder = cropEncoder,
                 videoBitrateKbps = cropBitrate,
+                frameRate = options.frameRate,
+                containerWebm = options.usesWebm,
+                applyGain = false,
             )
             if (post != null) {
                 val muxResult = container().ffmpeg.encode(post, onLog = {}, onStats = {}).await()
@@ -399,8 +453,9 @@ class ScreenRecordService : Service() {
                 }
             }
             wav?.delete()
-            micWav?.delete()
             if (finalFile != processed) processed.delete()
+            finalFile = applyChaptersIfNeeded(finalFile, bookmarks)
+            val splitFiles = splitIfNeeded(finalFile, bookmarks)
 
             val uri = Uri.fromFile(finalFile)
             val probed = runCatching { container().probe.probe(uri) }.getOrNull()
@@ -414,7 +469,7 @@ class ScreenRecordService : Service() {
                     container().exporter.publish(
                         finalFile,
                         directDisplayName(),
-                        "video/mp4",
+                        options.outputMime,
                         "Movies/RecordingCompressor",
                     )
                 }.getOrNull()
@@ -440,6 +495,7 @@ class ScreenRecordService : Service() {
                         finishedAt = if (status == JobStatus.SUCCEEDED) System.currentTimeMillis() else null,
                     ),
                 )
+                publishSplitJobs(existing, splitFiles, status == JobStatus.SUCCEEDED)
             }
             container().recording.finish(
                 jobId = id,
@@ -460,27 +516,156 @@ class ScreenRecordService : Service() {
         }
     }
 
+    private suspend fun applyChaptersIfNeeded(file: File, bookmarks: List<Long>): File {
+        if (options.bookmarkMode != BookmarkMode.CHAPTERS) return file
+        val duration = runCatching { container().probe.probe(Uri.fromFile(file)).durationMs }.getOrNull()
+            ?: container().recording.state.value.elapsedMs()
+        val meta = RecordBookmarks.ffmetadata(bookmarks, duration) ?: return file
+        val metaFile = File(file.parentFile, "${file.nameWithoutExtension}.ffmeta")
+        val out = File(file.parentFile, "${file.nameWithoutExtension}-chapters.${options.outputExtension}")
+        var resultFile = file
+        try {
+            metaFile.writeText(meta)
+            val args = FfmpegMuxCommands.applyChapters(
+                videoPath = file.absolutePath,
+                metadataPath = metaFile.absolutePath,
+                outputPath = out.absolutePath,
+                containerWebm = options.usesWebm,
+            )
+            val result = container().ffmpeg.encode(args, onLog = {}, onStats = {}).await()
+            if (result.success && out.exists() && out.length() > 1024) {
+                file.delete()
+                resultFile = if (out.renameTo(file)) file else out
+            }
+        } catch (_: Throwable) {
+            resultFile = file
+        } finally {
+            metaFile.delete()
+            if (out.exists() && out != resultFile) out.delete()
+        }
+        return resultFile
+    }
+
+    private suspend fun splitIfNeeded(
+        file: File,
+        bookmarks: List<Long>,
+    ): List<Pair<RecordSegment, File>> {
+        if (options.bookmarkMode != BookmarkMode.SPLIT) return emptyList()
+        val duration = runCatching { container().probe.probe(Uri.fromFile(file)).durationMs }.getOrNull()
+            ?: container().recording.state.value.elapsedMs()
+        val segments = RecordBookmarks.segments(bookmarks, duration)
+        if (segments.isEmpty()) return emptyList()
+        val out = mutableListOf<Pair<RecordSegment, File>>()
+        for (seg in segments) {
+            val dest = File(
+                file.parentFile,
+                "${file.nameWithoutExtension}-p${seg.index}.${options.outputExtension}",
+            )
+            val args = FfmpegMuxCommands.copySegment(
+                videoPath = file.absolutePath,
+                outputPath = dest.absolutePath,
+                startMs = seg.startMs,
+                endMs = seg.endMs,
+            )
+            val result = runCatching {
+                container().ffmpeg.encode(args, onLog = {}, onStats = {}).await()
+            }.getOrNull()
+            if (result?.success == true && dest.exists() && dest.length() > 512) {
+                out += seg to dest
+            } else {
+                dest.delete()
+            }
+        }
+        return out
+    }
+
+    private suspend fun publishSplitJobs(
+        original: com.androidcompress.app.data.CompressJob,
+        parts: List<Pair<RecordSegment, File>>,
+        directSuccess: Boolean,
+    ) {
+        if (parts.isEmpty()) return
+        for ((seg, file) in parts) {
+            val partId = java.util.UUID.randomUUID().toString()
+            val probed = runCatching { container().probe.probe(Uri.fromFile(file)) }.getOrNull()
+            var outputUri: String? = null
+            var outputBytes: Long? = null
+            var status = JobStatus.READY
+            var sourceUri = Uri.fromFile(file).toString()
+            if (directSuccess && options.directEncode) {
+                val published = runCatching {
+                    container().exporter.publish(
+                        file,
+                        "${directDisplayName().substringBeforeLast('.') } ${seg.index}-${seg.total}.${options.outputExtension}",
+                        options.outputMime,
+                        "Movies/RecordingCompressor",
+                    )
+                }.getOrNull()
+                if (published != null) {
+                    outputUri = published.toString()
+                    outputBytes = probed?.bytes ?: file.length()
+                    status = JobStatus.SUCCEEDED
+                    sourceUri = outputUri
+                    runCatching { file.delete() }
+                }
+            }
+            container().jobs.upsert(
+                original.copy(
+                    id = partId,
+                    status = status,
+                    sourceUri = sourceUri,
+                    outputUri = outputUri,
+                    outputBytes = outputBytes,
+                    sourceBytes = probed?.bytes ?: file.length(),
+                    durationMs = probed?.durationMs ?: seg.durationMs,
+                    width = probed?.width ?: original.width,
+                    height = probed?.height ?: original.height,
+                    displayName = getString(
+                        R.string.record_split_name,
+                        seg.index,
+                        seg.total,
+                    ),
+                    createdAt = original.createdAt + seg.index,
+                    finishedAt = if (status == JobStatus.SUCCEEDED) System.currentTimeMillis() else null,
+                    queuedAt = null,
+                    error = null,
+                ),
+            )
+        }
+    }
+
     private fun prepareRecorder(
         file: File,
         width: Int,
         height: Int,
         options: RecordOptions,
     ): MediaRecorder {
-        val codecs = if (options.directEncode) {
+        val codecs = if (options.usesWebm) {
+            listOf(null)
+        } else if (options.directEncode) {
             listOf(options.videoCodec, RecordVideoCodec.HEVC, RecordVideoCodec.H264).distinct()
         } else {
             listOf(RecordVideoCodec.H264)
         }
+        val rates = listOf(options.frameRate, 30).distinct()
         var last: Throwable? = null
-        for (codec in codecs) {
-            val rec = createRecorder(file, width, height, options.copy(videoCodec = codec))
-            try {
-                rec.prepare()
-                return rec
-            } catch (t: Throwable) {
-                last = t
-                runCatching { rec.reset() }
-                runCatching { rec.release() }
+        for (rate in rates) {
+            for (codec in codecs) {
+                val rec = createRecorder(
+                    file,
+                    width,
+                    height,
+                    options.copy(frameRate = rate, videoCodec = codec ?: options.videoCodec),
+                    webm = options.usesWebm,
+                )
+                try {
+                    rec.prepare()
+                    return rec
+                } catch (t: Throwable) {
+                    last = t
+                    runCatching { rec.reset() }
+                    runCatching { rec.release() }
+                }
             }
         }
         throw last ?: IllegalStateException(getString(R.string.error_start_recorder))
@@ -491,28 +676,35 @@ class ScreenRecordService : Service() {
         width: Int,
         height: Int,
         options: RecordOptions,
+        webm: Boolean,
     ): MediaRecorder {
         val rec = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else {
             @Suppress("DEPRECATION")
             MediaRecorder()
         }
-        val audioMode = options.audioMode
-        if (audioMode == RecordAudioMode.MICROPHONE) {
-            rec.setAudioSource(MediaRecorder.AudioSource.MIC)
-        }
         rec.setVideoSource(MediaRecorder.VideoSource.SURFACE)
-        rec.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+        rec.setOutputFormat(
+            if (webm) MediaRecorder.OutputFormat.WEBM else MediaRecorder.OutputFormat.MPEG_4,
+        )
         rec.setOutputFile(file.absolutePath)
-        val codec = if (options.directEncode) options.videoCodec else RecordVideoCodec.H264
-        rec.setVideoEncoder(codec.mediaRecorderValue())
-        if (audioMode == RecordAudioMode.MICROPHONE) {
-            rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            rec.setAudioEncodingBitRate(128_000)
-            rec.setAudioSamplingRate(44_100)
+        if (webm) {
+            rec.setVideoEncoder(MediaRecorder.VideoEncoder.VP8)
+        } else {
+            val codec = if (options.directEncode) options.videoCodec else RecordVideoCodec.H264
+            rec.setVideoEncoder(codec.mediaRecorderValue())
         }
         rec.setVideoSize(width, height)
-        rec.setVideoFrameRate(30)
-        rec.setVideoEncodingBitRate(codec.videoBitrate(width, height, options.directEncode))
+        rec.setVideoFrameRate(options.frameRate.coerceIn(24, 60))
+        val codecForBitrate = if (webm) RecordVideoCodec.H264 else options.videoCodec
+        rec.setVideoEncodingBitRate(
+            codecForBitrate.videoBitrate(
+                width,
+                height,
+                options.directEncode || webm,
+                options.videoBitrateKbps,
+                options.frameRate,
+            ),
+        )
         return rec
     }
 
@@ -556,6 +748,16 @@ class ScreenRecordService : Service() {
                 .setAction(if (paused) ACTION_RESUME else ACTION_PAUSE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val bookmark = if (options.bookmarkMode != BookmarkMode.OFF) {
+            PendingIntent.getService(
+                this,
+                3,
+                Intent(this, ScreenRecordService::class.java).setAction(ACTION_BOOKMARK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } else {
+            null
+        }
         val store = container().recording.state.value
         val elapsedLabel = when (store.phase) {
             RecordPhase.REGION -> getString(R.string.record_phase_region)
@@ -570,9 +772,11 @@ class ScreenRecordService : Service() {
                 elapsed = elapsedLabel,
                 stopIntent = stop,
                 pauseResumeIntent = pauseResume,
+                bookmarkIntent = bookmark,
                 paused = paused,
                 saving = saving,
                 preparing = store.phase == RecordPhase.REGION || store.phase == RecordPhase.COUNTDOWN,
+                quiet = options.quietNotification,
             ),
             foregroundTypes(),
         )
@@ -594,16 +798,16 @@ class ScreenRecordService : Service() {
 
     private fun teardown() {
         overlays?.dismissAll()
-        TapHighlightService.setRecording(false, false)
+        TapHighlightService.setRecording(false, false, false, false)
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
         recorder = null
-        internalAudio?.stop()
-        internalAudio = null
-        micAudio?.stop()
-        micAudio = null
+        mixer?.stop()
+        mixer = null
         virtualDisplay?.release()
         virtualDisplay = null
+        cropPipe?.release()
+        cropPipe = null
         mediaProjection?.unregisterCallback(projectionCallback)
         mediaProjection?.stop()
         mediaProjection = null
@@ -624,7 +828,7 @@ class ScreenRecordService : Service() {
 
     private fun directDisplayName(): String {
         val stamp = SimpleDateFormat("yyyy-MM-dd HHmmss", Locale.US).format(Date())
-        return "Screen recording $stamp.mp4"
+        return "Screen recording $stamp.${options.outputExtension}"
     }
 
     override fun onDestroy() {
@@ -638,6 +842,7 @@ class ScreenRecordService : Service() {
         const val ACTION_STOP = "com.androidcompress.app.RECORD_STOP"
         const val ACTION_PAUSE = "com.androidcompress.app.RECORD_PAUSE"
         const val ACTION_RESUME = "com.androidcompress.app.RECORD_RESUME"
+        const val ACTION_BOOKMARK = "com.androidcompress.app.RECORD_BOOKMARK"
         const val EXTRA_JOB_ID = "jobId"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
@@ -669,6 +874,10 @@ class ScreenRecordService : Service() {
 
         fun resume(context: Context) {
             context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_RESUME))
+        }
+
+        fun bookmark(context: Context) {
+            context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_BOOKMARK))
         }
     }
 }

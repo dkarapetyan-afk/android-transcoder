@@ -57,6 +57,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.R
+import com.androidcompress.app.capture.BookmarkMode
+import com.androidcompress.app.capture.FacecamLens
+import com.androidcompress.app.capture.FacecamShape
+import com.androidcompress.app.capture.FacecamSize
+import com.androidcompress.app.capture.RecordContainer
+import com.androidcompress.app.capture.RecordMicDevice
 import com.androidcompress.app.capture.RecordPhase
 import com.androidcompress.app.capture.RecordVideoCodec
 import com.androidcompress.app.capture.canDrawOverlays
@@ -102,6 +108,19 @@ fun RecordScreen(
             launchCapture(context, captureLauncher)
         }
     }
+    val bluetoothPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted && options.micDevice == RecordMicDevice.BLUETOOTH) {
+            viewModel.markStarting(false)
+            return@rememberLauncherForActivityResult
+        }
+        if (options.needsCamera) {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        } else if (options.audioMode.needsRecordAudioPermission) {
+            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        } else {
+            launchCapture(context, captureLauncher)
+        }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -130,12 +149,26 @@ fun RecordScreen(
             scope.launch { snackbar.showSnackbar(overlayNeeded) }
             return
         }
+        if (options.micDevice == RecordMicDevice.BLUETOOTH &&
+            options.audioMode.usesMicrophone &&
+            Build.VERSION.SDK_INT >= 31
+        ) {
+            bluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            return
+        }
         if (options.needsCamera) {
             cameraPermission.launch(Manifest.permission.CAMERA)
         } else if (options.audioMode.needsRecordAudioPermission) {
             micPermission.launch(Manifest.permission.RECORD_AUDIO)
         } else {
             launchCapture(context, captureLauncher)
+        }
+    }
+
+    val activity = context as? android.app.Activity
+    LaunchedEffect(recording.capturing, recording.paused, recording.pipEnabled, recording.bookmarks.size) {
+        if (Build.VERSION.SDK_INT >= 26 && recording.pipEnabled && activity != null) {
+            activity.setPictureInPictureParams(RecordPip.params(context, recording))
         }
     }
 
@@ -190,6 +223,46 @@ fun RecordScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+            if (options.audioMode.usesMicrophone) {
+                SwitchRow(
+                    title = stringResource(R.string.record_echo_cancel),
+                    hint = stringResource(R.string.record_echo_cancel_hint),
+                    checked = options.echoCancel,
+                    enabled = controlsEnabled,
+                    onChecked = { viewModel.update { o -> o.copy(echoCancel = it) } },
+                )
+                SwitchRow(
+                    title = stringResource(R.string.record_noise_suppress),
+                    hint = stringResource(R.string.record_noise_suppress_hint),
+                    checked = options.noiseSuppress,
+                    enabled = controlsEnabled,
+                    onChecked = { viewModel.update { o -> o.copy(noiseSuppress = it) } },
+                )
+                Text(stringResource(R.string.record_mic_device), style = MaterialTheme.typography.titleMedium)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = options.micDevice == RecordMicDevice.AUTO,
+                        onClick = { viewModel.update { o -> o.copy(micDevice = RecordMicDevice.AUTO) } },
+                        enabled = controlsEnabled,
+                        label = { Text(stringResource(R.string.record_mic_auto)) },
+                    )
+                    FilterChip(
+                        selected = options.micDevice == RecordMicDevice.BUILTIN,
+                        onClick = { viewModel.update { o -> o.copy(micDevice = RecordMicDevice.BUILTIN) } },
+                        enabled = controlsEnabled,
+                        label = { Text(stringResource(R.string.record_mic_phone)) },
+                    )
+                    FilterChip(
+                        selected = options.micDevice == RecordMicDevice.BLUETOOTH,
+                        onClick = { viewModel.update { o -> o.copy(micDevice = RecordMicDevice.BLUETOOTH) } },
+                        enabled = controlsEnabled,
+                        label = { Text(stringResource(R.string.record_mic_bluetooth)) },
+                    )
+                }
             }
             if (options.audioMode.usesInternalAudio && viewModel.supportsInternalAudio()) {
                 Text(stringResource(R.string.record_internal_app), style = MaterialTheme.typography.titleMedium)
@@ -269,7 +342,69 @@ fun RecordScreen(
                 )
             }
 
+            Text(stringResource(R.string.record_fps), style = MaterialTheme.typography.titleMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = options.frameRate == 30,
+                    onClick = { viewModel.update { o -> o.copy(frameRate = 30) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.record_fps_30)) },
+                )
+                FilterChip(
+                    selected = options.frameRate == 60,
+                    onClick = { viewModel.update { o -> o.copy(frameRate = 60) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.record_fps_60)) },
+                )
+            }
+            Text(stringResource(R.string.record_bitrate), style = MaterialTheme.typography.bodyMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0, 4000, 8000, 12000, 16000).forEach { kbps ->
+                    FilterChip(
+                        selected = options.videoBitrateKbps == kbps,
+                        onClick = { viewModel.update { o -> o.copy(videoBitrateKbps = kbps) } },
+                        enabled = controlsEnabled,
+                        label = {
+                            Text(
+                                if (kbps == 0) stringResource(R.string.record_bitrate_auto)
+                                else stringResource(R.string.record_bitrate_mbps, kbps / 1000),
+                            )
+                        },
+                    )
+                }
+            }
+
             Text(stringResource(R.string.record_output), style = MaterialTheme.typography.titleMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = options.container == RecordContainer.MP4,
+                    onClick = { viewModel.update { o -> o.copy(container = RecordContainer.MP4) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.container_mp4)) },
+                )
+                FilterChip(
+                    selected = options.container == RecordContainer.WEBM,
+                    onClick = { viewModel.update { o -> o.copy(container = RecordContainer.WEBM) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.container_webm)) },
+                )
+            }
+            if (options.usesWebm) {
+                Text(
+                    stringResource(R.string.record_webm_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             SwitchRow(
                 title = stringResource(R.string.record_direct),
                 hint = stringResource(R.string.record_direct_hint),
@@ -277,7 +412,7 @@ fun RecordScreen(
                 enabled = controlsEnabled,
                 onChecked = { viewModel.update { o -> o.copy(directEncode = it) } },
             )
-            if (options.directEncode) {
+            if (options.directEncode && !options.usesWebm) {
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -358,13 +493,76 @@ fun RecordScreen(
                 enabled = controlsEnabled,
                 onChecked = { viewModel.update { o -> o.copy(captureRegion = it) } },
             )
-            if (ui.hasFrontCamera) {
+            if (viewModel.hasAnyCamera()) {
                 SwitchRow(
                     title = stringResource(R.string.record_facecam),
                     hint = stringResource(R.string.record_facecam_hint),
                     checked = options.facecam,
                     enabled = controlsEnabled,
                     onChecked = { viewModel.update { o -> o.copy(facecam = it) } },
+                )
+            }
+            if (options.facecam && viewModel.hasAnyCamera()) {
+                if (ui.hasFrontCamera && ui.hasBackCamera) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = options.facecamLens == FacecamLens.FRONT,
+                            onClick = { viewModel.update { o -> o.copy(facecamLens = FacecamLens.FRONT) } },
+                            enabled = controlsEnabled,
+                            label = { Text(stringResource(R.string.record_facecam_front)) },
+                        )
+                        FilterChip(
+                            selected = options.facecamLens == FacecamLens.BACK,
+                            onClick = { viewModel.update { o -> o.copy(facecamLens = FacecamLens.BACK) } },
+                            enabled = controlsEnabled,
+                            label = { Text(stringResource(R.string.record_facecam_back)) },
+                        )
+                    }
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = options.facecamShape == FacecamShape.RECT,
+                        onClick = { viewModel.update { o -> o.copy(facecamShape = FacecamShape.RECT) } },
+                        enabled = controlsEnabled,
+                        label = { Text(stringResource(R.string.record_facecam_rect)) },
+                    )
+                    FilterChip(
+                        selected = options.facecamShape == FacecamShape.ROUND,
+                        onClick = { viewModel.update { o -> o.copy(facecamShape = FacecamShape.ROUND) } },
+                        enabled = controlsEnabled,
+                        label = { Text(stringResource(R.string.record_facecam_round)) },
+                    )
+                    FacecamSize.entries.forEach { size ->
+                        FilterChip(
+                            selected = options.facecamSize == size,
+                            onClick = { viewModel.update { o -> o.copy(facecamSize = size) } },
+                            enabled = controlsEnabled,
+                            label = {
+                                Text(
+                                    stringResource(
+                                        when (size) {
+                                            FacecamSize.SMALL -> R.string.record_facecam_small
+                                            FacecamSize.MEDIUM -> R.string.record_facecam_medium
+                                            FacecamSize.LARGE -> R.string.record_facecam_large
+                                        },
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+                SwitchRow(
+                    title = stringResource(R.string.record_facecam_hide_pause),
+                    hint = stringResource(R.string.record_facecam_hide_pause_hint),
+                    checked = options.facecamHideOnPause,
+                    enabled = controlsEnabled,
+                    onChecked = { viewModel.update { o -> o.copy(facecamHideOnPause = it) } },
                 )
             }
             SwitchRow(
@@ -374,7 +572,21 @@ fun RecordScreen(
                 enabled = controlsEnabled,
                 onChecked = { viewModel.update { o -> o.copy(showTaps = it) } },
             )
-            if (options.showTaps && !ui.tapsServiceEnabled) {
+            SwitchRow(
+                title = stringResource(R.string.record_laser),
+                hint = stringResource(R.string.record_laser_hint),
+                checked = options.showLaser,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(showLaser = it) } },
+            )
+            SwitchRow(
+                title = stringResource(R.string.record_annotation),
+                hint = stringResource(R.string.record_annotation_hint),
+                checked = options.showAnnotation,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(showAnnotation = it) } },
+            )
+            if (options.needsPointerOverlay && !ui.tapsServiceEnabled) {
                 TextButton(onClick = {
                     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }) {
@@ -388,6 +600,51 @@ fun RecordScreen(
                 enabled = controlsEnabled,
                 onChecked = { viewModel.update { o -> o.copy(showBubble = it) } },
             )
+            SwitchRow(
+                title = stringResource(R.string.record_pip),
+                hint = stringResource(R.string.record_pip_hint),
+                checked = options.pipControls,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(pipControls = it) } },
+            )
+            SwitchRow(
+                title = stringResource(R.string.record_cover_status),
+                hint = stringResource(R.string.record_cover_status_hint),
+                checked = options.coverStatusBar,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(coverStatusBar = it) } },
+            )
+            SwitchRow(
+                title = stringResource(R.string.record_quiet_notif),
+                hint = stringResource(R.string.record_quiet_notif_hint),
+                checked = options.quietNotification,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(quietNotification = it) } },
+            )
+            Text(stringResource(R.string.record_bookmarks), style = MaterialTheme.typography.titleMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = options.bookmarkMode == BookmarkMode.OFF,
+                    onClick = { viewModel.update { o -> o.copy(bookmarkMode = BookmarkMode.OFF) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.record_bookmarks_off)) },
+                )
+                FilterChip(
+                    selected = options.bookmarkMode == BookmarkMode.CHAPTERS,
+                    onClick = { viewModel.update { o -> o.copy(bookmarkMode = BookmarkMode.CHAPTERS) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.record_bookmarks_chapters)) },
+                )
+                FilterChip(
+                    selected = options.bookmarkMode == BookmarkMode.SPLIT,
+                    onClick = { viewModel.update { o -> o.copy(bookmarkMode = BookmarkMode.SPLIT) } },
+                    enabled = controlsEnabled,
+                    label = { Text(stringResource(R.string.record_bookmarks_split)) },
+                )
+            }
 
             if (recording.active) {
                 val elapsed by produceState(0L, recording) {
@@ -439,6 +696,19 @@ fun RecordScreen(
                                 if (recording.paused) R.string.record_resume else R.string.record_pause,
                             ),
                         )
+                    }
+                    if (options.bookmarkMode != BookmarkMode.OFF) {
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { viewModel.bookmark(context) },
+                        ) {
+                            Text(
+                                stringResource(
+                                    R.string.record_bookmark_count,
+                                    recording.bookmarks.size,
+                                ),
+                            )
+                        }
                     }
                 }
                 Button(

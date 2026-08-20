@@ -28,6 +28,7 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
@@ -57,6 +58,7 @@ class RecordOverlayHost(private val context: Context) {
     private var bubbleView: View? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var facecam: FacecamOverlay? = null
+    private var statusCover: View? = null
 
     fun showRegion(onConfirm: (RecordRegion) -> Unit, onCancel: () -> Unit) {
         if (!canDrawOverlays(app)) {
@@ -109,7 +111,12 @@ class RecordOverlayHost(private val context: Context) {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    fun showBubble(paused: Boolean, onPauseResume: () -> Unit, onStop: () -> Unit) {
+    fun showBubble(
+        paused: Boolean,
+        onPauseResume: () -> Unit,
+        onStop: () -> Unit,
+        onBookmark: (() -> Unit)? = null,
+    ) {
         if (!canDrawOverlays(app)) return
         hideBubble()
         val density = app.resources.displayMetrics.density
@@ -134,6 +141,15 @@ class RecordOverlayHost(private val context: Context) {
             setOnClickListener { onStop() }
         }
         bar.addView(pause, LinearLayout.LayoutParams((48 * density).toInt(), (48 * density).toInt()))
+        if (onBookmark != null) {
+            val mark = ImageButton(app).apply {
+                setBackgroundColor(Color.TRANSPARENT)
+                setImageResource(android.R.drawable.ic_input_add)
+                contentDescription = app.getString(R.string.record_bookmark)
+                setOnClickListener { onBookmark() }
+            }
+            bar.addView(mark, LinearLayout.LayoutParams((48 * density).toInt(), (48 * density).toInt()))
+        }
         bar.addView(stop, LinearLayout.LayoutParams((48 * density).toInt(), (48 * density).toInt()))
         val params = overlayParams(
             width = WindowManager.LayoutParams.WRAP_CONTENT,
@@ -162,12 +178,16 @@ class RecordOverlayHost(private val context: Context) {
         bubbleParams = null
     }
 
-    fun showFacecam() {
+    fun showFacecam(options: RecordOptions) {
         if (!canDrawOverlays(app)) return
         hideFacecam()
-        val overlay = FacecamOverlay(app, wm)
+        val overlay = FacecamOverlay(app, wm, options)
         facecam = overlay
         overlay.show()
+    }
+
+    fun setFacecamVisible(visible: Boolean) {
+        facecam?.setVisible(visible)
     }
 
     fun hideFacecam() {
@@ -175,11 +195,35 @@ class RecordOverlayHost(private val context: Context) {
         facecam = null
     }
 
+    fun showStatusCover() {
+        if (!canDrawOverlays(app)) return
+        hideStatusCover()
+        val height = statusBarHeight(app)
+        val view = View(app).apply { setBackgroundColor(Color.BLACK) }
+        val params = overlayParams(
+            width = WindowManager.LayoutParams.MATCH_PARENT,
+            height = height,
+            gravity = Gravity.TOP or Gravity.START,
+            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        )
+        statusCover = view
+        runCatching { wm.addView(view, params) }
+    }
+
+    fun hideStatusCover() {
+        statusCover?.let { runCatching { wm.removeView(it) } }
+        statusCover = null
+    }
+
     fun dismissAll() {
         hideRegion()
         hideCountdown()
         hideBubble()
         hideFacecam()
+        hideStatusCover()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -237,6 +281,12 @@ class RecordOverlayHost(private val context: Context) {
         this.y = y
         title = "RecordingCompressorOverlay"
     }
+}
+
+fun statusBarHeight(context: Context): Int {
+    val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+    if (id > 0) return context.resources.getDimensionPixelSize(id)
+    return (24f * context.resources.displayMetrics.density).roundToInt()
 }
 
 @SuppressLint("ViewConstructor")
@@ -408,10 +458,13 @@ private class RegionSelectView(
 private class FacecamOverlay(
     private val context: Context,
     private val wm: WindowManager,
+    private val options: RecordOptions,
 ) {
     private val density = context.resources.displayMetrics.density
-    private val widthPx = (132 * density).roundToInt()
-    private val heightPx = (176 * density).roundToInt()
+    private val round = options.facecamShape == FacecamShape.ROUND
+    private val sizePx = options.facecamSize.pixelSize(density, round)
+    private val widthPx = sizePx.first
+    private val heightPx = sizePx.second
     private var host: FrameLayout? = null
     private var camera: CameraDevice? = null
     private var session: CameraCaptureSession? = null
@@ -419,11 +472,19 @@ private class FacecamOverlay(
 
     fun show() {
         val texture = TextureView(context)
-        texture.scaleX = -1f
+        if (options.facecamLens != FacecamLens.BACK) texture.scaleX = -1f
         val frame = FrameLayout(context).apply {
             addView(texture, FrameLayout.LayoutParams(widthPx, heightPx))
             setBackgroundColor(Color.parseColor("#FF1A1F1E"))
             elevation = 10 * density
+            if (round) {
+                clipToOutline = true
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) {
+                        outline.setOval(0, 0, view.width, view.height)
+                    }
+                }
+            }
         }
         val screen = context.resources.displayMetrics
         val params = WindowManager.LayoutParams(
@@ -483,9 +544,13 @@ private class FacecamOverlay(
     @SuppressLint("MissingPermission")
     private fun openCamera(texture: SurfaceTexture, viewW: Int, viewH: Int) {
         val manager = context.getSystemService(CameraManager::class.java) ?: return
+        val wanted = if (options.facecamLens == FacecamLens.BACK) {
+            CameraCharacteristics.LENS_FACING_BACK
+        } else {
+            CameraCharacteristics.LENS_FACING_FRONT
+        }
         val id = manager.cameraIdList.firstOrNull { camId ->
-            manager.getCameraCharacteristics(camId).get(CameraCharacteristics.LENS_FACING) ==
-                CameraCharacteristics.LENS_FACING_FRONT
+            manager.getCameraCharacteristics(camId).get(CameraCharacteristics.LENS_FACING) == wanted
         } ?: manager.cameraIdList.firstOrNull() ?: return
         val map = manager.getCameraCharacteristics(id)
             .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return
@@ -547,6 +612,10 @@ private class FacecamOverlay(
         camera = null
         thread?.quitSafely()
         thread = null
+    }
+
+    fun setVisible(visible: Boolean) {
+        host?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     fun dismiss() {

@@ -13,6 +13,7 @@ import com.androidcompress.app.R
 
 object Notifications {
     const val RECORD_CHANNEL = "record"
+    const val RECORD_QUIET_CHANNEL = "record_quiet"
     const val ENCODE_CHANNEL = "encode"
     const val RECORD_ID = 1001
     const val ENCODE_ID = 1002
@@ -22,6 +23,13 @@ object Notifications {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(RECORD_CHANNEL, context.getString(R.string.notif_record_channel), NotificationManager.IMPORTANCE_LOW),
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                RECORD_QUIET_CHANNEL,
+                context.getString(R.string.notif_record_quiet_channel),
+                NotificationManager.IMPORTANCE_MIN,
+            ),
         )
         manager.createNotificationChannel(
             NotificationChannel(ENCODE_CHANNEL, context.getString(R.string.notif_encode_channel), NotificationManager.IMPORTANCE_LOW),
@@ -46,9 +54,11 @@ object Notifications {
         elapsed: String,
         stopIntent: PendingIntent,
         pauseResumeIntent: PendingIntent? = null,
+        bookmarkIntent: PendingIntent? = null,
         paused: Boolean = false,
         saving: Boolean = false,
         preparing: Boolean = false,
+        quiet: Boolean = false,
     ): Notification {
         ensureChannels(context)
         val title = when {
@@ -62,13 +72,20 @@ object Notifications {
         } else {
             elapsed
         }
-        val builder = NotificationCompat.Builder(context, RECORD_CHANNEL)
+        val channel = if (quiet) RECORD_QUIET_CHANNEL else RECORD_CHANNEL
+        val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle(title)
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(
+                if (quiet) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC,
+            )
             .setContentIntent(openApp(context))
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
         if (!saving) {
             if (pauseResumeIntent != null && !preparing) {
                 val pauseResumeLabel = if (paused) {
@@ -77,6 +94,9 @@ object Notifications {
                     context.getString(R.string.action_pause)
                 }
                 builder.addAction(0, pauseResumeLabel, pauseResumeIntent)
+            }
+            if (bookmarkIntent != null && !preparing) {
+                builder.addAction(0, context.getString(R.string.record_bookmark), bookmarkIntent)
             }
             builder.addAction(0, context.getString(R.string.action_stop), stopIntent)
         }

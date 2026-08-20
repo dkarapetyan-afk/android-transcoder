@@ -58,10 +58,11 @@ class InputResolver(private val context: Context) {
         return File(dir, "$jobId.$ext")
     }
 
-    fun recordOutputFile(jobId: String): File {
+    fun recordOutputFile(jobId: String, extension: String = "mp4"): File {
         val dir = File(context.cacheDir, "record")
         if (!dir.exists()) dir.mkdirs()
-        return File(dir, "$jobId.mp4")
+        val ext = extension.removePrefix(".").ifBlank { "mp4" }
+        return File(dir, "$jobId.$ext")
     }
 
     fun copyJobCache(fromJobId: String, toJobId: String) {
@@ -83,10 +84,9 @@ class InputResolver(private val context: Context) {
 
     fun deleteJobCache(jobId: String) {
         deleteImportCopy(jobId)
-        File(context.cacheDir, "record/$jobId.mp4").delete()
-        File(context.cacheDir, "record/$jobId.wav").delete()
-        File(context.cacheDir, "record/$jobId.mic.wav").delete()
-        File(context.cacheDir, "record/$jobId-muxed.mp4").delete()
+        File(context.cacheDir, "record").listFiles()
+            ?.filter { it.name.startsWith(jobId) }
+            ?.forEach { it.delete() }
         File(context.cacheDir, "encode").listFiles()
             ?.filter { cacheJobId(it.name) == jobId }
             ?.forEach { it.delete() }

@@ -82,6 +82,20 @@ class RecordingStateTest {
         assertEquals(null, store.state.value.finishedJobId)
         assertFalse(store.state.value.openResult)
     }
+
+    @Test
+    fun addBookmarkUsesElapsedAndDedupes() {
+        val store = RecordingStore()
+        store.start("job")
+        val started = store.state.value.startedAt
+        val first = store.addBookmark(now = started + 2_000L)
+        assertEquals(2_000L, first)
+        assertEquals(listOf(2_000L), store.state.value.bookmarks)
+        store.addBookmark(now = started + 2_200L)
+        assertEquals(1, store.state.value.bookmarks.size)
+        store.addBookmark(now = started + 5_000L)
+        assertEquals(listOf(2_000L, 5_000L), store.state.value.bookmarks)
+    }
 }
 
 class RecordAudioModeTest {

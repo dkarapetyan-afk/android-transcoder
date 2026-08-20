@@ -64,13 +64,17 @@ object FfmpegMuxCommands {
         duckAppAudio: Boolean = false,
         videoEncoder: String = "libopenh264",
         videoBitrateKbps: Int = 4_000,
+        frameRate: Int = 30,
+        containerWebm: Boolean = false,
+        applyGain: Boolean = true,
     ): List<String>? {
         val hasInternal = !internalWav.isNullOrBlank()
         val hasMicWav = !micWav.isNullOrBlank()
         val cropOn = crop?.takeIf { it.isUsable }
         val iGain = formatGain(internalGainPercent)
         val mGain = formatGain(micGainPercent)
-        val micVol = !gainIsUnity(micGainPercent)
+        val micVol = applyGain && !gainIsUnity(micGainPercent)
+        val intVol = applyGain && !gainIsUnity(internalGainPercent)
         val needsWork = cropOn != null ||
             hasInternal ||
             hasMicWav ||
@@ -91,24 +95,27 @@ object FfmpegMuxCommands {
                 val fc = if (cropFilter != null) "[0:v]$cropFilter[v];$mix" else mix
                 args += listOf("-filter_complex", fc)
                 args += listOf("-map", if (cropFilter != null) "[v]" else "0:v", "-map", "[a]")
-                if (vEncode) args += videoEncode(videoEncoder, videoBitrateKbps) else args += listOf("-c:v", "copy")
-                args += listOf("-c:a", "aac", "-b:a", "160k", "-ac", "2", "-ar", "44100", "-shortest")
+                if (vEncode) args += videoEncode(videoEncoder, videoBitrateKbps, frameRate) else args += listOf("-c:v", "copy")
+                args += audioEncode(containerWebm, "160k")
+                args += "-shortest"
             }
             hasInternal || hasMicWav -> {
                 val wavIndex = "1:a"
                 val vol = if (hasInternal) iGain else mGain
+                val applyVol = applyGain && vol != "1.00" && (if (hasInternal) intVol else micVol)
                 if (cropFilter != null) {
-                    val af = if (vol != "1.00") "[$wavIndex]volume=$vol[a]" else null
+                    val af = if (applyVol) "[$wavIndex]volume=$vol[a]" else null
                     val fc = if (af == null) "[0:v]$cropFilter[v]" else "[0:v]$cropFilter[v];$af"
                     args += listOf("-filter_complex", fc)
                     args += listOf("-map", "[v]")
                     args += if (af == null) listOf("-map", wavIndex) else listOf("-map", "[a]")
-                    args += videoEncode(videoEncoder, videoBitrateKbps)
+                    args += videoEncode(videoEncoder, videoBitrateKbps, frameRate)
                 } else {
                     args += listOf("-map", "0:v", "-map", wavIndex, "-c:v", "copy")
-                    if (vol != "1.00") args += listOf("-filter:a", "volume=$vol")
+                    if (applyVol) args += listOf("-filter:a", "volume=$vol")
                 }
-                args += listOf("-c:a", "aac", "-b:a", "128k", "-shortest")
+                args += audioEncode(containerWebm, "128k")
+                args += "-shortest"
             }
             else -> {
                 when {
@@ -119,23 +126,60 @@ object FfmpegMuxCommands {
                             "-map", "[v]",
                             "-map", "[a]",
                         )
-                        args += videoEncode(videoEncoder, videoBitrateKbps)
-                        args += listOf("-c:a", "aac", "-b:a", "128k")
+                        args += videoEncode(videoEncoder, videoBitrateKbps, frameRate)
+                        args += audioEncode(containerWebm, "128k")
                     }
                     cropFilter != null -> {
                         args += listOf("-vf", cropFilter)
-                        args += videoEncode(videoEncoder, videoBitrateKbps)
+                        args += videoEncode(videoEncoder, videoBitrateKbps, frameRate)
                         if (videoHasAudio) args += listOf("-c:a", "copy")
                     }
                     else -> {
-                        args += listOf("-c:v", "copy", "-filter:a", "volume=$mGain", "-c:a", "aac", "-b:a", "128k")
+                        args += listOf("-c:v", "copy", "-filter:a", "volume=$mGain")
+                        args += audioEncode(containerWebm, "128k")
                     }
                 }
             }
         }
-        args += listOf("-movflags", "+faststart", outputPath)
+        if (!containerWebm) args += listOf("-movflags", "+faststart")
+        args += outputPath
         return args
     }
+
+    fun applyChapters(
+        videoPath: String,
+        metadataPath: String,
+        outputPath: String,
+        containerWebm: Boolean = false,
+    ): List<String> = buildList {
+        addAll(
+            listOf(
+                "-y", "-hide_banner",
+                "-i", videoPath,
+                "-i", metadataPath,
+                "-map_metadata", "1",
+                "-map", "0",
+                "-c", "copy",
+            ),
+        )
+        if (!containerWebm) addAll(listOf("-movflags", "+faststart"))
+        add(outputPath)
+    }
+
+    fun copySegment(
+        videoPath: String,
+        outputPath: String,
+        startMs: Long,
+        endMs: Long,
+    ): List<String> = listOf(
+        "-y", "-hide_banner",
+        "-ss", seconds(startMs),
+        "-to", seconds(endMs),
+        "-i", videoPath,
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        outputPath,
+    )
 
     fun mixFilter(
         internalGainPercent: Int = 100,
@@ -168,10 +212,20 @@ object FfmpegMuxCommands {
             "[2:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[m];" +
             "[i][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[a]"
 
-    private fun videoEncode(encoder: String, bitrateKbps: Int): List<String> = listOf(
+    private fun videoEncode(encoder: String, bitrateKbps: Int, frameRate: Int = 30): List<String> = listOf(
         "-c:v", encoder.ifBlank { "libopenh264" },
         "-pix_fmt", "yuv420p",
         "-b:v", "${bitrateKbps.coerceIn(400, 20_000)}k",
-        "-r", "30",
+        "-r", "${if (frameRate >= 45) 60 else 30}",
     )
+
+    private fun audioEncode(webm: Boolean, bitrate: String): List<String> =
+        if (webm) {
+            listOf("-c:a", "libopus", "-b:a", bitrate, "-ac", "2", "-ar", "48000")
+        } else {
+            listOf("-c:a", "aac", "-b:a", bitrate, "-ac", "2", "-ar", "44100")
+        }
+
+    private fun seconds(ms: Long): String =
+        String.format(Locale.US, "%.3f", ms.coerceAtLeast(0L) / 1000.0)
 }

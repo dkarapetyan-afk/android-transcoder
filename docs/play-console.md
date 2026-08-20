@@ -19,7 +19,7 @@ Video processing is on-device. Optional Gemini extra-args generation sends text 
 - Files: video files the user creates, stay on device
 - Optional: text prompts sent to Google Gemini when the user uses Generate extra args
 - Optional: job metadata (names, sizes, settings, progress, encode logs) may be read by a privileged on-device agent through App Functions on Android 16+. The assistant can also open the system share sheet or a viewer for a finished file; this app does not upload media. The assistant may send the user's spoken request to a server.
-- Sensitive permissions: microphone (optional, user-initiated), notifications, optional photo/video/audio library access
+- Sensitive permissions: microphone (optional, user-initiated), camera (optional inset), notifications, optional photo/video/audio library access, optional Bluetooth for a headset mic
 - Internet: optional Gemini API only
 
 ## Foreground services
@@ -38,6 +38,8 @@ Declare the types below and attach a short screen recording that shows:
 ## Permissions justification
 
 - `RECORD_AUDIO` — microphone, internal-audio, or mixed capture, only after the user opts in.
+- `BLUETOOTH_CONNECT` / `BLUETOOTH` — optional Bluetooth microphone while recording.
+- `MODIFY_AUDIO_SETTINGS` — start Bluetooth SCO for that microphone path.
 - `FOREGROUND_SERVICE_MICROPHONE` — ongoing microphone capture while a screen recording continues in the background.
 - `POST_NOTIFICATIONS` — ongoing record/encode status.
 - `WRITE_EXTERNAL_STORAGE` maxSdk 28 — gallery export on Android 8–9 only.

@@ -7,15 +7,18 @@ These cannot be fully automated in this workspace.
 - Single-app capture (Android 14+) produces a usable MP4.
 - Microphone recording has audible mic audio.
 - Internal audio (API 29+) captures media/game playback and muxes after stop.
-- Mic + Internal (API 29+) records voice and playback together; the mix happens after stop. Headphones should reduce speaker echo. Mic/app gain sliders change the mix; Duck app audio when you speak lowers internal audio while you talk.
+- Mic + Internal (API 29+) records voice and playback together; the mix happens live (one WAV, wrapped at stop without re-encoding video). Headphones plus Echo cancel should reduce speaker echo. Mic/app gain sliders change the mix immediately; Duck app audio when you speak lowers internal audio while you talk. Phone vs Bluetooth mic uses that input when available.
 - Internal audio → Choose app limits capture to that package; other apps are silent in the mix.
 - Pause and Resume from the Record screen, the notification, the Quick Settings tile, and the optional floating bubble freeze the timer and omit paused time from the file. Stop still finalizes.
 - Countdown 3/5/10 waits after consent, then starts capture. The big number is not in the file.
 - Max length auto-stops and leaves a usable file. Low-storage auto-stop fires when free space is under 200 MB.
-- Region: after consent, drag the box and tap Record region. Overlay permission required. Output is cropped (software re-encode). Full screen skips crop.
-- Camera inset (front camera) appears in the recording; it is draggable. Needs camera + overlay permission.
-- Tap highlights: enable the Recording Compressor accessibility service, then record. Taps show ripples; a mouse/stylus shows a pointer. Disable the service when finished.
-- Record already compressed + HEVC/AV1 (when the chips appear) writes a gallery file and opens Result, skipping the compress screen. Auto-compress after record does not run. Region crop still re-encodes.
+- Region: after consent, drag the box and tap Record region. Overlay permission required. Output is cropped during capture (no second encode). If live crop fails, a software fallback still crops at stop. Full screen skips crop.
+- Camera inset appears in the recording; it is draggable. Front/rear, rectangle/round, and size apply. Hide inset while paused removes it from the video until resume. Needs camera + overlay permission.
+- Tap highlights: enable the Recording Compressor accessibility service, then record. Taps show ripples; a mouse/stylus shows a pointer. Laser is a red dot while the pointer is down. Draw on screen leaves yellow ink until stop. Disable the service when finished.
+- Record already compressed + HEVC/AV1 (when the chips appear) writes a gallery file and opens Result, skipping the compress screen. Auto-compress after record does not run. WebM capture writes VP8. 60 fps and a manual bitrate change the MediaRecorder settings.
+- Picture-in-Picture: turn on Pop-up controls, start recording, press Home. A small window has pause, mark, and stop. The Record screen is not required after capture starts.
+- Cover status bar hides notifications and privacy dots *in the video*. Android still shows the green/orange indicators to the user. Quiet notification keeps the required FGS notice at minimum importance; it cannot be removed.
+- Bookmarks: Mark from the notification, bubble, Record screen, or PiP. Chapters writes FFMETADATA chapters. Split jobs creates extra READY/SUCCEEDED rows for each segment.
 - Quick Settings tile: add Record screen. Inactive tap opens capture consent using last options. Active tap pauses/resumes. Long-press opens the Record screen.
 - Compress a file opens one system picker; a video and an audio file both reach the compress screen.
 - Share / Send a video or audio file from Photos, Files, or a messenger: Recording Compressor appears as Compress and opens the compress screen. Share two files at once creates two jobs; the first opens and the rest are in Recent.

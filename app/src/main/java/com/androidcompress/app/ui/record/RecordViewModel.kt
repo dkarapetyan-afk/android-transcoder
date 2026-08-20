@@ -32,6 +32,7 @@ data class RecordUiState(
     val hasHevc: Boolean = false,
     val hasAv1: Boolean = false,
     val hasFrontCamera: Boolean = false,
+    val hasBackCamera: Boolean = false,
     val tapsServiceEnabled: Boolean = TapHighlightService.isEnabled(),
 )
 
@@ -61,6 +62,7 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
                 hasHevc = caps.hasHevcMediaCodec,
                 hasAv1 = caps.hasAv1MediaCodec && Build.VERSION.SDK_INT >= 33,
                 hasFrontCamera = cameras?.let { CaptureApps.hasFrontCamera(it) } == true,
+                hasBackCamera = cameras?.let { CaptureApps.hasBackCamera(it) } == true,
                 tapsServiceEnabled = TapHighlightService.isEnabled(),
             )
         }
@@ -123,6 +125,10 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
         ScreenRecordService.resume(context)
     }
 
+    fun bookmark(context: Context) {
+        ScreenRecordService.bookmark(context)
+    }
+
     fun markStarting(starting: Boolean = true) {
         _ui.value = _ui.value.copy(starting = starting)
     }
@@ -134,4 +140,6 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
         if (_ui.value.hasHevc) add(RecordVideoCodec.HEVC)
         if (_ui.value.hasAv1) add(RecordVideoCodec.AV1)
     }
+
+    fun hasAnyCamera(): Boolean = _ui.value.hasFrontCamera || _ui.value.hasBackCamera
 }
