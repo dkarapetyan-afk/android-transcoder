@@ -19,6 +19,28 @@ fun signingValue(envName: String, propertyName: String, default: String? = null)
         ?: keystoreProperties.getProperty(propertyName)?.takeIf { it.isNotEmpty() }
         ?: default
 
+val releaseStorePath = signingValue("KEYSTORE_PATH", "storeFile", "release.jks")
+val releaseStoreFile = releaseStorePath?.let { path ->
+    val store = File(path)
+    if (store.isAbsolute) store else rootProject.file(path)
+}
+val releaseStorePassword = signingValue("KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("KEY_ALIAS", "keyAlias", "recordingcompressor")
+val releaseKeyPassword = signingValue("KEY_PASSWORD", "keyPassword")
+val releaseSigningReady =
+    releaseStoreFile != null &&
+        releaseStoreFile.isFile &&
+        !releaseStorePassword.isNullOrEmpty() &&
+        !releaseKeyAlias.isNullOrEmpty() &&
+        !releaseKeyPassword.isNullOrEmpty()
+
+if (!releaseSigningReady) {
+    logger.lifecycle(
+        "Release signing skipped: keystore or passwords are missing. " +
+            "assembleRelease will produce an unsigned APK.",
+    )
+}
+
 android {
     namespace = "com.androidcompress.app"
     compileSdk = 37
@@ -36,19 +58,21 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            val storePath = signingValue("KEYSTORE_PATH", "storeFile", "release.jks")!!
-            val store = File(storePath)
-            storeFile = if (store.isAbsolute) store else rootProject.file(storePath)
-            storePassword = signingValue("KEYSTORE_PASSWORD", "storePassword")
-            keyAlias = signingValue("KEY_ALIAS", "keyAlias", "recordingcompressor")
-            keyPassword = signingValue("KEY_PASSWORD", "keyPassword")
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = releaseStoreFile!!
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

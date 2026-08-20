@@ -28,13 +28,13 @@ export ANDROID_HOME=$HOME/Android/Sdk
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
-Release builds sign with `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` when those env vars are set. Otherwise they read `keystore.properties` at the repo root (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Neither `release.jks` nor `keystore.properties` is committed.
+Release builds sign with `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` when those env vars are set. Otherwise they read `keystore.properties` at the repo root (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Neither `release.jks` nor `keystore.properties` is committed. If the keystore file or passwords are missing, `assembleRelease` still succeeds and writes an unsigned APK.
 
 ```bash
 ./gradlew :app:assembleRelease :app:bundleRelease
 ```
 
-The signed APK is `app/build/outputs/apk/release/`, the Play upload is `app/build/outputs/bundle/release/`.
+The release APK is `app/build/outputs/apk/release/` (`app-release.apk` when signed, `app-release-unsigned.apk` otherwise). The Play upload is `app/build/outputs/bundle/release/`.
 
 ## App Functions (Android 16+)
 
@@ -66,3 +66,7 @@ PowerShell helper (Windows). Finds `adb.exe` from `ANDROID_HOME` / `ANDROID_SDK_
 ## FFmpeg
 
 Day-to-day builds use `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.2, 16 KB pages, arm64-v8a, LGPL — no x264/x265). A Play Store binary can stay on that AAR or be rebuilt from FFmpegKitNext — see [docs/ffmpeg-build.md](docs/ffmpeg-build.md).
+
+## License
+
+This project's source is licensed under the [MIT License](LICENSE). Bundled FFmpeg remains LGPL-3.0; see [docs/ffmpeg-build.md](docs/ffmpeg-build.md).
