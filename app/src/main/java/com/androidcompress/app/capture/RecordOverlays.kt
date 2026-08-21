@@ -58,7 +58,6 @@ class RecordOverlayHost(private val context: Context) {
     private var bubbleView: View? = null
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var facecam: FacecamOverlay? = null
-    private var statusCover: View? = null
 
     fun showRegion(onConfirm: (RecordRegion) -> Unit, onCancel: () -> Unit) {
         if (!canDrawOverlays(app)) {
@@ -195,35 +194,11 @@ class RecordOverlayHost(private val context: Context) {
         facecam = null
     }
 
-    fun showStatusCover() {
-        if (!canDrawOverlays(app)) return
-        hideStatusCover()
-        val height = statusBarHeight(app)
-        val view = View(app).apply { setBackgroundColor(Color.BLACK) }
-        val params = overlayParams(
-            width = WindowManager.LayoutParams.MATCH_PARENT,
-            height = height,
-            gravity = Gravity.TOP or Gravity.START,
-            flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-        )
-        statusCover = view
-        runCatching { wm.addView(view, params) }
-    }
-
-    fun hideStatusCover() {
-        statusCover?.let { runCatching { wm.removeView(it) } }
-        statusCover = null
-    }
-
     fun dismissAll() {
         hideRegion()
         hideCountdown()
         hideBubble()
         hideFacecam()
-        hideStatusCover()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -281,12 +256,6 @@ class RecordOverlayHost(private val context: Context) {
         this.y = y
         title = "RecordingCompressorOverlay"
     }
-}
-
-fun statusBarHeight(context: Context): Int {
-    val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-    if (id > 0) return context.resources.getDimensionPixelSize(id)
-    return (24f * context.resources.displayMetrics.density).roundToInt()
 }
 
 @SuppressLint("ViewConstructor")

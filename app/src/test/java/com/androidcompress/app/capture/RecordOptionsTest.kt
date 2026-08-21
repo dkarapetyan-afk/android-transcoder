@@ -70,10 +70,19 @@ class RecordOptionsTest {
         assertEquals(FacecamShape.ROUND, restored.facecamShape)
         assertTrue(restored.showLaser)
         assertTrue(restored.pipControls)
+        assertTrue(restored.coverStatusBar)
         assertEquals(BookmarkMode.SPLIT, restored.bookmarkMode)
         val region = restored.region
         assertEquals(0.1f, region?.left ?: -1f, 0.001f)
         assertEquals(0.9f, region?.bottom ?: -1f, 0.001f)
+    }
+
+    @Test
+    fun coverStatusBarDoesNotNeedOverlay() {
+        assertFalse(RecordOptions(coverStatusBar = true).needsOverlay)
+        assertTrue(RecordOptions(showBubble = true).needsOverlay)
+        assertTrue(RecordOptions(facecam = true).needsOverlay)
+        assertTrue(RecordOptions(captureRegion = true).needsOverlay)
     }
 
     @Test

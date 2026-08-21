@@ -231,7 +231,7 @@ Capture is MediaProjection + MediaRecorder. Consent is requested every session (
 | Camera inset | Front/rear, rect/round, S/M/L, draggable; optional hide while paused |
 | Floating bubble | Overlay pause/stop |
 | PiP controls | Pause / mark / stop in a system PiP window |
-| Cover status bar | Hide notifications/privacy dots **in the video** (OS indicators still show to the user) |
+| Cover status bar | Black bar burned into captured frames (live GL, FFmpeg `drawbox` if that path fails). Overlay windows cannot sit above system UI, so this does **not** use “Display over other apps.” OS indicators still show on the phone. |
 | Quiet notification | FGS notice at `IMPORTANCE_MIN` (cannot be removed) |
 | Taps / laser / ink | Accessibility service; ripples, red laser while pointer down, yellow ink until stop |
 | Bookmarks | Off, Chapters (`FFMETADATA1`), or Split jobs (extra READY/SUCCEEDED rows, min segment 400 ms) |
@@ -589,7 +589,7 @@ Cannot edit `QUEUED`, `RUNNING`, or `RECORDING`. Cannot start those either. Retr
 | `POST_NOTIFICATIONS` / `POST_PROMOTED_NOTIFICATIONS` | Progress; Android 16 live chip |
 | `RECORD_AUDIO` | Mic / internal / both |
 | `CAMERA` | Facecam inset (optional feature) |
-| `SYSTEM_ALERT_WINDOW` | Region, facecam, bubble, status-bar cover |
+| `SYSTEM_ALERT_WINDOW` | Region, facecam, bubble |
 | `WAKE_LOCK` | Encode |
 | `MODIFY_AUDIO_SETTINGS` | Mix / duck / AEC |
 | `BLUETOOTH` / `BLUETOOTH_CONNECT` | Optional BT mic |

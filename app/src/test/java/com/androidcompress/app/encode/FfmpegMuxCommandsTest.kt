@@ -133,4 +133,46 @@ class FfmpegMuxCommandsTest {
         assertEquals("yuv420p", args[args.indexOf("-pix_fmt") + 1])
         assertFalse(args.contains("h264_mediacodec"))
     }
+
+    @Test
+    fun recordingPostProcessDrawsStatusCover() {
+        val args = FfmpegMuxCommands.recordingPostProcess(
+            videoPath = "/v.mp4",
+            outputPath = "/out.mp4",
+            coverTopPx = 80,
+            videoEncoder = "libopenh264",
+            videoBitrateKbps = 2500,
+        )!!
+        assertEquals(
+            "drawbox=x=0:y=0:w=iw:h=80:color=black:t=fill",
+            args[args.indexOf("-vf") + 1],
+        )
+        assertEquals("libopenh264", args[args.indexOf("-c:v") + 1])
+        assertFalse(args[args.indexOf("-vf") + 1].contains(' '))
+    }
+
+    @Test
+    fun recordingPostProcessCoverAfterCrop() {
+        val args = FfmpegMuxCommands.recordingPostProcess(
+            videoPath = "/v.mp4",
+            outputPath = "/out.mp4",
+            crop = RecordingCrop(10, 20, 640, 360),
+            coverTopPx = 40,
+            videoEncoder = "libopenh264",
+            videoBitrateKbps = 2500,
+        )!!
+        assertEquals(
+            "crop=640:360:10:20,drawbox=x=0:y=0:w=iw:h=40:color=black:t=fill",
+            args[args.indexOf("-vf") + 1],
+        )
+    }
+
+    @Test
+    fun buildVideoFilterSkipsEmptyCover() {
+        assertEquals(
+            "crop=640:360:10:20",
+            FfmpegMuxCommands.buildVideoFilter(RecordingCrop(10, 20, 640, 360), 0),
+        )
+        assertEquals(null, FfmpegMuxCommands.buildVideoFilter(null, 0))
+    }
 }

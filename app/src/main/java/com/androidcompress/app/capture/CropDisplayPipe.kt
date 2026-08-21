@@ -11,6 +11,7 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.view.Surface
 import com.androidcompress.app.encode.RecordingCrop
 import java.util.concurrent.CountDownLatch
@@ -37,10 +38,13 @@ class CropDisplayPipe private constructor(
     private val uvBuffer: java.nio.FloatBuffer,
     private val destWidth: Int,
     private val destHeight: Int,
+    private val coverTopPx: Int,
 ) {
     private val texMatrix = FloatArray(16)
     private val paused = AtomicBoolean(false)
     private val released = AtomicBoolean(false)
+    private val pendingFrame = AtomicBoolean(false)
+    private var lastPtsNs = 0L
 
     fun setPaused(value: Boolean) {
         paused.set(value)
@@ -48,6 +52,7 @@ class CropDisplayPipe private constructor(
 
     fun release() {
         if (!released.compareAndSet(false, true)) return
+        handler.removeCallbacksAndMessages(null)
         val done = CountDownLatch(1)
         handler.post {
             try {
@@ -64,6 +69,9 @@ class CropDisplayPipe private constructor(
                         EGL14.EGL_NO_SURFACE,
                         EGL14.EGL_NO_CONTEXT,
                     )
+                    // Destroying the window surface signals EOS to MediaRecorder.
+                    // Must happen before MediaRecorder.stop() or stop() blocks and
+                    // the file is padded with a frozen last frame (~10s).
                     EGL14.eglDestroySurface(eglDisplay, eglSurface)
                     EGL14.eglDestroyContext(eglDisplay, eglContext)
                     EGL14.eglReleaseThread()
@@ -77,9 +85,31 @@ class CropDisplayPipe private constructor(
         thread.quitSafely()
     }
 
+    private fun requestFrame() {
+        if (released.get()) return
+        pendingFrame.set(true)
+        if (Looper.myLooper() == handler.looper) {
+            drain()
+        } else {
+            handler.post { drain() }
+        }
+    }
+
+    private fun drain() {
+        if (released.get()) return
+        while (pendingFrame.compareAndSet(true, false)) {
+            runCatching { drawFrame() }
+            if (released.get()) return
+        }
+    }
+
     private fun drawFrame() {
         if (released.get()) return
-        surfaceTexture.updateTexImage()
+        try {
+            surfaceTexture.updateTexImage()
+        } catch (_: Throwable) {
+            return
+        }
         if (paused.get()) return
         surfaceTexture.getTransformMatrix(texMatrix)
         GLES20.glViewport(0, 0, destWidth, destHeight)
@@ -96,10 +126,26 @@ class CropDisplayPipe private constructor(
         GLES20.glVertexAttribPointer(texHandle, 2, GLES20.GL_FLOAT, false, 0, uvBuffer)
         GLES20.glEnableVertexAttribArray(texHandle)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+        val scissor = StatusBarCover.glScissor(destWidth, destHeight, coverTopPx)
+        if (scissor != null) {
+            GLES20.glEnable(GLES20.GL_SCISSOR_TEST)
+            GLES20.glScissor(scissor[0], scissor[1], scissor[2], scissor[3])
+            GLES20.glClearColor(0f, 0f, 0f, 1f)
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+            GLES20.glDisable(GLES20.GL_SCISSOR_TEST)
+        }
+        val pts = presentationTimeNs()
         runCatching {
-            EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, surfaceTexture.timestamp)
+            EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, pts)
         }
         EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+    }
+
+    private fun presentationTimeNs(): Long {
+        val tex = surfaceTexture.timestamp
+        val candidate = if (tex > lastPtsNs) tex else System.nanoTime()
+        lastPtsNs = if (candidate > lastPtsNs) candidate else lastPtsNs + 1_000_000L
+        return lastPtsNs
     }
 
     companion object {
@@ -119,12 +165,12 @@ class CropDisplayPipe private constructor(
 
         private const val VERTEX = """
             attribute vec4 aPos;
-            attribute vec4 aTex;
+            attribute vec2 aTex;
             uniform mat4 uTexMatrix;
             varying vec2 vTex;
             void main() {
               gl_Position = aPos;
-              vTex = (uTexMatrix * aTex).xy;
+              vTex = (uTexMatrix * vec4(aTex, 0.0, 1.0)).xy;
             }
         """
 
@@ -142,15 +188,21 @@ class CropDisplayPipe private constructor(
             val w = sourceWidth.coerceAtLeast(1).toFloat()
             val h = sourceHeight.coerceAtLeast(1).toFloat()
             val left = (crop.x / w).coerceIn(0f, 1f)
-            val top = (crop.y / h).coerceIn(0f, 1f)
             val right = ((crop.x + crop.width) / w).coerceIn(0f, 1f)
-            val bottom = ((crop.y + crop.height) / h).coerceIn(0f, 1f)
-            // Triangle strip: BL, BR, TL, TR in clip space. Display y=0 is top.
+            val androidTop = (crop.y / h).coerceIn(0f, 1f)
+            val androidBottom = ((crop.y + crop.height) / h).coerceIn(0f, 1f)
+            // SurfaceTexture's transform expects GL texels: (0,0) is the bottom-left
+            // of the image. Display y=0 is the top of the screen, so invert Y.
+            // Applying both this invert and the ST matrix used to double-flip
+            // full-screen cover recordings.
+            val texBottom = 1f - androidBottom
+            val texTop = 1f - androidTop
+            // Triangle strip: BL, BR, TL, TR in clip space.
             return floatArrayOf(
-                left, bottom,
-                right, bottom,
-                left, top,
-                right, top,
+                left, texBottom,
+                right, texBottom,
+                left, texTop,
+                right, texTop,
             )
         }
 
@@ -159,6 +211,7 @@ class CropDisplayPipe private constructor(
             sourceWidth: Int,
             sourceHeight: Int,
             crop: RecordingCrop,
+            coverTopPx: Int = 0,
         ): CropDisplayPipe {
             val thread = HandlerThread("crop-gl").also { it.start() }
             val handler = Handler(thread.looper)
@@ -172,6 +225,7 @@ class CropDisplayPipe private constructor(
                         sourceWidth,
                         sourceHeight,
                         crop,
+                        coverTopPx,
                         thread,
                         handler,
                     )
@@ -198,6 +252,7 @@ class CropDisplayPipe private constructor(
             sourceWidth: Int,
             sourceHeight: Int,
             crop: RecordingCrop,
+            coverTopPx: Int,
             thread: HandlerThread,
             handler: Handler,
         ): CropDisplayPipe {
@@ -271,10 +326,9 @@ class CropDisplayPipe private constructor(
                 uvBuffer = uvBuffer,
                 destWidth = crop.width,
                 destHeight = crop.height,
+                coverTopPx = coverTopPx.coerceAtLeast(0),
             )
-            st.setOnFrameAvailableListener({
-                handler.post { runCatching { pipe.drawFrame() } }
-            }, handler)
+            st.setOnFrameAvailableListener({ pipe.requestFrame() }, handler)
             return pipe
         }
 

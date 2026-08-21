@@ -17,7 +17,7 @@ These cannot be fully automated in this workspace.
 - Tap highlights: enable the Recording Compressor accessibility service, then record. Taps show ripples; a mouse/stylus shows a pointer. Laser is a red dot while the pointer is down. Draw on screen leaves yellow ink until stop. Disable the service when finished.
 - Record already compressed + HEVC/AV1 (when the chips appear) writes a gallery file and opens Result, skipping the compress screen. Auto-compress after record does not run. WebM capture writes VP8. 60 fps and a manual bitrate change the MediaRecorder settings.
 - Picture-in-Picture: turn on Pop-up controls, start recording, press Home. A small window has pause, mark, and stop. The Record screen is not required after capture starts.
-- Cover status bar hides notifications and privacy dots *in the video*. Android still shows the green/orange indicators to the user. Quiet notification keeps the required FGS notice at minimum importance; it cannot be removed.
+- Cover status bar hides notifications and privacy dots *in the video* (black bar on the file, not an overlay). Android still shows the green/orange indicators to the user. Does not need “Display over other apps.” Quiet notification keeps the required FGS notice at minimum importance; it cannot be removed.
 - Bookmarks: Mark from the notification, bubble, Record screen, or PiP. Chapters writes FFMETADATA chapters. Split jobs creates extra READY/SUCCEEDED rows for each segment.
 - Quick Settings tile: add Record screen. Inactive tap opens capture consent using last options. Active tap pauses/resumes. Long-press opens the Record screen.
 - Compress a file opens one system picker; a video and an audio file both reach the compress screen.

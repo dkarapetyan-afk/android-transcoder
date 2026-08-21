@@ -46,17 +46,73 @@ class RecordBookmarksTest {
 
 class CropDisplayPipeTest {
     @Test
-    fun cropUvMapsTopLeftOrigin() {
+    fun cropUvMapsDisplayTopLeftToGlBottomLeft() {
         val uv = CropDisplayPipe.cropUv(RecordingCrop(480, 270, 960, 540), 1920, 1080)
         assertEquals(8, uv.size)
+        // Clip BL / BR sample the visual bottom of the crop (GL t = 1 - androidBottom).
         assertEquals(0.25f, uv[0], 0.001f)
-        assertEquals(0.75f, uv[1], 0.001f)
+        assertEquals(0.25f, uv[1], 0.001f)
         assertEquals(0.75f, uv[2], 0.001f)
-        assertEquals(0.75f, uv[3], 0.001f)
+        assertEquals(0.25f, uv[3], 0.001f)
+        // Clip TL / TR sample the visual top of the crop (GL t = 1 - androidTop).
         assertEquals(0.25f, uv[4], 0.001f)
-        assertEquals(0.25f, uv[5], 0.001f)
+        assertEquals(0.75f, uv[5], 0.001f)
         assertEquals(0.75f, uv[6], 0.001f)
-        assertEquals(0.25f, uv[7], 0.001f)
+        assertEquals(0.75f, uv[7], 0.001f)
+    }
+
+    @Test
+    fun identityCropMatchesGrafikaQuad() {
+        val uv = CropDisplayPipe.cropUv(RecordingCrop(0, 0, 1080, 1920), 1080, 1920)
+        assertEquals(0f, uv[0], 0.001f)
+        assertEquals(0f, uv[1], 0.001f)
+        assertEquals(1f, uv[2], 0.001f)
+        assertEquals(0f, uv[3], 0.001f)
+        assertEquals(0f, uv[4], 0.001f)
+        assertEquals(1f, uv[5], 0.001f)
+        assertEquals(1f, uv[6], 0.001f)
+        assertEquals(1f, uv[7], 0.001f)
+    }
+}
+
+class StatusBarCoverTest {
+    @Test
+    fun destPixelsClipsToCrop() {
+        assertEquals(80, StatusBarCover.destPixels(80, cropY = 0, destHeight = 1920))
+        assertEquals(30, StatusBarCover.destPixels(80, cropY = 50, destHeight = 400))
+        assertEquals(0, StatusBarCover.destPixels(80, cropY = 80, destHeight = 400))
+        assertEquals(0, StatusBarCover.destPixels(80, cropY = 120, destHeight = 400))
+        assertEquals(0, StatusBarCover.destPixels(0, destHeight = 1080))
+    }
+
+    @Test
+    fun destPixelsUsesCropRect() {
+        assertEquals(60, StatusBarCover.destPixels(80, RecordingCrop(0, 20, 1080, 1920)))
+        assertEquals(80, StatusBarCover.destPixels(80, null))
+    }
+
+    @Test
+    fun scalePxMapsDisplayToCapture() {
+        assertEquals(40, StatusBarCover.scalePx(80, 1920, 960))
+        assertEquals(80, StatusBarCover.scalePx(80, 1920, 1920))
+        assertEquals(0, StatusBarCover.scalePx(0, 1920, 1080))
+    }
+
+    @Test
+    fun glScissorIsBottomLeft() {
+        val s = StatusBarCover.glScissor(1080, 1920, 80)!!
+        assertEquals(0, s[0])
+        assertEquals(1840, s[1])
+        assertEquals(1080, s[2])
+        assertEquals(80, s[3])
+        assertEquals(null, StatusBarCover.glScissor(1080, 1920, 0))
+    }
+
+    @Test
+    fun drawboxHasNoSpaces() {
+        val filter = StatusBarCover.drawboxFilter(72)!!
+        assertFalse(filter.contains(' '))
+        assertEquals("drawbox=x=0:y=0:w=iw:h=72:color=black:t=fill", filter)
     }
 }
 

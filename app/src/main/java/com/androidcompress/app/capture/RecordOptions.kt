@@ -149,7 +149,7 @@ data class RecordOptions(
     val quietNotification: Boolean = false,
     val bookmarkMode: BookmarkMode = BookmarkMode.CHAPTERS,
 ) {
-    val needsOverlay: Boolean get() = showBubble || facecam || captureRegion || coverStatusBar
+    val needsOverlay: Boolean get() = showBubble || facecam || captureRegion
     val needsCamera: Boolean get() = facecam
     val needsPointerOverlay: Boolean get() = showTaps || showLaser || showAnnotation
     val usesWebm: Boolean get() = container == RecordContainer.WEBM

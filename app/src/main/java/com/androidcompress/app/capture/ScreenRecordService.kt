@@ -28,6 +28,7 @@ import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.RecordAudioMode
 import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.encode.FfmpegMuxCommands
+import com.androidcompress.app.encode.RecordingCrop
 import com.androidcompress.app.util.Notifications
 import com.androidcompress.app.util.even
 import com.androidcompress.app.util.formatDuration
@@ -62,6 +63,7 @@ class ScreenRecordService : Service() {
     private var mixedAudioFile: File? = null
     private var micAudioFile: File? = null
     private var liveCropped = false
+    private var liveCovered = false
     private var jobId: String? = null
     private var ticker: Job? = null
     private var sessionJob: Job? = null
@@ -190,24 +192,40 @@ class ScreenRecordService : Service() {
     private fun beginEncoder(id: String, projection: MediaProjection) {
         val full = captureSize(options.resolution)
         val liveCrop = options.region?.liveEncoderCrop(full.first, full.second)
+        val sourceCoverPx = if (options.coverStatusBar) {
+            StatusBarCover.sourcePixels(this, full.second)
+        } else {
+            0
+        }
+        val pipeCrop = liveCrop ?: RecordingCrop(0, 0, full.first, full.second).takeIf { sourceCoverPx > 0 }
+        val coverDestPx = StatusBarCover.destPixels(sourceCoverPx, pipeCrop)
         val encW = liveCrop?.width ?: full.first
         val encH = liveCrop?.height ?: full.second
         encodeSize = full
+        liveCropped = false
+        liveCovered = false
         val file = container().inputs.recordOutputFile(id, options.outputExtension)
         outputFile = file
         try {
             val rec = prepareRecorder(file, encW, encH, options)
             recorder = rec
             var displaySurface = rec.surface
-            if (liveCrop != null) {
+            if (pipeCrop != null) {
                 val pipe = runCatching {
-                    CropDisplayPipe.start(rec.surface, full.first, full.second, liveCrop)
+                    CropDisplayPipe.start(
+                        rec.surface,
+                        full.first,
+                        full.second,
+                        pipeCrop,
+                        coverDestPx,
+                    )
                 }.getOrNull()
                 if (pipe != null) {
                     cropPipe = pipe
                     displaySurface = pipe.inputSurface
-                    liveCropped = true
-                    encodeSize = encW to encH
+                    liveCropped = liveCrop != null
+                    liveCovered = coverDestPx > 0
+                    if (liveCrop != null) encodeSize = encW to encH
                 } else {
                     runCatching { rec.reset() }
                     runCatching { rec.release() }
@@ -215,6 +233,7 @@ class ScreenRecordService : Service() {
                     recorder = fullRec
                     displaySurface = fullRec.surface
                     liveCropped = false
+                    liveCovered = false
                     encodeSize = full
                 }
             }
@@ -253,7 +272,6 @@ class ScreenRecordService : Service() {
                 container().recording.start(id, pipEnabled = options.pipControls)
             }
             scope.launch { container().jobs.updateStatus(id, JobStatus.RECORDING) }
-            if (options.coverStatusBar) overlays?.showStatusCover()
             if (options.showBubble) {
                 overlays?.showBubble(
                     paused = false,
@@ -400,16 +418,7 @@ class ScreenRecordService : Service() {
         startAsForeground(container().recording.state.value.elapsedMs(), saving = true)
         RecordTileService.requestListening(this)
         try {
-            runCatching { recorder?.stop() }
-            runCatching { recorder?.reset() }
-            runCatching { recorder?.release() }
-            recorder = null
-            mixer?.stop()
-            mixer = null
-            virtualDisplay?.release()
-            virtualDisplay = null
-            cropPipe?.release()
-            cropPipe = null
+            stopEncoderPipeline()
             mediaProjection?.unregisterCallback(projectionCallback)
             mediaProjection?.stop()
             mediaProjection = null
@@ -434,6 +443,14 @@ class ScreenRecordService : Service() {
             } else {
                 options.region?.encoderCrop(encodeSize.first, encodeSize.second)
             }
+            val coverTopPx = if (liveCovered || !options.coverStatusBar) {
+                0
+            } else {
+                StatusBarCover.destPixels(
+                    StatusBarCover.sourcePixels(this, encodeSize.second),
+                    crop,
+                )
+            }
             val caps = runCatching { container().encoderCapabilities() }.getOrNull()
             val cropEncoder = when {
                 options.usesWebm && caps?.hasLibvpxVp9 == true -> "libvpx-vp9"
@@ -449,6 +466,7 @@ class ScreenRecordService : Service() {
                 internalWav = usableMix?.absolutePath,
                 micWav = if (isolate) usableMic.absolutePath else null,
                 crop = crop,
+                coverTopPx = coverTopPx,
                 videoHasAudio = false,
                 internalGainPercent = 100,
                 micGainPercent = 100,
@@ -812,18 +830,40 @@ class ScreenRecordService : Service() {
         return types
     }
 
-    private fun teardown() {
-        overlays?.dismissAll()
-        TapHighlightService.setRecording(false, false, false, false)
+    /**
+     * VirtualDisplay off → destroy the GL window on the encoder surface (EOS)
+     * → then MediaRecorder.stop(). Stopping the recorder while EGL still owns
+     * the surface blocks for about 10s and pads the file with a frozen frame.
+     */
+    private fun stopEncoderPipeline() {
+        virtualDisplay?.release()
+        virtualDisplay = null
+        mixer?.stop()
+        mixer = null
+        cropPipe?.release()
+        cropPipe = null
+        liveCropped = false
+        liveCovered = false
+        runCatching { recorder?.stop() }
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
         recorder = null
-        mixer?.stop()
-        mixer = null
+    }
+
+    private fun teardown() {
+        overlays?.dismissAll()
+        TapHighlightService.setRecording(false, false, false, false)
         virtualDisplay?.release()
         virtualDisplay = null
+        mixer?.stop()
+        mixer = null
         cropPipe?.release()
         cropPipe = null
+        liveCropped = false
+        liveCovered = false
+        runCatching { recorder?.reset() }
+        runCatching { recorder?.release() }
+        recorder = null
         mediaProjection?.unregisterCallback(projectionCallback)
         mediaProjection?.stop()
         mediaProjection = null
