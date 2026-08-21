@@ -109,7 +109,9 @@ object FfmpegCommandBuilder {
             AudioOption.AAC_128 -> 128
             AudioOption.AAC_192 -> 192
         }
-        val seconds = (source.durationMs / 1000.0).coerceAtLeast(1.0)
+        val durationMs = Media3EncodePlanner.clipWindow(settings, source.durationMs)
+            .durationMs(source.durationMs)
+        val seconds = (durationMs / 1000.0).coerceAtLeast(1.0)
         return ((video + audio) * 1000.0 / 8.0 * seconds).toLong() + 64_000
     }
 

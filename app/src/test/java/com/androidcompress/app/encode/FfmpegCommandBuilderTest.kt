@@ -13,6 +13,7 @@ import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.media.InputResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -182,6 +183,36 @@ class FfmpegCommandBuilderTest {
         assertTrue(bytes > 1_000_000)
         val shortClip = FfmpegCommandBuilder.estimateOutputBytes(source.copy(durationMs = 1_000), EncodeSettings.forPreset(Preset.BALANCED))
         assertTrue(shortClip < bytes)
+    }
+
+    @Test
+    fun estimateUsesClipWindow() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            clipStartMs = 10_000,
+            clipEndMs = 20_000,
+        )
+        val clipped = FfmpegCommandBuilder.estimateOutputBytes(source, settings)
+        val full = FfmpegCommandBuilder.estimateOutputBytes(source, EncodeSettings.forPreset(Preset.BALANCED))
+        assertTrue(clipped < full / 2)
+        assertTrue(clipped > 100_000)
+    }
+
+    @Test
+    fun largeSourceDoesNotNeedTwiceSourceOnDisk() {
+        val fourK = source.copy(
+            width = 3840,
+            height = 2160,
+            durationMs = 3_600_000,
+            bytes = 10L * 1024 * 1024 * 1024,
+            frameRate = 60f,
+        )
+        val estimated = FfmpegCommandBuilder.estimateOutputBytes(fourK, EncodeSettings.forPreset(Preset.BALANCED))
+        val needed = InputResolver.bytesNeededForEncode(estimated, fourK.bytes, fourK.durationMs)
+        val oldHeuristic = fourK.bytes * 2 + InputResolver.STORAGE_OVERHEAD_BYTES
+        assertTrue(estimated < 2L * 1024 * 1024 * 1024)
+        assertTrue(needed < 4L * 1024 * 1024 * 1024)
+        assertTrue(needed < oldHeuristic / 4)
+        assertTrue(needed > InputResolver.STORAGE_OVERHEAD_BYTES)
     }
 
     @Test

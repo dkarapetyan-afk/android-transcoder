@@ -38,6 +38,7 @@ fun JobLogScreen(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val copiedMessage = stringResource(R.string.log_copied)
     Scaffold(
         topBar = {
             AppTopBar(ui.title.ifBlank { stringResource(R.string.log_title) }, onBack = onBack)
@@ -60,7 +61,7 @@ fun JobLogScreen(
                 OutlinedButton(
                     onClick = {
                         if (viewModel.copy(context)) {
-                            scope.launch { snackbar.showSnackbar(context.getString(R.string.log_copied)) }
+                            scope.launch { snackbar.showSnackbar(copiedMessage) }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),

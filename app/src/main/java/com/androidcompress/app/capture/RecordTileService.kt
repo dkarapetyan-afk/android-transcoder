@@ -43,9 +43,13 @@ class RecordTileService : TileService() {
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(pending)
         } else {
-            @Suppress("DEPRECATION")
-            startActivityAndCollapse(intent)
+            startActivityAndCollapseLegacy(intent)
         }
+    }
+
+    @Suppress("DEPRECATION", "StartActivityAndCollapseDeprecated")
+    private fun startActivityAndCollapseLegacy(intent: Intent) {
+        startActivityAndCollapse(intent)
     }
 
     companion object {

@@ -41,7 +41,7 @@ These cannot be fully automated in this workspace.
 - Cancel this job leaves later queued items running; Cancel all stops the whole queue.
 - Output appears in the gallery and can be opened/shared.
 - Clear all on Home or Library asks first, empties Recent, deletes import/encode/record cache files, and leaves Movies/Music outputs. A live screen recording stays.
-- Low-storage import shows a clear error instead of a native crash.
+- Low-storage import shows a clear error instead of a native crash. Compress checks about twice the bitrate-based output estimate (plus 50 MB), not twice the source file, so a large 4K clip that compresses to a much smaller file is not rejected just because 2× source would not fit.
 - Combine audio and video: one multi-select picker (pictures, videos, and audio together), same pairing as Share. A photo plus an m4a produces a playable video the length of the audio on FFmpeg and Media3. Media3 still-image jobs (including WebM VP9) must start — they used to crash in ImageAssetLoader without a frame rate. A video plus an audio file keeps the picture and replaces the soundtrack. Clip start/end applies. WebM still works. Picking only one side shows an error instead of opening a second picker.
 - Share or Home-combine several pictures/videos plus audio files: one combine job for every picture-or-video × audio pair. The first opens and the rest are in Recent.
 - After record → compress → result, Back (system or toolbar) returns to Home, not a blank white screen.

@@ -24,6 +24,7 @@ import com.androidcompress.app.data.outputExtension
 import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.media.CombinePairing
+import com.androidcompress.app.media.InputResolver
 import com.androidcompress.app.util.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -158,7 +159,13 @@ class CompressService : Service() {
             if (audioOnly && !source.hasAudio) {
                 error(getString(R.string.error_no_audio_extract))
             }
-            if (!app.inputs.hasSpaceFor(job.sourceBytes)) {
+            val estimatedOutput = FfmpegCommandBuilder.estimateOutputBytes(source, settings)
+            val needed = InputResolver.bytesNeededForEncode(
+                estimatedOutput,
+                job.sourceBytes,
+                source.durationMs,
+            )
+            if (!app.inputs.hasSpaceFor(needed)) {
                 error(getString(R.string.error_not_enough_storage_compress))
             }
             val result = when (settings.engine) {

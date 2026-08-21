@@ -14,13 +14,8 @@ data class CaptureApp(
 object CaptureApps {
     fun launchers(pm: PackageManager): List<CaptureApp> {
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val flags = if (Build.VERSION.SDK_INT >= 33) {
-            PackageManager.ResolveInfoFlags.of(0)
-        } else {
-            null
-        }
-        val resolved = if (flags != null) {
-            pm.queryIntentActivities(query, flags)
+        val resolved = if (Build.VERSION.SDK_INT >= 33) {
+            pm.queryIntentActivities(query, PackageManager.ResolveInfoFlags.of(0))
         } else {
             @Suppress("DEPRECATION")
             pm.queryIntentActivities(query, 0)

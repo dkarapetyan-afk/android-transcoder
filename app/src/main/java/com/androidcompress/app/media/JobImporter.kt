@@ -45,7 +45,7 @@ class JobImporter(
             uri
         } else {
             val hintedBytes = runCatching { probe.sizeBytes(uri) }.getOrDefault(0L)
-            if (hintedBytes > 0 && !inputs.hasSpaceFor(hintedBytes)) {
+            if (hintedBytes > 0 && !inputs.hasSpaceFor(InputResolver.bytesNeededForCopy(hintedBytes))) {
                 error(context.getString(R.string.error_not_enough_storage_import))
             }
             Uri.fromFile(inputs.copyToCache(uri, id))
@@ -203,7 +203,7 @@ class JobImporter(
             uri
         } else {
             val hintedBytes = runCatching { probe.sizeBytes(uri) }.getOrDefault(0L)
-            if (hintedBytes > 0 && !inputs.hasSpaceFor(hintedBytes)) {
+            if (hintedBytes > 0 && !inputs.hasSpaceFor(InputResolver.bytesNeededForCopy(hintedBytes))) {
                 error(context.getString(R.string.error_not_enough_storage_import))
             }
             Uri.fromFile(inputs.copyToCache(uri, jobId, role))

@@ -19,9 +19,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class MainActivity : ComponentActivity() {
-    private val shareRequests = MutableStateFlow<ShareRequest?>(null)
-    private val agentUiRequests = MutableStateFlow<AgentLaunch.UiRequest?>(null)
-    private val pipMode = MutableStateFlow(false)
+    private val _shareRequests = MutableStateFlow<ShareRequest?>(null)
+    private val shareRequests = _shareRequests.asStateFlow()
+    private val _agentUiRequests = MutableStateFlow<AgentLaunch.UiRequest?>(null)
+    private val agentUiRequests = _agentUiRequests.asStateFlow()
+    private val _pipMode = MutableStateFlow(false)
+    private val pipMode = _pipMode.asStateFlow()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,15 +37,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             RecordingCompressorTheme {
                 CompressApp(
-                    shareRequests = shareRequests.asStateFlow(),
+                    shareRequests = shareRequests,
                     onShareConsumed = { nonce ->
-                        shareRequests.value = shareRequests.value?.takeUnless { it.nonce == nonce }
+                        _shareRequests.value = _shareRequests.value?.takeUnless { it.nonce == nonce }
                     },
-                    agentUiRequests = agentUiRequests.asStateFlow(),
+                    agentUiRequests = agentUiRequests,
                     onAgentUiConsumed = { nonce ->
-                        agentUiRequests.value = agentUiRequests.value?.takeUnless { it.nonce == nonce }
+                        _agentUiRequests.value = _agentUiRequests.value?.takeUnless { it.nonce == nonce }
                     },
-                    pipMode = pipMode.asStateFlow(),
+                    pipMode = pipMode,
                 )
             }
         }
@@ -55,7 +58,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        pipMode.value = isInPictureInPictureMode
+        _pipMode.value = isInPictureInPictureMode
     }
 
     private fun enterRecordPip() {
@@ -75,16 +78,16 @@ class MainActivity : ComponentActivity() {
     private fun offerAgentUi(incoming: Intent?) {
         val intent = incoming ?: return
         if (intent.action == TileService.ACTION_QS_TILE_PREFERENCES) {
-            agentUiRequests.value = AgentLaunch.UiRequest(AgentLaunch.OPEN_RECORD)
+            _agentUiRequests.value = AgentLaunch.UiRequest(AgentLaunch.OPEN_RECORD)
             return
         }
-        agentUiRequests.value = AgentLaunch.fromIntent(intent) ?: return
+        _agentUiRequests.value = AgentLaunch.fromIntent(intent) ?: return
     }
 
     private fun offerShare(incoming: Intent?) {
         val intent = incoming ?: return
         val uris = ShareIntents.urisFrom(intent)
         if (uris.isEmpty()) return
-        shareRequests.value = ShareRequest(uris = uris, mimeType = intent.type)
+        _shareRequests.value = ShareRequest(uris = uris, mimeType = intent.type)
     }
 }

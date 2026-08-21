@@ -413,7 +413,7 @@
     <string name="error_save_recording">Failed to save recording</string>
     <string name="error_compression_failed">Compression failed</string>
     <string name="error_no_audio_extract">This file has no audio to extract or transcode.</string>
-    <string name="error_not_enough_storage_compress">Not enough free storage to compress this file (need about 2× the source size).</string>
+    <string name="error_not_enough_storage_compress">Not enough free storage to compress this file (need about twice the estimated output size).</string>
     <string name="error_not_enough_storage_import">Not enough free storage to open this shared file.</string>
     <string name="error_pictures_need_soundtrack">Pictures need a soundtrack. Use Combine audio and video.</string>
     <string name="error_combine_no_audio">The second file has no audio to use as a soundtrack.</string>

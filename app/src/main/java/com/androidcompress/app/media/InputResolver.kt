@@ -23,11 +23,8 @@ class InputResolver(private val context: Context) {
 
     fun canKeepWithoutCopy(uri: Uri): Boolean = DeviceMediaStore.canKeepWithoutCopy(context, uri)
 
-    fun hasSpaceFor(sourceBytes: Long): Boolean {
-        val free = context.cacheDir.usableSpace
-        val needed = (sourceBytes.coerceAtLeast(0) * 2) + 50_000_000
-        return free >= needed
-    }
+    fun hasSpaceFor(neededBytes: Long): Boolean =
+        context.cacheDir.usableSpace >= neededBytes.coerceAtLeast(0)
 
     suspend fun resolveForFfmpeg(uri: Uri, jobId: String, role: String = "src"): String = withContext(Dispatchers.IO) {
         when (uri.scheme) {
@@ -46,7 +43,7 @@ class InputResolver(private val context: Context) {
         val suffix = role.ifBlank { "src" }
         val out = File(dir, "$jobId.$suffix")
         context.contentResolver.openInputStream(uri)?.use { input ->
-            out.outputStream().use { input.copyTo(it) }
+            out.outputStream().use { input.copyTo(it, bufferSize = COPY_BUFFER_BYTES) }
         } ?: error(context.getString(R.string.error_open_file))
         out
     }
@@ -114,7 +111,18 @@ class InputResolver(private val context: Context) {
     }
 
     companion object {
+        const val COPY_BUFFER_BYTES = 64 * 1024
+        const val STORAGE_OVERHEAD_BYTES = 50_000_000L
         private val CACHE_DIRS = listOf("imports", "encode", "record")
+
+        fun bytesNeededForCopy(sourceBytes: Long): Long =
+            sourceBytes.coerceAtLeast(0) + STORAGE_OVERHEAD_BYTES
+
+        fun bytesNeededForEncode(estimatedOutputBytes: Long, sourceBytes: Long, durationMs: Long): Long {
+            val estimated = estimatedOutputBytes.coerceAtLeast(0)
+            val output = if (durationMs > 0L) estimated else maxOf(estimated, sourceBytes.coerceAtLeast(0))
+            return output * 2 + STORAGE_OVERHEAD_BYTES
+        }
 
         fun cacheJobId(fileName: String): String = fileName.substringBeforeLast('.')
 

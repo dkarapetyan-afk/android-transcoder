@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.androidcompress.app.R
@@ -74,6 +75,7 @@ fun CompressApp(
 ) {
     val nav = rememberNavController()
     val context = LocalContext.current
+    val resources = LocalResources.current
     val container = remember { context.container() }
     val shareRequest by shareRequests.collectAsStateWithLifecycle()
     val agentUiRequest by agentUiRequests.collectAsStateWithLifecycle()
@@ -82,6 +84,8 @@ fun CompressApp(
     val snackbar = remember { SnackbarHostState() }
     var importing by remember { mutableStateOf(false) }
     val blockClicks = remember { MutableInteractionSource() }
+    val shareNotMedia = stringResource(R.string.share_not_media)
+    val errorReadFile = stringResource(R.string.error_read_file)
 
     LaunchedEffect(shareRequest?.nonce) {
         val request = shareRequest ?: return@LaunchedEffect
@@ -89,7 +93,7 @@ fun CompressApp(
             ShareIntents.isLikelyShareItem(context.contentResolver.getType(uri) ?: request.mimeType)
         }
         if (accepted.isEmpty()) {
-            snackbar.showSnackbar(context.getString(R.string.share_not_media))
+            snackbar.showSnackbar(shareNotMedia)
             onShareConsumed(request.nonce)
             return@LaunchedEffect
         }
@@ -103,7 +107,7 @@ fun CompressApp(
                     nav.navigate("compress/${batch.jobIds.first()}")
                     if (batch.errors.isNotEmpty()) {
                         snackbar.showSnackbar(
-                            context.getString(
+                            resources.getString(
                                 R.string.share_opened_partial,
                                 batch.jobIds.size,
                                 batch.errors.size,
@@ -111,12 +115,12 @@ fun CompressApp(
                         )
                     } else if (batch.jobIds.size > 1) {
                         snackbar.showSnackbar(
-                            context.getString(R.string.share_opened_rest, batch.jobIds.size),
+                            resources.getString(R.string.share_opened_rest, batch.jobIds.size),
                         )
                     }
                 }
                 else -> snackbar.showSnackbar(
-                    batch.errors.firstOrNull() ?: context.getString(R.string.error_read_file),
+                    batch.errors.firstOrNull() ?: errorReadFile,
                 )
             }
         } finally {
