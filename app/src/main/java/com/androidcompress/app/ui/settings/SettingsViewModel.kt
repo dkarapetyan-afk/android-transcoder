@@ -51,4 +51,12 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     fun setGeminiApiKey(value: String) {
         viewModelScope.launch { container.prefs.setGeminiApiKey(value) }
     }
+
+    fun setStallTimeoutSec(seconds: Int) {
+        viewModelScope.launch { container.prefs.setStallTimeoutSec(seconds) }
+    }
+
+    fun setTwoPassStallTimeoutSec(seconds: Int) {
+        viewModelScope.launch { container.prefs.setTwoPassStallTimeoutSec(seconds) }
+    }
 }

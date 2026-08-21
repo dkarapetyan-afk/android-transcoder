@@ -37,6 +37,24 @@ class InputResolver(private val context: Context) {
         }
     }
 
+    /**
+     * FFmpeg-Kit deletes the `saf:N` mapping in `safClose` when a session ends.
+     * Reuse that path on a second pass / retry and the demuxer sees an empty pipe
+     * (`EBML header parsing failed`). Copy once, or mint a new SAF id per session.
+     */
+    suspend fun refreshFfmpegInput(
+        uri: Uri,
+        jobId: String,
+        previous: String,
+        role: String = "src",
+    ): String = withContext(Dispatchers.IO) {
+        if (previous.isNotBlank() && !isSafParameter(previous)) {
+            val file = File(previous)
+            if (file.exists() && file.length() > 0L) return@withContext previous
+        }
+        resolveForFfmpeg(uri, jobId, role)
+    }
+
     suspend fun copyToCache(uri: Uri, jobId: String, role: String = "src"): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "imports")
         if (!dir.exists()) dir.mkdirs()
@@ -61,9 +79,17 @@ class InputResolver(private val context: Context) {
         return File(dir, "$jobId.2pass").absolutePath
     }
 
+    fun ffmpegProgressFile(jobId: String): File {
+        val dir = File(context.cacheDir, "encode")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, "$jobId.ffprogress")
+    }
+
     fun deletePassLogs(jobId: String) {
         val dir = File(context.cacheDir, "encode")
-        dir.listFiles()?.filter { it.name.startsWith("$jobId.2pass") }?.forEach { it.delete() }
+        dir.listFiles()?.filter {
+            it.name.startsWith("$jobId.2pass") || it.name == "$jobId.ffprogress"
+        }?.forEach { it.delete() }
     }
 
     fun recordOutputFile(jobId: String, extension: String = "mp4"): File {
@@ -125,6 +151,9 @@ class InputResolver(private val context: Context) {
         const val COPY_BUFFER_BYTES = 64 * 1024
         const val STORAGE_OVERHEAD_BYTES = 50_000_000L
         private val CACHE_DIRS = listOf("imports", "encode", "record")
+
+        fun isSafParameter(path: String): Boolean =
+            path.startsWith("saf:", ignoreCase = true)
 
         fun bytesNeededForCopy(sourceBytes: Long): Long =
             sourceBytes.coerceAtLeast(0) + STORAGE_OVERHEAD_BYTES

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
@@ -26,13 +27,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -43,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.R
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.encode.EncodeStallTimeout
 import com.androidcompress.app.media.MediaLibraryAccess
 import com.androidcompress.app.ui.components.AppTopBar
 import com.androidcompress.app.ui.presetLabel
@@ -153,6 +158,24 @@ fun SettingsScreen(
                 }
                 Switch(checked = settings.deleteOriginalAfterEncode, onCheckedChange = viewModel::setDeleteOriginal)
             }
+            Text(stringResource(R.string.settings_stall_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.settings_stall_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            StallTimeoutField(
+                label = stringResource(R.string.settings_stall_one_pass),
+                value = settings.stallTimeoutSec,
+                defaultSec = EncodeStallTimeout.DEFAULT_SEC,
+                onCommit = viewModel::setStallTimeoutSec,
+            )
+            StallTimeoutField(
+                label = stringResource(R.string.settings_stall_two_pass),
+                value = settings.twoPassStallTimeoutSec,
+                defaultSec = EncodeStallTimeout.DEFAULT_TWO_PASS_SEC,
+                onCommit = viewModel::setTwoPassStallTimeoutSec,
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.settings_library_access))
@@ -212,4 +235,36 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun StallTimeoutField(
+    label: String,
+    value: Int,
+    defaultSec: Int,
+    onCommit: (Int) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    fun commit() {
+        val parsed = text.toIntOrNull()
+        if (parsed != null) onCommit(parsed) else text = value.toString()
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it.filter { ch -> ch.isDigit() }.take(9) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { if (!it.isFocused) commit() },
+        singleLine = true,
+        label = { Text(label) },
+        supportingText = {
+            Text(stringResource(R.string.settings_stall_default, defaultSec))
+        },
+        suffix = { Text(stringResource(R.string.settings_stall_seconds_suffix)) },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = { commit() }),
+    )
 }

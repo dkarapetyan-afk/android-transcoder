@@ -386,6 +386,12 @@
     <string name="settings_auto_compress_hint">Start Balanced (or your remembered settings) as soon as a recording stops.</string>
     <string name="settings_delete_original">Delete original after compress</string>
     <string name="settings_delete_original_hint">Default for new jobs. The original is removed only after the compressed file is written. Recordings this app created can always be deleted; gallery files may be blocked by Android.</string>
+    <string name="settings_stall_title">Encoder stall timeout</string>
+    <string name="settings_stall_hint">Cancels an encode only when FFmpeg sends no progress for this long. A long video is fine if progress keeps updating.</string>
+    <string name="settings_stall_one_pass">One-pass timeout</string>
+    <string name="settings_stall_two_pass">2-pass timeout</string>
+    <string name="settings_stall_default">Default %1$d seconds.</string>
+    <string name="settings_stall_seconds_suffix">sec</string>
     <string name="settings_library_access">Device library access</string>
     <string name="settings_library_granted">Agents can list and import videos, audio, and photos already on this device. Choose Allow all if Android offers selected items.</string>
     <string name="settings_library_needed">Needed so App Functions can open a file without the picker. Choose Allow all, not selected photos.</string>
@@ -453,6 +459,7 @@
     <string name="error_recording_no_video">Recording produced no video</string>
     <string name="error_save_recording">Failed to save recording</string>
     <string name="error_compression_failed">Compression failed</string>
+    <string name="error_two_pass_empty">2-pass analysis produced no video frames.</string>
     <string name="error_no_audio_extract">This file has no audio to extract or transcode.</string>
     <string name="error_not_enough_storage_compress">Not enough free storage to compress this file (need about twice the estimated output size).</string>
     <string name="error_not_enough_storage_import">Not enough free storage to open this shared file.</string>

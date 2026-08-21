@@ -3,8 +3,10 @@ package com.androidcompress.app.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.androidcompress.app.encode.EncodeStallTimeout
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -25,6 +27,8 @@ class PreferencesRepository(private val context: Context) {
     private val geminiApiKey = stringPreferencesKey("gemini_api_key")
     private val lastHardwareProfile = stringPreferencesKey("last_hardware_profile")
     private val lastRecordOptions = stringPreferencesKey("last_record_options")
+    private val stallTimeoutSec = intPreferencesKey("stall_timeout_sec")
+    private val twoPassStallTimeoutSec = intPreferencesKey("two_pass_stall_timeout_sec")
 
     val settings: Flow<UserSettings> = context.dataStore.data.map { prefs ->
         UserSettings(
@@ -45,6 +49,9 @@ class PreferencesRepository(private val context: Context) {
                 runCatching { EncodeEngine.valueOf(it) }.getOrNull()
             } ?: EncodeEngine.FFMPEG,
             geminiApiKey = prefs[geminiApiKey].orEmpty(),
+            stallTimeoutSec = prefs[stallTimeoutSec] ?: EncodeStallTimeout.DEFAULT_SEC,
+            twoPassStallTimeoutSec = prefs[twoPassStallTimeoutSec]
+                ?: EncodeStallTimeout.DEFAULT_TWO_PASS_SEC,
         )
     }
 
@@ -90,6 +97,14 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[geminiApiKey] = value.trim() }
     }
 
+    suspend fun setStallTimeoutSec(seconds: Int) {
+        context.dataStore.edit { it[stallTimeoutSec] = seconds }
+    }
+
+    suspend fun setTwoPassStallTimeoutSec(seconds: Int) {
+        context.dataStore.edit { it[twoPassStallTimeoutSec] = seconds }
+    }
+
     val lastHardwareProfileJson: Flow<String?> = context.dataStore.data.map { it[lastHardwareProfile] }
 
     suspend fun setLastHardwareProfileJson(json: String) {
@@ -114,4 +129,6 @@ data class UserSettings(
     val deleteOriginalAfterEncode: Boolean = false,
     val defaultEngine: EncodeEngine = EncodeEngine.FFMPEG,
     val geminiApiKey: String = "",
+    val stallTimeoutSec: Int = EncodeStallTimeout.DEFAULT_SEC,
+    val twoPassStallTimeoutSec: Int = EncodeStallTimeout.DEFAULT_TWO_PASS_SEC,
 )

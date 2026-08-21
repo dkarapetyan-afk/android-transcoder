@@ -269,6 +269,8 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
      * @param autoCompressAfterRecord Whether a finished recording starts encoding automatically. Pass null to leave unchanged.
      * @param rememberAdvanced Whether the compress screen restores last advanced settings. Pass null to leave unchanged.
      * @param deleteOriginalAfterEncode Whether new jobs default to deleting the source after success. Pass null to leave unchanged. Agent startJob still defaults to false.
+     * @param stallTimeoutSec Seconds of no FFmpeg progress before a one-pass encode is treated as hung. Pass null to leave unchanged.
+     * @param twoPassStallTimeoutSec Seconds of no FFmpeg progress before a 2-pass encode is treated as hung. Pass null to leave unchanged.
      */
     @AppFunction(isDescribedByKDoc = true)
     suspend fun setAppDefaults(
@@ -277,6 +279,8 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
         autoCompressAfterRecord: Boolean? = null,
         rememberAdvanced: Boolean? = null,
         deleteOriginalAfterEncode: Boolean? = null,
+        stallTimeoutSec: Int? = null,
+        twoPassStallTimeoutSec: Int? = null,
     ): AppDefaults = io {
         agent.setAppDefaults(
             presetName = preset,
@@ -284,6 +288,8 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
             autoCompressAfterRecord = autoCompressAfterRecord,
             rememberAdvanced = rememberAdvanced,
             deleteOriginalAfterEncode = deleteOriginalAfterEncode,
+            stallTimeoutSec = stallTimeoutSec,
+            twoPassStallTimeoutSec = twoPassStallTimeoutSec,
         )
     }
 

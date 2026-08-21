@@ -282,6 +282,7 @@ data class EncodeStats(
     val timeMs: Long,
     val sizeBytes: Long,
     val speed: Float,
+    val videoFrameNumber: Int = 0,
 )
 
 data class EncodeProgress(

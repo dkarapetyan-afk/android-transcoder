@@ -22,4 +22,12 @@ class JobCacheNamesTest {
         assertEquals(null, InputResolver.remapCachedFileName("other.src", "old", "new"))
         assertEquals(null, InputResolver.remapCachedFileName("old.src", "old", "old"))
     }
+
+    @Test
+    fun safParameterIsDetected() {
+        assertEquals(true, InputResolver.isSafParameter("saf:1.webm"))
+        assertEquals(true, InputResolver.isSafParameter("SAF:2.mp4"))
+        assertEquals(false, InputResolver.isSafParameter("/cache/job.src"))
+        assertEquals(false, InputResolver.isSafParameter("content://video"))
+    }
 }

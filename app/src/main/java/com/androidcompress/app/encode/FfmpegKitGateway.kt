@@ -26,18 +26,18 @@ class FfmpegKitGateway : FfmpegGateway {
         onLog: (String) -> Unit,
         onStats: (EncodeStats) -> Unit,
     ): EncodeSession {
-        val command = quoteArgs(args)
         val deferred = CompletableDeferred<EncodeResult>()
-        val session = FFmpegKit.executeAsync(
-            command,
+        val session = FFmpegKit.executeWithArgumentsAsync(
+            args.toTypedArray(),
             { done -> deferred.complete(done.toResult()) },
             { log -> onLog(log.message.orEmpty()) },
             { stats ->
                 onStats(
                     EncodeStats(
-                        timeMs = stats.time.toLong(),
-                        sizeBytes = stats.size.toLong(),
+                        timeMs = stats.time.toLong().coerceAtLeast(0L),
+                        sizeBytes = stats.size.toLong().coerceAtLeast(0L),
                         speed = stats.speed.toFloat(),
+                        videoFrameNumber = stats.videoFrameNumber.coerceAtLeast(0),
                     ),
                 )
             },

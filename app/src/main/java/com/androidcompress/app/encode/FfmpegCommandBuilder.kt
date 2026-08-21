@@ -34,6 +34,9 @@ data class EncodePlan(
 
 object FfmpegCommandBuilder {
 
+    /** Pass 1 must not write to stdout (`-`). FFmpeg-Kit owns that pipe, and libvpx then encodes 0 frames. */
+    const val TWO_PASS_NULL_OUTPUT = "/dev/null"
+
     fun outputHeight(source: SourceVideo, settings: EncodeSettings): Int {
         val sourceH = source.height.coerceAtLeast(2)
         val cap = settings.maxHeight
@@ -255,6 +258,9 @@ object FfmpegCommandBuilder {
         }
         if (toneMap || settings.usesWebm() || pixFmt == "yuv420p") vf += "format=yuv420p"
         if (pixFmt == "nv12") vf += "format=nv12"
+        // libvpx 2-pass needs CFR timestamps before the encoder. `-r` alone with
+        // `-f null` can dup/drop every frame and report `nothing was encoded`.
+        if (twoPass && needsFps) vf += "fps=$fpsOut"
         if (vf.isNotEmpty()) {
             args += listOf("-vf", vf.joinToString(","))
         }
@@ -313,11 +319,14 @@ object FfmpegCommandBuilder {
             }
         }
         args += listOf("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv")
+        if (twoPass) {
+            args += listOf("-stats_period", "0.25")
+        }
         val logPrefix = passLogPrefix ?: FfmpegCommandTemplate.PASSLOG
         val firstPassArgs = if (twoPass) {
             val pass1 = args.toMutableList()
             pass1 += listOf("-pass", "1", "-passlogfile", logPrefix)
-            pass1 += listOf("-map", "0:v:0", "-an", "-f", "null", "-")
+            pass1 += listOf("-map", "0:v:0", "-an", "-f", "null", TWO_PASS_NULL_OUTPUT)
             ExtraArgsSanitizer.insert(pass1, settings.ffmpegExtraArgs)
         } else {
             null

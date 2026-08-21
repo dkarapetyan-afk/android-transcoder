@@ -345,6 +345,10 @@ data class AppDefaults(
     val rememberAdvanced: Boolean,
     /** Whether new compress-screen jobs default to deleting the source after success. */
     val deleteOriginalAfterEncode: Boolean,
+    /** Seconds of no FFmpeg progress before a one-pass encode is treated as hung. */
+    val stallTimeoutSec: Int,
+    /** Seconds of no FFmpeg progress before a 2-pass encode is treated as hung. */
+    val twoPassStallTimeoutSec: Int,
     /** True when the user granted video/audio/photo library access. */
     val libraryAccessGranted: Boolean,
 )

@@ -36,6 +36,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 class CompressService : Service() {
@@ -250,17 +251,51 @@ class CompressService : Service() {
         log: StringBuilder,
     ): EncodeResult {
         val app = container()
-        val ffmpegInput = app.inputs.resolveForFfmpeg(sourceUri, jobId)
-        val ffmpegAudio = source.audioUri.takeIf { it.isNotBlank() }?.let { uri ->
+        var ffmpegInput = app.inputs.resolveForFfmpeg(sourceUri, jobId)
+        var ffmpegAudio = source.audioUri.takeIf { it.isNotBlank() }?.let { uri ->
             app.inputs.resolveForFfmpeg(Uri.parse(uri), jobId, "audio")
         }
         val caps = app.encoderCapabilities()
         val passLog = app.inputs.passLogPrefix(jobId)
-        var plan = FfmpegCommandBuilder.build(
-            ffmpegInput, output.absolutePath, settings, source, caps,
+        fun planOf(
+            encodeSettings: EncodeSettings,
+            encoderOverride: String? = null,
+            pixFmtOverride: String? = null,
+        ) = FfmpegCommandBuilder.build(
+            ffmpegInput, output.absolutePath, encodeSettings, source, caps,
+            pixFmtOverride = pixFmtOverride,
+            encoderOverride = encoderOverride,
             audioInput = ffmpegAudio,
             passLogPrefix = passLog,
         )
+        suspend fun refreshInputs() {
+            val nextInput = app.inputs.refreshFfmpegInput(sourceUri, jobId, ffmpegInput)
+            if (nextInput != ffmpegInput) {
+                log.appendLine("reopened input for FFmpeg")
+                ffmpegInput = nextInput
+            }
+            val audioUri = source.audioUri.takeIf { it.isNotBlank() } ?: return
+            val currentAudio = ffmpegAudio ?: return
+            val nextAudio = app.inputs.refreshFfmpegInput(Uri.parse(audioUri), jobId, currentAudio, "audio")
+            if (nextAudio != currentAudio) ffmpegAudio = nextAudio
+        }
+        var plan = planOf(settings)
+        if (plan.firstPassArgs != null) {
+            var copied = false
+            if (InputResolver.isSafParameter(ffmpegInput)) {
+                ffmpegInput = app.inputs.copyToCache(sourceUri, jobId).absolutePath
+                copied = true
+            }
+            val audioUri = source.audioUri.takeIf { it.isNotBlank() }
+            if (audioUri != null && ffmpegAudio != null && InputResolver.isSafParameter(ffmpegAudio)) {
+                ffmpegAudio = app.inputs.copyToCache(Uri.parse(audioUri), jobId, "audio").absolutePath
+                copied = true
+            }
+            if (copied) {
+                log.appendLine("copied input; 2-pass cannot reuse a SAF pipe")
+                plan = planOf(settings)
+            }
+        }
         try {
             if (settings.ffmpegCommandOverride.isNotBlank()) {
                 val args = FfmpegCommandTemplate.materialize(
@@ -272,28 +307,27 @@ class CompressService : Service() {
                 log.appendLine("using edited command template")
                 return executePlan(jobId, source, settings, plan.copy(args = args, firstPassArgs = null), log)
             }
-            var result = executePlan(jobId, source, settings, plan, log)
+            var encodeSettings = settings
+            var result = executePlan(jobId, source, encodeSettings, plan, log)
             if (!result.success && !result.cancelled && plan.firstPassArgs != null) {
                 log.appendLine("2-pass failed; retrying one pass")
                 output.delete()
                 app.inputs.deletePassLogs(jobId)
-                plan = FfmpegCommandBuilder.build(
-                    ffmpegInput, output.absolutePath, settings.copy(twoPass = false), source, caps,
-                    encoderOverride = plan.videoEncoder,
-                    pixFmtOverride = plan.pixFmt,
-                    audioInput = ffmpegAudio,
-                )
-                result = executePlan(jobId, source, settings.copy(twoPass = false), plan, log)
+                encodeSettings = settings.copy(twoPass = false)
+                refreshInputs()
+                plan = planOf(encodeSettings, plan.videoEncoder, plan.pixFmt)
+                result = executePlan(jobId, source, encodeSettings, plan, log)
             }
             while (!result.success && !result.cancelled) {
+                refreshInputs()
                 val next = FfmpegCommandBuilder.fallbackPlan(
-                    plan, ffmpegInput, output.absolutePath, settings, source, caps, ffmpegAudio, passLog,
+                    plan, ffmpegInput, output.absolutePath, encodeSettings, source, caps, ffmpegAudio, passLog,
                 ) ?: break
                 log.appendLine("retrying with fallback encoder/pix_fmt")
                 output.delete()
                 app.inputs.deletePassLogs(jobId)
                 plan = next
-                result = executePlan(jobId, source, settings, plan, log)
+                result = executePlan(jobId, source, encodeSettings, plan, log)
             }
             return result
         } finally {
@@ -383,6 +417,13 @@ class CompressService : Service() {
             jobId, source, settings, pass1, log, 0f, 0.48f, getString(R.string.compress_pass_1),
         )
         if (!first.success || first.cancelled) return first
+        if (FfmpegSessionLogs.encodedNoMedia(first.logs)) {
+            log.appendLine("pass 1 encoded no frames")
+            return first.copy(
+                success = false,
+                error = first.error ?: getString(R.string.error_two_pass_empty),
+            )
+        }
         log.appendLine("pass 2: ${quoteArgs(plan.args)}")
         return runFfmpegArgs(
             jobId, source, settings, plan.args, log, 0.48f, 0.99f, getString(R.string.compress_pass_2),
@@ -400,29 +441,79 @@ class CompressService : Service() {
         message: String?,
     ): EncodeResult {
         val lastStatsAt = AtomicLong(System.currentTimeMillis())
+        val lastTimeMs = AtomicLong(0L)
+        val lastFrame = AtomicInteger(0)
         val stalled = AtomicBoolean(false)
+        val hasMediaTime = AtomicBoolean(false)
+        val durationMs = Media3EncodePlanner.outputDurationMs(settings, source)
+        val fps = FfmpegCommandBuilder.outputFrameRate(source, settings)
+        val startedAt = System.currentTimeMillis()
+        val stallPrefs = container().prefs.current()
+        val stallMs = if (message != null) {
+            EncodeStallTimeout.toMs(stallPrefs.twoPassStallTimeoutSec)
+        } else {
+            EncodeStallTimeout.toMs(stallPrefs.stallTimeoutSec)
+        }
+        val progressFile = container().inputs.ffmpegProgressFile(jobId)
+        progressFile.delete()
+        fun publish(timeMs: Long, force: Boolean = false) {
+            lastStatsAt.set(System.currentTimeMillis())
+            val previous = lastTimeMs.get()
+            if (!force && timeMs <= previous) return
+            if (timeMs > previous) lastTimeMs.set(timeMs)
+            val span = (progressEnd - progressStart).coerceAtLeast(0f)
+            val local = if (durationMs > 0) {
+                (timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+            val fraction = (progressStart + local * span).coerceIn(0f, 0.99f)
+            container().encodeProgress.update(EncodeProgress(jobId, fraction, timeMs, message))
+            startAsForeground(jobId, (fraction * 100).toInt(), message, twoPass = message != null)
+        }
+        fun note(statsTimeMs: Long, frames: Int, logTimeMs: Long) {
+            if (frames > lastFrame.get()) lastFrame.set(frames)
+            val timeMs = FfmpegEncodeProgress.timeMs(
+                statsTimeMs = statsTimeMs,
+                videoFrameNumber = lastFrame.get(),
+                fps = fps,
+                logTimeMs = logTimeMs,
+                logFrame = lastFrame.get(),
+            )
+            if (timeMs > 0L) hasMediaTime.set(true)
+            publish(timeMs)
+        }
+        publish(0L, force = true)
         val current = container().ffmpeg.encode(
-            args = args,
-            onLog = { line -> if (line.isNotBlank()) log.appendLine(line) },
+            args = FfmpegEncodeProgress.withProgressArg(args, progressFile.absolutePath),
+            onLog = { line ->
+                if (line.isNotBlank()) log.appendLine(line)
+                val snap = FfmpegEncodeProgress.parseLine(line) ?: return@encode
+                note(0L, snap.frame ?: 0, snap.timeMs ?: 0L)
+            },
             onStats = { stats ->
-                lastStatsAt.set(System.currentTimeMillis())
-                val durationMs = Media3EncodePlanner.outputDurationMs(settings, source)
-                val span = (progressEnd - progressStart).coerceAtLeast(0f)
-                val local = if (durationMs > 0) {
-                    (stats.timeMs.toFloat() / durationMs).coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
-                val fraction = (progressStart + local * span).coerceIn(0f, 0.99f)
-                container().encodeProgress.update(EncodeProgress(jobId, fraction, stats.timeMs, message))
-                startAsForeground(jobId, (fraction * 100).toInt(), message, twoPass = message != null)
+                note(stats.timeMs, stats.videoFrameNumber, 0L)
             },
         )
         session = current
         val watchdog = scope.launch {
             while (isActive) {
-                delay(2_000)
-                if (System.currentTimeMillis() - lastStatsAt.get() > STALL_MS) {
+                delay(250)
+                val now = System.currentTimeMillis()
+                val snap = FfmpegEncodeProgress.parseDump(FfmpegEncodeProgress.readDump(progressFile))
+                if (snap != null) {
+                    lastStatsAt.set(now)
+                    val frames = snap.frame ?: 0
+                    val logTime = snap.timeMs ?: 0L
+                    val computed = FfmpegEncodeProgress.timeMs(0L, frames, fps, logTime, frames)
+                    if (computed > 0L) {
+                        hasMediaTime.set(true)
+                        note(0L, frames, logTime)
+                    } else if (snap.continuing && !hasMediaTime.get()) {
+                        publish(FfmpegEncodeProgress.wallClockTimeMs(startedAt, durationMs, now))
+                    }
+                }
+                if (now - lastStatsAt.get() > stallMs) {
                     stalled.set(true)
                     current.cancel()
                     break
@@ -433,6 +524,7 @@ class CompressService : Service() {
             current.await()
         } finally {
             watchdog.cancel()
+            progressFile.delete()
         }
         if (stalled.get()) {
             log.appendLine("encoder stalled; cancelling so a fallback can run")
@@ -524,8 +616,6 @@ class CompressService : Service() {
         const val ACTION_CANCEL_ALL = "com.androidcompress.app.ENCODE_CANCEL_ALL"
         const val ACTION_CANCEL_JOB = "com.androidcompress.app.ENCODE_CANCEL_JOB"
         const val EXTRA_JOB_ID = "jobId"
-        private const val STALL_MS = 20_000L
-
         fun start(context: Context, jobId: String) = enqueue(context, jobId)
 
         fun enqueue(context: Context, jobId: String) {

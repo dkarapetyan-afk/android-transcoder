@@ -442,6 +442,8 @@ class JobAgent(
             autoCompressAfterRecord = prefs.autoCompressAfterRecord,
             rememberAdvanced = prefs.rememberAdvanced,
             deleteOriginalAfterEncode = prefs.deleteOriginalAfterEncode,
+            stallTimeoutSec = prefs.stallTimeoutSec,
+            twoPassStallTimeoutSec = prefs.twoPassStallTimeoutSec,
             libraryAccessGranted = MediaLibraryAccess.granted(context),
         )
     }
@@ -452,6 +454,8 @@ class JobAgent(
         autoCompressAfterRecord: Boolean?,
         rememberAdvanced: Boolean?,
         deleteOriginalAfterEncode: Boolean?,
+        stallTimeoutSec: Int? = null,
+        twoPassStallTimeoutSec: Int? = null,
     ): AppDefaults {
         if (presetName != null) container.prefs.setDefaultPreset(JobSettingsCodec.requirePreset(presetName))
         if (engineName != null) container.prefs.setDefaultEngine(JobSettingsCodec.requireEngine(engineName))
@@ -461,6 +465,10 @@ class JobAgent(
         if (rememberAdvanced != null) container.prefs.setRememberAdvanced(rememberAdvanced)
         if (deleteOriginalAfterEncode != null) {
             container.prefs.setDeleteOriginalAfterEncode(deleteOriginalAfterEncode)
+        }
+        if (stallTimeoutSec != null) container.prefs.setStallTimeoutSec(stallTimeoutSec)
+        if (twoPassStallTimeoutSec != null) {
+            container.prefs.setTwoPassStallTimeoutSec(twoPassStallTimeoutSec)
         }
         return getAppDefaults()
     }

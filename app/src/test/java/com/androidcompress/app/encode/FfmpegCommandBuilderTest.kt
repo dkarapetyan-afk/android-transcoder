@@ -652,8 +652,11 @@ class FfmpegCommandBuilderTest {
         assertEquals("/cache/job.2pass", pass1[pass1.indexOf("-passlogfile") + 1])
         assertTrue(pass1.contains("-an"))
         assertEquals("null", pass1[pass1.indexOf("-f") + 1])
-        assertEquals("-", pass1.last())
+        assertEquals(FfmpegCommandBuilder.TWO_PASS_NULL_OUTPUT, pass1.last())
         assertFalse(pass1.contains("-c:a"))
+        assertEquals("0.25", pass1[pass1.indexOf("-stats_period") + 1])
+        val vf = pass1[pass1.indexOf("-vf") + 1]
+        assertTrue(vf.contains("fps=30"))
         assertEquals("2", plan.args[plan.args.indexOf("-pass") + 1])
         assertEquals("/cache/job.2pass", plan.args[plan.args.indexOf("-passlogfile") + 1])
         assertTrue(plan.args.contains("-c:a"))
@@ -674,10 +677,14 @@ class FfmpegCommandBuilderTest {
         val caps = hardwareCaps.copy(hasLibvpx = true, hasLibvpxVp9 = true)
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
         assertEquals("libvpx-vp9", plan.videoEncoder)
-        assertNotNull(plan.firstPassArgs)
+        val pass1 = plan.firstPassArgs
+        assertNotNull(pass1)
         assertEquals("2", plan.args[plan.args.indexOf("-cpu-used") + 1])
         assertFalse(plan.args.contains("-minrate"))
         assertFalse(plan.args.contains("-maxrate"))
+        val vf = pass1!![pass1.indexOf("-vf") + 1]
+        assertTrue(vf.contains("fps=30"))
+        assertEquals(FfmpegCommandBuilder.TWO_PASS_NULL_OUTPUT, pass1.last())
     }
 
     @Test
