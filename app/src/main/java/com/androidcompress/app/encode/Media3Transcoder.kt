@@ -36,6 +36,7 @@ import androidx.media3.transformer.VideoEncoderSettings
 import com.androidcompress.app.data.EncodeResult
 import com.androidcompress.app.data.EncodeStats
 import com.androidcompress.app.data.H264Profile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,9 +45,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
 
 /**
  * Device transcode path: Media3 Transformer + MediaCodec.
@@ -70,50 +74,266 @@ class Media3Transcoder(context: Context) {
         val deferred = CompletableDeferred<EncodeResult>()
         val transformerRef = AtomicReference<Transformer?>(null)
         val progressJob = AtomicReference<Job?>(null)
+        val work = scope.launch {
+            val result = try {
+                encodePipeline(
+                    input = input,
+                    outputPath = outputPath,
+                    spec = spec,
+                    durationMs = durationMs,
+                    onStats = onStats,
+                    cancelled = cancelled,
+                    transformerRef = transformerRef,
+                    progressJob = progressJob,
+                )
+            } catch (_: CancellationException) {
+                cancelledResult()
+            } catch (t: Throwable) {
+                EncodeResult(
+                    success = false,
+                    cancelled = cancelled.get(),
+                    outputPath = null,
+                    error = t.message ?: "Device encoder failed",
+                    logs = media3Log(spec.encoderLabel, t.message, t),
+                )
+            }
+            deferred.complete(result)
+        }
+        deferred.invokeOnCompletion {
+            progressJob.get()?.cancel()
+        }
+        return object : EncodeSession {
+            override val id: Long = 0L
+            override suspend fun await(): EncodeResult = deferred.await()
+            override fun cancel() {
+                cancelled.set(true)
+                work.cancel()
+                mainHandler.post {
+                    runCatching { transformerRef.get()?.cancel() }
+                    deferred.complete(cancelledResult())
+                }
+            }
+        }
+    }
 
+    private suspend fun encodePipeline(
+        input: Uri,
+        outputPath: String,
+        spec: Media3EncodeSpec,
+        durationMs: Long,
+        onStats: (EncodeStats) -> Unit,
+        cancelled: AtomicBoolean,
+        transformerRef: AtomicReference<Transformer?>,
+        progressJob: AtomicReference<Job?>,
+    ): EncodeResult {
+        if (cancelled.get()) return cancelledResult()
+        val audioCount = withContext(Dispatchers.IO) {
+            runCatching { MediaTrackMux.audioTrackCount(appContext, input) }.getOrDefault(0)
+        }
+        if (!Media3AudioTracks.shouldPreserveAll(spec, audioCount)) {
+            return encodeDirect(
+                input = input,
+                outputPath = outputPath,
+                spec = spec,
+                durationMs = durationMs,
+                onStats = onStats,
+                cancelled = cancelled,
+                transformerRef = transformerRef,
+                progressJob = progressJob,
+                logExtra = null,
+            )
+        }
+        return encodeAllAudioTracks(
+            input = input,
+            outputPath = outputPath,
+            spec = spec,
+            durationMs = durationMs,
+            audioCount = audioCount,
+            onStats = onStats,
+            cancelled = cancelled,
+            transformerRef = transformerRef,
+            progressJob = progressJob,
+        )
+    }
+
+    private suspend fun encodeAllAudioTracks(
+        input: Uri,
+        outputPath: String,
+        spec: Media3EncodeSpec,
+        durationMs: Long,
+        audioCount: Int,
+        onStats: (EncodeStats) -> Unit,
+        cancelled: AtomicBoolean,
+        transformerRef: AtomicReference<Transformer?>,
+        progressJob: AtomicReference<Job?>,
+    ): EncodeResult {
+        val output = File(outputPath)
+        val temps = mutableListOf<File>()
+        try {
+            val videoFile = if (!spec.removeVideo) {
+                val part = File(output.parentFile, "${output.name}.part-v")
+                temps += part
+                val videoSpec = spec.copy(removeAudio = true, remuxAudio = false)
+                val video = encodeDirect(
+                    input = input,
+                    outputPath = part.absolutePath,
+                    spec = videoSpec,
+                    durationMs = durationMs,
+                    onStats = { stats ->
+                        onStats(
+                            EncodeStats(
+                                timeMs = (stats.timeMs * 0.85f).toLong(),
+                                sizeBytes = stats.sizeBytes,
+                                speed = stats.speed,
+                            ),
+                        )
+                    },
+                    cancelled = cancelled,
+                    transformerRef = transformerRef,
+                    progressJob = progressJob,
+                    logExtra = null,
+                )
+                if (!video.success) return video
+                part
+            } else {
+                null
+            }
+            val audioFiles = ArrayList<File>(audioCount)
+            for (index in 0 until audioCount) {
+                if (cancelled.get()) return cancelledResult()
+                val extracted = File(output.parentFile, "${output.name}.part-a$index.src")
+                temps += extracted
+                withContext(Dispatchers.IO) {
+                    MediaTrackMux.extractAudioTrack(
+                        context = appContext,
+                        uri = input,
+                        audioOrdinal = index,
+                        output = extracted,
+                        startMs = spec.clipStartMs,
+                        endMs = spec.clipEndMs,
+                        webmOutput = spec.webm,
+                    )
+                }
+                val encoded = if (spec.remuxAudio) {
+                    extracted
+                } else {
+                    val part = File(output.parentFile, "${output.name}.part-a$index.enc")
+                    temps += part
+                    val audioSpec = spec.copy(
+                        removeVideo = true,
+                        stillImage = false,
+                        companionAudioUri = null,
+                        clipStartMs = 0L,
+                        clipEndMs = null,
+                    )
+                    val audio = encodeDirect(
+                        input = Uri.fromFile(extracted),
+                        outputPath = part.absolutePath,
+                        spec = audioSpec,
+                        durationMs = durationMs,
+                        onStats = { stats ->
+                            val start = 0.85f + (index.toFloat() / audioCount) * 0.12f
+                            val span = 0.12f / audioCount
+                            val fraction = start + (stats.timeMs.toFloat() / durationMs.coerceAtLeast(1)) * span
+                            onStats(
+                                EncodeStats(
+                                    timeMs = (fraction.coerceIn(0f, 0.99f) * durationMs.coerceAtLeast(1)).toLong(),
+                                    sizeBytes = stats.sizeBytes,
+                                    speed = stats.speed,
+                                ),
+                            )
+                        },
+                        cancelled = cancelled,
+                        transformerRef = transformerRef,
+                        progressJob = progressJob,
+                        logExtra = null,
+                    )
+                    if (!audio.success) return audio
+                    part
+                }
+                audioFiles += encoded
+            }
+            if (cancelled.get()) return cancelledResult()
+            withContext(Dispatchers.IO) {
+                MediaTrackMux.mux(
+                    videoPath = videoFile?.absolutePath,
+                    audioPaths = audioFiles.map { it.absolutePath },
+                    outputPath = outputPath,
+                    webm = spec.webm,
+                )
+            }
+            val size = output.length()
+            return EncodeResult(
+                success = size > 0,
+                cancelled = false,
+                outputPath = outputPath,
+                error = if (size > 0) null else "Device encoder wrote an empty file",
+                logs = "${spec.encoderLabel}\npreserved $audioCount audio tracks",
+            )
+        } finally {
+            temps.forEach { runCatching { it.delete() } }
+        }
+    }
+
+    private suspend fun encodeDirect(
+        input: Uri,
+        outputPath: String,
+        spec: Media3EncodeSpec,
+        durationMs: Long,
+        onStats: (EncodeStats) -> Unit,
+        cancelled: AtomicBoolean,
+        transformerRef: AtomicReference<Transformer?>,
+        progressJob: AtomicReference<Job?>,
+        logExtra: String?,
+    ): EncodeResult = suspendCancellableCoroutine { cont ->
+        val finished = AtomicBoolean(false)
+        fun complete(result: EncodeResult) {
+            if (finished.compareAndSet(false, true) && cont.isActive) {
+                cont.resume(result)
+            }
+        }
         val start = Runnable {
             if (cancelled.get()) {
-                deferred.complete(cancelledResult())
+                complete(cancelledResult())
                 return@Runnable
             }
             try {
                 val transformer = buildTransformer(
                     spec = spec,
                     onCompleted = {
-                        if (deferred.isCompleted) return@buildTransformer
                         val size = File(outputPath).length()
-                        deferred.complete(
+                        complete(
                             EncodeResult(
                                 success = size > 0,
                                 cancelled = false,
                                 outputPath = outputPath,
                                 error = if (size > 0) null else "Device encoder wrote an empty file",
-                                logs = spec.encoderLabel,
+                                logs = listOfNotNull(spec.encoderLabel, logExtra).joinToString("\n"),
                             ),
                         )
                     },
                     onError = { error, cause ->
-                        if (deferred.isCompleted) return@buildTransformer
-                        if (cancelled.get()) {
-                            deferred.complete(cancelledResult())
-                        } else {
-                            deferred.complete(
+                        complete(
+                            if (cancelled.get()) {
+                                cancelledResult()
+                            } else {
                                 EncodeResult(
                                     success = false,
                                     cancelled = false,
                                     outputPath = null,
                                     error = error,
                                     logs = media3Log(spec.encoderLabel, error, cause),
-                                ),
-                            )
-                        }
+                                )
+                            },
+                        )
                     },
                 )
                 transformerRef.set(transformer)
                 transformer.start(composition(input, spec), outputPath)
+                progressJob.get()?.cancel()
                 progressJob.set(
                     scope.launch {
-                        while (isActive && !deferred.isCompleted) {
+                        while (isActive && cont.isActive) {
                             val holder = ProgressHolder()
                             val state = transformer.getProgress(holder)
                             if (state != Transformer.PROGRESS_STATE_NOT_STARTED) {
@@ -127,40 +347,24 @@ class Media3Transcoder(context: Context) {
                     },
                 )
             } catch (t: Throwable) {
-                if (!deferred.isCompleted) {
-                    deferred.complete(
-                        EncodeResult(
-                            success = false,
-                            cancelled = cancelled.get(),
-                            outputPath = null,
-                            error = t.message ?: "Device encoder failed to start",
-                            logs = media3Log(spec.encoderLabel, t.message, t),
-                        ),
-                    )
-                }
+                complete(
+                    EncodeResult(
+                        success = false,
+                        cancelled = cancelled.get(),
+                        outputPath = null,
+                        error = t.message ?: "Device encoder failed to start",
+                        logs = media3Log(spec.encoderLabel, t.message, t),
+                    ),
+                )
             }
         }
-
         if (Looper.myLooper() == Looper.getMainLooper()) {
             start.run()
         } else {
             mainHandler.post(start)
         }
-
-        deferred.invokeOnCompletion {
-            progressJob.get()?.cancel()
-        }
-
-        return object : EncodeSession {
-            override val id: Long = 0L
-            override suspend fun await(): EncodeResult = deferred.await()
-            override fun cancel() {
-                cancelled.set(true)
-                mainHandler.post {
-                    runCatching { transformerRef.get()?.cancel() }
-                    if (!deferred.isCompleted) deferred.complete(cancelledResult())
-                }
-            }
+        cont.invokeOnCancellation {
+            mainHandler.post { runCatching { transformerRef.get()?.cancel() } }
         }
     }
 

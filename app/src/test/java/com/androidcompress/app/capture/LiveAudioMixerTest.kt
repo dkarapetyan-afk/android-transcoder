@@ -66,6 +66,54 @@ class LiveAudioMixerTest {
         assertEquals(-32768, LiveAudioMixer.clamp16(-80_000f))
     }
 
+    @Test
+    fun pcmToStereoKeepsChannelsAndGain() {
+        val src = pcm(frames = 1, channels = 2, value = 2000)
+        val dest = ByteArray(8)
+        val bytes = LiveAudioMixer.pcmToStereo(
+            src = src,
+            srcRead = src.size,
+            srcChannels = 2,
+            frames = 1,
+            dest = dest,
+            gain = 0.5f,
+        )
+        assertEquals(4, bytes)
+        assertEquals(1000, sample(dest, 0))
+        assertEquals(1000, sample(dest, 2))
+    }
+
+    @Test
+    fun pcmToStereoPadsMissingSourceWithSilence() {
+        val dest = ByteArray(8)
+        LiveAudioMixer.pcmToStereo(
+            src = ByteArray(0),
+            srcRead = 0,
+            srcChannels = 0,
+            frames = 1,
+            dest = dest,
+            gain = 1f,
+        )
+        assertEquals(0, sample(dest, 0))
+        assertEquals(0, sample(dest, 2))
+    }
+
+    @Test
+    fun pcmToStereoUpliftsMono() {
+        val src = pcm(frames = 1, channels = 1, value = 4000)
+        val dest = ByteArray(8)
+        LiveAudioMixer.pcmToStereo(
+            src = src,
+            srcRead = src.size,
+            srcChannels = 1,
+            frames = 1,
+            dest = dest,
+            gain = 1f,
+        )
+        assertEquals(4000, sample(dest, 0))
+        assertEquals(4000, sample(dest, 2))
+    }
+
     private fun pcm(frames: Int, channels: Int, value: Int): ByteArray {
         val out = ByteArray(frames * channels * 2)
         var i = 0

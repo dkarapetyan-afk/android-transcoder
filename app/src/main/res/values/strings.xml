@@ -111,7 +111,10 @@
     <string name="record_audio_mic">Microphone</string>
     <string name="record_audio_internal">Internal</string>
     <string name="record_audio_both">Mic + Internal</string>
-    <string name="record_audio_both_hint">Microphone and app audio are mixed live. Headphones plus echo cancel reduce speaker echo.</string>
+    <string name="record_audio_both_hint">Microphone and app audio are mixed live into one stereo track. Headphones plus echo cancel reduce speaker echo.</string>
+    <string name="record_audio_both_hint_isolated">Microphone is track 1 (Voice) and app audio is track 2 (System). Editors can change speech vs game volume later. Headphones plus echo cancel still reduce speaker echo.</string>
+    <string name="record_isolate_tracks">Separate mic and app tracks</string>
+    <string name="record_isolate_tracks_hint">Writes two audio streams in the MP4 or WebM instead of mixing them. Ducking is not used.</string>
     <string name="record_internal_app">Internal audio source</string>
     <string name="record_internal_any">Any app (media and games)</string>
     <string name="record_internal_app_hint">Only captures playback from the selected app. That app has to be playing audio during the recording.</string>
@@ -122,6 +125,7 @@
     <string name="record_internal_gain">App audio %1$d%%</string>
     <string name="record_duck">Duck app audio when you speak</string>
     <string name="record_duck_hint">Lowers internal audio while you speak. Applied live in the mix.</string>
+    <string name="record_duck_hint_isolated">Ducking only applies when mic and app audio are mixed into one track.</string>
     <string name="record_resolution">Resolution</string>
     <string name="record_res_display">Display</string>
     <string name="record_elapsed">Recording %1$s</string>
@@ -164,7 +168,7 @@
     <string name="record_overlay_needed">Allow “Display over other apps” for region, camera inset, or the floating controls, then start again.</string>
     <string name="record_output">Output</string>
     <string name="record_direct">Record already compressed</string>
-    <string name="record_direct_hint">Writes H.264, HEVC, AV1, or VP8 (WebM) during capture and skips the second compress pass. Live-mixed audio is wrapped without re-encoding video.</string>
+    <string name="record_direct_hint">Writes H.264, HEVC, AV1, or VP8 (WebM) during capture and skips the second compress pass. Audio is wrapped without re-encoding video, including separate mic and app tracks.</string>
     <string name="record_stopped_duration">Stopped at the maximum length.</string>
     <string name="record_stopped_storage">Stopped because storage was almost full.</string>
     <string name="record_cancelled">Recording cancelled</string>
@@ -391,7 +395,7 @@
     <string name="about_title">About</string>
     <string name="about_blurb">Compress screen recordings on this device with FFmpeg or the device encoder (Media3). Combine a picture or video with a separate soundtrack. Files are not uploaded.</string>
     <string name="about_privacy_title">Privacy</string>
-    <string name="about_privacy">The app does not collect accounts, analytics, or advertising identifiers. Screen recording uses Android’s MediaProjection consent dialog. Microphone and internal-audio capture are used only when you turn them on, including mixed together live in one recording. You can limit internal audio to one app, pick a phone or Bluetooth mic, apply echo cancel and noise suppress, mix mic and app audio with gain or ducking, crop a region during capture, overlay a camera inset, and show tap, laser, or ink highlights. The optional overlay uses an accessibility service that only draws; it does not read text. Overlay permission is used for region selection, camera inset, floating controls, and an optional status-bar cover. Compressed files are written to Movies/RecordingCompressor (MP4 or WebM) or Music/RecordingCompressor (M4A or WebM audio) on this device. If you add a Gemini API key and tap Generate extra args, the text prompt and encode settings are sent to Google’s Gemini API. The video itself stays on the device. On Android 16+, a privileged system assistant can list jobs, change encode settings, start or wait for work, share or open a finished file, and discard history through App Functions. If you grant Device library access in Settings (Allow all), that assistant can also list and import videos, audio, and photos already on this device. It does not receive the media files.</string>
+    <string name="about_privacy">The app does not collect accounts, analytics, or advertising identifiers. Screen recording uses Android’s MediaProjection consent dialog. Microphone and internal-audio capture are used only when you turn them on, mixed together live or stored as two tracks (voice and system) in one file. You can limit internal audio to one app, pick a phone or Bluetooth mic, apply echo cancel and noise suppress, mix mic and app audio with gain or ducking, crop a region during capture, overlay a camera inset, and show tap, laser, or ink highlights. The optional overlay uses an accessibility service that only draws; it does not read text. Overlay permission is used for region selection, camera inset, floating controls, and an optional status-bar cover. Compressed files are written to Movies/RecordingCompressor (MP4 or WebM) or Music/RecordingCompressor (M4A or WebM audio) on this device. If you add a Gemini API key and tap Generate extra args, the text prompt and encode settings are sent to Google’s Gemini API. The video itself stays on the device. On Android 16+, a privileged system assistant can list jobs, change encode settings, start or wait for work, share or open a finished file, and discard history through App Functions. If you grant Device library access in Settings (Allow all), that assistant can also list and import videos, audio, and photos already on this device. It does not receive the media files.</string>
     <string name="about_oss_title">Open source notices</string>
     <string name="about_oss_ffmpeg">This software uses libraries from the FFmpeg project under the LGPLv3. FFmpeg is a trademark of Fabrice Bellard. Debug builds ship dev.ffmpegkit-maintained:ffmpeg-kit-full 8.1.7 (FFmpeg 8.1.2, LGPL-3.0). Source for those libraries is available from the upstream projects; see docs/ffmpeg-build.md in the application source for how a Play Store build should be produced from FFmpegKitNext without GPL encoders.</string>
     <string name="about_oss_media3">The Device (Media3) engine uses AndroidX Media3 Transformer and the platform MediaCodec encoders. That path does not run FFmpeg.</string>

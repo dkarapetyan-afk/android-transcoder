@@ -278,6 +278,37 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
+    fun videoEncodeMapsEveryAudioStream() {
+        val plan = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            EncodeSettings.forPreset(Preset.BALANCED),
+            source,
+            hardwareCaps,
+        )
+        val maps = plan.args.mapIndexedNotNull { i, token ->
+            if (token == "-map") plan.args[i + 1] else null
+        }
+        assertEquals(listOf("0:v:0", "0:a"), maps)
+    }
+
+    @Test
+    fun muteMapsVideoOnly() {
+        val plan = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            EncodeSettings.forPreset(Preset.BALANCED).copy(audio = AudioOption.MUTE),
+            source,
+            hardwareCaps,
+        )
+        val maps = plan.args.mapIndexedNotNull { i, token ->
+            if (token == "-map") plan.args[i + 1] else null
+        }
+        assertEquals(listOf("0:v:0"), maps)
+        assertTrue(plan.args.contains("-an"))
+    }
+
+    @Test
     fun invalidExtraArgsAreIgnored() {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(ffmpegExtraArgs = "-i other.mp4")
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)

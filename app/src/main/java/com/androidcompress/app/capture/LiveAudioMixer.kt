@@ -23,10 +23,14 @@ import kotlin.math.min
 
 /**
  * Captures microphone and/or internal audio, applies gain/duck/AEC/NS, and
- * writes one stereo WAV so stop only muxes (`-c:v copy`) instead of mixing.
+ * writes PCM WAVs. Mixed mode is one stereo file so stop only muxes
+ * (`-c:v copy`). Isolated mode writes voice and system as two files that
+ * become two audio streams in the container.
  */
 class LiveAudioMixer(
-    private val output: File,
+    private val mixedOutput: File?,
+    private val micOutput: File?,
+    private val internalOutput: File?,
     private val mic: CapturedPcm?,
     private val internal: CapturedPcm?,
     private val micGain: Float,
@@ -34,13 +38,13 @@ class LiveAudioMixer(
     private val duck: DuckEnvelope?,
     private val audioManager: AudioManager?,
     private val startedSco: Boolean,
+    private val isolateTracks: Boolean,
 ) {
     private var thread: Thread? = null
     @Volatile private var running = false
     @Volatile private var paused = false
 
     fun start() {
-        val writer = WavWriter(output, SAMPLE_RATE, 2)
         running = true
         paused = false
         mic?.start()
@@ -48,7 +52,11 @@ class LiveAudioMixer(
         thread = Thread {
             val micBuf = ByteArray(mic?.bufferBytes ?: 0)
             val intBuf = ByteArray(internal?.bufferBytes ?: 0)
-            val mixed = ByteArray(max(micBuf.size, intBuf.size).coerceAtLeast(4096) * 2)
+            val dest = ByteArray(max(micBuf.size, intBuf.size).coerceAtLeast(4096) * 2)
+            val dest2 = if (isolateTracks) ByteArray(dest.size) else ByteArray(0)
+            val mixWriter = mixedOutput?.let { WavWriter(it, SAMPLE_RATE, 2) }
+            val micWriter = micOutput?.let { WavWriter(it, SAMPLE_RATE, 2) }
+            val intWriter = internalOutput?.let { WavWriter(it, SAMPLE_RATE, 2) }
             try {
                 while (running) {
                     val micRead = if (mic != null) mic.read(micBuf) else 0
@@ -59,26 +67,49 @@ class LiveAudioMixer(
                         Thread.sleep(4)
                         continue
                     }
-                    val outBytes = mix(
-                        micBytes = micBuf,
-                        micRead = micRead.coerceAtLeast(0),
-                        micChannels = mic?.channels ?: 0,
-                        intBytes = intBuf,
-                        intRead = intRead.coerceAtLeast(0),
-                        intChannels = internal?.channels ?: 0,
-                        frames = frames,
-                        dest = mixed,
-                        micGain = micGain,
-                        internalGain = internalGain,
-                        duck = duck,
-                    )
-                    if (outBytes > 0) writer.write(mixed, outBytes)
+                    if (isolateTracks) {
+                        val micBytes = pcmToStereo(
+                            src = micBuf,
+                            srcRead = micRead.coerceAtLeast(0),
+                            srcChannels = mic?.channels ?: 0,
+                            frames = frames,
+                            dest = dest,
+                            gain = micGain,
+                        )
+                        val intBytes = pcmToStereo(
+                            src = intBuf,
+                            srcRead = intRead.coerceAtLeast(0),
+                            srcChannels = internal?.channels ?: 0,
+                            frames = frames,
+                            dest = dest2,
+                            gain = internalGain,
+                        )
+                        if (micBytes > 0) micWriter?.write(dest, micBytes)
+                        if (intBytes > 0) intWriter?.write(dest2, intBytes)
+                    } else {
+                        val outBytes = mix(
+                            micBytes = micBuf,
+                            micRead = micRead.coerceAtLeast(0),
+                            micChannels = mic?.channels ?: 0,
+                            intBytes = intBuf,
+                            intRead = intRead.coerceAtLeast(0),
+                            intChannels = internal?.channels ?: 0,
+                            frames = frames,
+                            dest = dest,
+                            micGain = micGain,
+                            internalGain = internalGain,
+                            duck = duck,
+                        )
+                        if (outBytes > 0) mixWriter?.write(dest, outBytes)
+                    }
                 }
             } finally {
-                runCatching { writer.close() }
+                runCatching { mixWriter?.close() }
+                runCatching { micWriter?.close() }
+                runCatching { intWriter?.close() }
             }
         }.also {
-            it.name = "live-audio-mix"
+            it.name = if (isolateTracks) "live-audio-tracks" else "live-audio-mix"
             it.priority = Thread.NORM_PRIORITY + 1
             it.start()
         }
@@ -141,6 +172,7 @@ class LiveAudioMixer(
             output: File,
             options: RecordOptions,
             appUid: Int?,
+            micOutput: File? = null,
         ): LiveAudioMixer {
             val audioManager = context.getSystemService(AudioManager::class.java)
             var startedSco = false
@@ -161,9 +193,19 @@ class LiveAudioMixer(
                 null
             }
             require(mic != null || internal != null) { "No audio source" }
-            val duck = if (options.duckAppAudio && mic != null && internal != null) DuckEnvelope() else null
+            val isolate = options.isolateAudioTracks &&
+                mic != null &&
+                internal != null &&
+                micOutput != null
+            val duck = if (!isolate && options.duckAppAudio && mic != null && internal != null) {
+                DuckEnvelope()
+            } else {
+                null
+            }
             return LiveAudioMixer(
-                output = output,
+                mixedOutput = if (isolate) null else output,
+                micOutput = if (isolate) micOutput else null,
+                internalOutput = if (isolate) output else null,
                 mic = mic,
                 internal = internal,
                 micGain = options.micGainPercent.coerceIn(0, 200) / 100f,
@@ -171,6 +213,7 @@ class LiveAudioMixer(
                 duck = duck,
                 audioManager = audioManager,
                 startedSco = startedSco,
+                isolateTracks = isolate,
             )
         }
 
@@ -285,6 +328,28 @@ class LiveAudioMixer(
                 val iR = sampleAt(intBytes, intRead, intChannels, f, 1) * internalGain * duckGain
                 writeSample(dest, o, clamp16(mL + iL))
                 writeSample(dest, o + 2, clamp16(mR + iR))
+                o += 4
+            }
+            return needed
+        }
+
+        fun pcmToStereo(
+            src: ByteArray,
+            srcRead: Int,
+            srcChannels: Int,
+            frames: Int,
+            dest: ByteArray,
+            gain: Float,
+        ): Int {
+            if (frames <= 0) return 0
+            val needed = frames * 4
+            if (dest.size < needed) return 0
+            var o = 0
+            for (f in 0 until frames) {
+                val left = sampleAt(src, srcRead, srcChannels, f, 0) * gain
+                val right = sampleAt(src, srcRead, srcChannels, f, 1) * gain
+                writeSample(dest, o, clamp16(left))
+                writeSample(dest, o + 2, clamp16(right))
                 o += 4
             }
             return needed

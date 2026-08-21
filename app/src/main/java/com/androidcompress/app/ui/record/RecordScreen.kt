@@ -219,7 +219,13 @@ fun RecordScreen(
             }
             if (options.audioMode == RecordAudioMode.BOTH && !recording.active) {
                 Text(
-                    stringResource(R.string.record_audio_both_hint),
+                    stringResource(
+                        if (options.isolateAudioTracks) {
+                            R.string.record_audio_both_hint_isolated
+                        } else {
+                            R.string.record_audio_both_hint
+                        },
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -308,10 +314,23 @@ fun RecordScreen(
                 }
                 if (options.audioMode == RecordAudioMode.BOTH) {
                     SwitchRow(
-                        title = stringResource(R.string.record_duck),
-                        hint = stringResource(R.string.record_duck_hint),
-                        checked = options.duckAppAudio,
+                        title = stringResource(R.string.record_isolate_tracks),
+                        hint = stringResource(R.string.record_isolate_tracks_hint),
+                        checked = options.isolateAudioTracks,
                         enabled = controlsEnabled,
+                        onChecked = { viewModel.update { o -> o.copy(isolateAudioTracks = it) } },
+                    )
+                    SwitchRow(
+                        title = stringResource(R.string.record_duck),
+                        hint = stringResource(
+                            if (options.isolateAudioTracks) {
+                                R.string.record_duck_hint_isolated
+                            } else {
+                                R.string.record_duck_hint
+                            },
+                        ),
+                        checked = options.duckAppAudio && !options.isolateAudioTracks,
+                        enabled = controlsEnabled && !options.isolateAudioTracks,
                         onChecked = { viewModel.update { o -> o.copy(duckAppAudio = it) } },
                     )
                 }

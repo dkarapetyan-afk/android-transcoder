@@ -131,6 +131,7 @@ data class RecordOptions(
     val micGainPercent: Int = 100,
     val internalGainPercent: Int = 100,
     val duckAppAudio: Boolean = false,
+    val isolateAudioTracks: Boolean = false,
     val frameRate: Int = 30,
     val videoBitrateKbps: Int = 0,
     val container: RecordContainer = RecordContainer.MP4,
@@ -185,6 +186,7 @@ data class RecordOptions(
         put("micGain", micGainPercent)
         put("intGain", internalGainPercent)
         put("duck", duckAppAudio)
+        put("isoTracks", isolateAudioTracks)
         put("fps", frameRate)
         put("vbps", videoBitrateKbps)
         put("container", container.name)
@@ -230,6 +232,7 @@ data class RecordOptions(
                     micGainPercent = obj.optInt("micGain", 100).coerceIn(0, 200),
                     internalGainPercent = obj.optInt("intGain", 100).coerceIn(0, 200),
                     duckAppAudio = obj.optBoolean("duck", false),
+                    isolateAudioTracks = obj.optBoolean("isoTracks", false),
                     frameRate = if (obj.optInt("fps", 30) >= 45) 60 else 30,
                     videoBitrateKbps = obj.optInt("vbps", 0).let { if (it <= 0) 0 else it.coerceIn(1_000, 50_000) },
                     container = enumOr(obj.optString("container"), RecordContainer.MP4),

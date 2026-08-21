@@ -67,6 +67,7 @@ object FfmpegMuxCommands {
         frameRate: Int = 30,
         containerWebm: Boolean = false,
         applyGain: Boolean = true,
+        isolateTracks: Boolean = false,
     ): List<String>? {
         val hasInternal = !internalWav.isNullOrBlank()
         val hasMicWav = !micWav.isNullOrBlank()
@@ -75,6 +76,7 @@ object FfmpegMuxCommands {
         val mGain = formatGain(micGainPercent)
         val micVol = applyGain && !gainIsUnity(micGainPercent)
         val intVol = applyGain && !gainIsUnity(internalGainPercent)
+        val isolate = isolateTracks && hasInternal && hasMicWav
         val needsWork = cropOn != null ||
             hasInternal ||
             hasMicWav ||
@@ -84,12 +86,44 @@ object FfmpegMuxCommands {
         val args = mutableListOf("-y", "-hide_banner", "-i", videoPath)
         val internalPath = internalWav.takeIf { hasInternal }
         val micPath = micWav.takeIf { hasMicWav }
-        if (internalPath != null) args += listOf("-i", internalPath)
-        if (micPath != null) args += listOf("-i", micPath)
+        if (isolate) {
+            args += listOf("-i", micPath!!, "-i", internalPath!!)
+        } else {
+            if (internalPath != null) args += listOf("-i", internalPath)
+            if (micPath != null) args += listOf("-i", micPath)
+        }
         val cropFilter = cropOn?.let { "crop=${it.width}:${it.height}:${it.x}:${it.y}" }
         val vEncode = cropOn != null
 
         when {
+            isolate -> {
+                val micAf = if (applyGain && micVol) "[1:a]volume=$mGain[a0]" else null
+                val intAf = if (applyGain && intVol) "[2:a]volume=$iGain[a1]" else null
+                val filters = buildList {
+                    if (cropFilter != null) add("[0:v]$cropFilter[v]")
+                    if (micAf != null) add(micAf)
+                    if (intAf != null) add(intAf)
+                }
+                if (filters.isNotEmpty()) {
+                    args += listOf("-filter_complex", filters.joinToString(";"))
+                }
+                args += listOf("-map", if (cropFilter != null) "[v]" else "0:v")
+                args += listOf("-map", if (micAf != null) "[a0]" else "1:a")
+                args += listOf("-map", if (intAf != null) "[a1]" else "2:a")
+                if (vEncode) {
+                    args += videoEncode(videoEncoder, videoBitrateKbps, frameRate)
+                } else {
+                    args += listOf("-c:v", "copy")
+                }
+                args += audioEncode(containerWebm, "128k")
+                args += listOf(
+                    "-metadata:s:a:0", "title=$TRACK_TITLE_VOICE",
+                    "-metadata:s:a:1", "title=$TRACK_TITLE_SYSTEM",
+                    "-disposition:a:0", "default",
+                    "-disposition:a:1", "0",
+                )
+                args += "-shortest"
+            }
             hasInternal && hasMicWav -> {
                 val mix = mixFilter(internalGainPercent, micGainPercent, duckAppAudio)
                 val fc = if (cropFilter != null) "[0:v]$cropFilter[v];$mix" else mix
@@ -211,6 +245,9 @@ object FfmpegMuxCommands {
         "[1:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[i];" +
             "[2:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo[m];" +
             "[i][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[a]"
+
+    const val TRACK_TITLE_VOICE = "Voice"
+    const val TRACK_TITLE_SYSTEM = "System"
 
     private fun videoEncode(encoder: String, bitrateKbps: Int, frameRate: Int = 30): List<String> = listOf(
         "-c:v", encoder.ifBlank { "libopenh264" },

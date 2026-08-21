@@ -287,6 +287,11 @@ object FfmpegCommandBuilder {
                 args += listOf("-t", formatFfmpegSeconds(outputDurationMs))
             }
             args += "-shortest"
+        } else if (settings.audio == AudioOption.MUTE || !source.hasAudio) {
+            args += listOf("-map", "0:v:0")
+        } else {
+            // Keep every audio stream (isolated Voice + System recordings).
+            args += listOf("-map", "0:v:0", "-map", "0:a")
         }
         args += audioCodecArgs(settings, source, settings.audio, changeVolume)
         if (settings.fastStart && !settings.usesWebm()) {

@@ -30,6 +30,7 @@ class RecordOptionsTest {
             micGainPercent = 80,
             internalGainPercent = 120,
             duckAppAudio = true,
+            isolateAudioTracks = true,
             frameRate = 60,
             videoBitrateKbps = 8000,
             container = RecordContainer.WEBM,
@@ -59,6 +60,7 @@ class RecordOptionsTest {
         assertEquals(80, restored.micGainPercent)
         assertEquals(120, restored.internalGainPercent)
         assertTrue(restored.duckAppAudio)
+        assertTrue(restored.isolateAudioTracks)
         assertEquals(60, restored.frameRate)
         assertEquals(8000, restored.videoBitrateKbps)
         assertEquals(RecordContainer.WEBM, restored.container)

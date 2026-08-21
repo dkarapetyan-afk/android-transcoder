@@ -60,6 +60,7 @@ class ScreenRecordService : Service() {
     private var cropPipe: CropDisplayPipe? = null
     private var outputFile: File? = null
     private var mixedAudioFile: File? = null
+    private var micAudioFile: File? = null
     private var liveCropped = false
     private var jobId: String? = null
     private var ticker: Job? = null
@@ -231,8 +232,18 @@ class ScreenRecordService : Service() {
             if (options.audioMode != RecordAudioMode.NONE) {
                 val wav = container().inputs.recordAudioFile(id)
                 mixedAudioFile = wav
+                val isolate = options.isolateAudioTracks && options.audioMode == RecordAudioMode.BOTH
+                val micWav = if (isolate) container().inputs.recordMicAudioFile(id) else null
+                micAudioFile = micWav
                 val uid = CaptureApps.uid(packageManager, options.internalAudioPackage)
-                mixer = LiveAudioMixer.start(this, projection, wav, options, uid).also { it.start() }
+                mixer = LiveAudioMixer.start(
+                    context = this,
+                    projection = projection,
+                    output = wav,
+                    options = options,
+                    appUid = uid,
+                    micOutput = micWav,
+                ).also { it.start() }
             }
             activeRec.start()
             encoderStarted = true
@@ -370,6 +381,7 @@ class ScreenRecordService : Service() {
         val id = jobId
         val video = outputFile
         val wav = mixedAudioFile
+        val micWav = micAudioFile
         val bookmarks = container().recording.state.value.bookmarks
         val started = encoderStarted
         if (!started || cancelledBeforeStart) {
@@ -415,6 +427,8 @@ class ScreenRecordService : Service() {
                 "${video.nameWithoutExtension}-muxed.${options.outputExtension}",
             )
             val usableMix = wav.takeIf { it != null && it.exists() && it.length() > 44 }
+            val usableMic = micWav.takeIf { it != null && it.exists() && it.length() > 44 }
+            val isolate = options.isolateAudioTracks && usableMix != null && usableMic != null
             val crop = if (liveCropped) {
                 null
             } else {
@@ -433,7 +447,7 @@ class ScreenRecordService : Service() {
                 videoPath = video.absolutePath,
                 outputPath = processed.absolutePath,
                 internalWav = usableMix?.absolutePath,
-                micWav = null,
+                micWav = if (isolate) usableMic.absolutePath else null,
                 crop = crop,
                 videoHasAudio = false,
                 internalGainPercent = 100,
@@ -444,6 +458,7 @@ class ScreenRecordService : Service() {
                 frameRate = options.frameRate,
                 containerWebm = options.usesWebm,
                 applyGain = false,
+                isolateTracks = isolate,
             )
             if (post != null) {
                 val muxResult = container().ffmpeg.encode(post, onLog = {}, onStats = {}).await()
@@ -453,6 +468,7 @@ class ScreenRecordService : Service() {
                 }
             }
             wav?.delete()
+            micWav?.delete()
             if (finalFile != processed) processed.delete()
             finalFile = applyChaptersIfNeeded(finalFile, bookmarks)
             val splitFiles = splitIfNeeded(finalFile, bookmarks)

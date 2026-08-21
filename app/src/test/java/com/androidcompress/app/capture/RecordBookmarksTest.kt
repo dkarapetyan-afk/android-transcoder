@@ -90,6 +90,26 @@ class RecordingPostProcessExtrasTest {
     }
 
     @Test
+    fun isolateWebmUsesOpusAndKeepsTwoMaps() {
+        val args = FfmpegMuxCommands.recordingPostProcess(
+            videoPath = "/v.webm",
+            outputPath = "/out.webm",
+            internalWav = "/int.wav",
+            micWav = "/mic.wav",
+            isolateTracks = true,
+            applyGain = false,
+            containerWebm = true,
+        )!!
+        assertTrue(args.containsAll(listOf("-c:a", "libopus")))
+        assertFalse(args.contains("-movflags"))
+        assertFalse(args.contains("amix"))
+        val maps = args.mapIndexedNotNull { i, token ->
+            if (token == "-map") args[i + 1] else null
+        }
+        assertEquals(listOf("0:v", "1:a", "2:a"), maps)
+    }
+
+    @Test
     fun copySegmentUsesCopyCodec() {
         val args = FfmpegMuxCommands.copySegment("/v.mp4", "/p.mp4", 1_000, 4_000)
         assertEquals("1.000", args[args.indexOf("-ss") + 1])
