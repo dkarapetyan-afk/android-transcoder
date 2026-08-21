@@ -55,6 +55,17 @@ class InputResolver(private val context: Context) {
         return File(dir, "$jobId.$ext")
     }
 
+    fun passLogPrefix(jobId: String): String {
+        val dir = File(context.cacheDir, "encode")
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, "$jobId.2pass").absolutePath
+    }
+
+    fun deletePassLogs(jobId: String) {
+        val dir = File(context.cacheDir, "encode")
+        dir.listFiles()?.filter { it.name.startsWith("$jobId.2pass") }?.forEach { it.delete() }
+    }
+
     fun recordOutputFile(jobId: String, extension: String = "mp4"): File {
         val dir = File(context.cacheDir, "record")
         if (!dir.exists()) dir.mkdirs()
@@ -85,7 +96,7 @@ class InputResolver(private val context: Context) {
             ?.filter { it.name.startsWith(jobId) }
             ?.forEach { it.delete() }
         File(context.cacheDir, "encode").listFiles()
-            ?.filter { cacheJobId(it.name) == jobId }
+            ?.filter { cacheJobId(it.name) == jobId || it.name.startsWith("$jobId.2pass") }
             ?.forEach { it.delete() }
     }
 
@@ -124,7 +135,11 @@ class InputResolver(private val context: Context) {
             return output * 2 + STORAGE_OVERHEAD_BYTES
         }
 
-        fun cacheJobId(fileName: String): String = fileName.substringBeforeLast('.')
+        fun cacheJobId(fileName: String): String {
+            val twoPassAt = fileName.indexOf(".2pass")
+            if (twoPassAt > 0) return fileName.substring(0, twoPassAt)
+            return fileName.substringBeforeLast('.')
+        }
 
         fun remapCachedFileName(fileName: String, fromJobId: String, toJobId: String): String? {
             if (fromJobId.isBlank() || toJobId.isBlank() || fromJobId == toJobId) return null

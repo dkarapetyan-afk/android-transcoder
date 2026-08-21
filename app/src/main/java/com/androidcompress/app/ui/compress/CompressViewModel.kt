@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.androidcompress.app.R
 import com.androidcompress.app.ai.GeminiFfmpegAssistant
 import com.androidcompress.app.data.AudioOption
+import com.androidcompress.app.data.BitrateMode
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
@@ -15,11 +16,14 @@ import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.SourceVideo
+import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.data.withContainer
+import com.androidcompress.app.data.withTargetPreset
+import com.androidcompress.app.util.parseMegabytesToBytes
 import com.androidcompress.app.di.AppContainer
 import com.androidcompress.app.encode.CompressService
 import com.androidcompress.app.encode.ExtraArgsSanitizer
@@ -50,6 +54,9 @@ data class CompressUiState(
     val generatedCommand: String = "",
     val commandTemplate: String = "",
     val commandCustomized: Boolean = false,
+    val plannedVideoBitrateKbps: Int = 0,
+    val plannedAudioBitrateKbps: Int = 0,
+    val twoPassActive: Boolean = false,
 )
 
 class CompressViewModel(
@@ -100,10 +107,15 @@ class CompressViewModel(
         val generated = plan?.let { FfmpegCommandTemplate.fromArgs(it.args) }.orEmpty()
         val override = enc.ffmpegCommandOverride
         val customized = override.isNotBlank() && override.trim() != generated.trim()
+        val media3Spec = if (enc.engine == EncodeEngine.MEDIA3) {
+            Media3EncodePlanner.plan(enc, source)
+        } else {
+            null
+        }
         val app = container.appContext
         val encoderLabel = when {
             job == null || job.sourceUri.isBlank() -> ""
-            enc.engine == EncodeEngine.MEDIA3 -> Media3EncodePlanner.plan(enc, source).encoderLabel
+            enc.engine == EncodeEngine.MEDIA3 -> media3Spec?.encoderLabel.orEmpty()
             enc.audioOutput(source.hasVideo) -> when {
                 enc.effectiveAudio(source.hasVideo) == AudioOption.COPY ->
                     app.getString(R.string.encoder_ffmpeg_audio_copy)
@@ -138,6 +150,13 @@ class CompressViewModel(
             generatedCommand = generated,
             commandTemplate = if (customized) override else generated,
             commandCustomized = customized,
+            plannedVideoBitrateKbps = plan?.videoBitrateKbps
+                ?: media3Spec?.videoBitrateBps?.div(1000)
+                ?: 0,
+            plannedAudioBitrateKbps = plan?.audioBitrateKbps
+                ?: media3Spec?.audioBitrateBps?.div(1000)
+                ?: 0,
+            twoPassActive = plan?.firstPassArgs != null,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CompressUiState())
 
@@ -218,6 +237,22 @@ class CompressViewModel(
         update { it.withContainer(format) }
     }
 
+    fun applyTargetPreset(preset: TargetSizePreset) {
+        update { it.withTargetPreset(preset) }
+    }
+
+    fun setCustomTargetMegabytes(raw: String) {
+        val bytes = parseMegabytesToBytes(raw) ?: return
+        if (bytes !in TargetSizePreset.MIN_BYTES..TargetSizePreset.MAX_BYTES) return
+        update {
+            it.copy(
+                targetSizePreset = TargetSizePreset.CUSTOM,
+                targetSizeBytes = bytes,
+                bitrateMode = BitrateMode.CBR,
+            )
+        }
+    }
+
     fun applyPreset(preset: Preset) {
         val previous = settings.value
         settings.value = EncodeSettings.forPreset(preset, previous.engine).copy(
@@ -230,9 +265,12 @@ class CompressViewModel(
             bFrames = previous.bFrames,
             ffmpegExtraArgs = previous.ffmpegExtraArgs,
             ffmpegCommandOverride = previous.ffmpegCommandOverride,
+            twoPass = previous.twoPass,
             clipStartMs = previous.clipStartMs,
             clipEndMs = previous.clipEndMs,
             output = previous.output,
+            targetSizePreset = TargetSizePreset.OFF,
+            targetSizeBytes = null,
         ).withContainer(previous.container)
         persist()
     }

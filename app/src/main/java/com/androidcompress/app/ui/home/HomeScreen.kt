@@ -50,6 +50,7 @@ import com.androidcompress.app.R
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.components.BatchRecipeChips
 import com.androidcompress.app.ui.label
 import com.androidcompress.app.ui.components.ConfirmClearJobsDialog
 import com.androidcompress.app.ui.components.EmptyState
@@ -163,6 +164,24 @@ fun HomeScreen(
                     icon = Icons.Default.MusicVideo,
                     onClick = { combinePicker.launch(arrayOf("image/*", "video/*", "audio/*")) },
                 )
+            }
+            val waiting = viewModel.waitingCount(jobs)
+            if (waiting >= 2) {
+                item {
+                    BatchRecipeChips(waitingCount = waiting) { recipe ->
+                        viewModel.applyToWaiting(recipe) { count ->
+                            scope.launch {
+                                snackbar.showSnackbar(
+                                    if (count > 0) {
+                                        context.getString(R.string.batch_applied, count)
+                                    } else {
+                                        context.getString(R.string.batch_none)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
             }
             item {
                 Row(

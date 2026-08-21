@@ -15,6 +15,7 @@ import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.canCopyAudio
 import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.data.effectiveVideoCodec
+import com.androidcompress.app.data.hasTargetSize
 import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.util.even
 import java.util.Locale
@@ -28,6 +29,7 @@ data class EncodePlan(
     val outputWidth: Int,
     val videoBitrateKbps: Int,
     val audioBitrateKbps: Int,
+    val firstPassArgs: List<String>? = null,
 )
 
 object FfmpegCommandBuilder {
@@ -46,21 +48,26 @@ object FfmpegCommandBuilder {
     }
 
     fun scaledVideoBitrate(source: SourceVideo, settings: EncodeSettings): Int {
+        val targetBytes = settings.targetSizeBytes?.takeIf { settings.hasTargetSize() }
+        if (targetBytes != null) {
+            val durationMs = Media3EncodePlanner.clipWindow(settings, source.durationMs)
+                .durationMs(source.durationMs)
+            return TargetSizeBitrate.videoKbps(
+                targetBytes,
+                durationMs,
+                budgetAudioBitrateKbps(source, settings),
+            )
+        }
         val outH = outputHeight(source, settings)
         val referenceHeight = when (settings.preset) {
             Preset.SMALLER -> 720
             Preset.BALANCED -> 1080
             Preset.HIGHER -> 1440
         }
-        val referenceBitrate = when (settings.preset) {
-            Preset.SMALLER -> 1500
-            Preset.BALANCED -> 2500
-            Preset.HIGHER -> 6000
-        }
         val user = settings.videoBitrateKbps.coerceAtLeast(100)
         if (outH == referenceHeight) return user
         val scaled = (user.toDouble() * outH * outH / (referenceHeight * referenceHeight)).roundToInt()
-        return scaled.coerceIn(200, 40_000)
+        return scaled.coerceIn(TargetSizeBitrate.MIN_VIDEO_KBPS, TargetSizeBitrate.MAX_VIDEO_KBPS)
     }
 
     fun audioBitrateKbps(settings: EncodeSettings): Int = when (settings.audio) {
@@ -70,6 +77,27 @@ object FfmpegCommandBuilder {
         AudioOption.AAC_96 -> 96
         AudioOption.AAC_128 -> 128
         AudioOption.AAC_192 -> 192
+    }
+
+    /** Audio bitrate subtracted from a fit-to-size budget. COPY is treated as 128 kbps. */
+    fun budgetAudioBitrateKbps(source: SourceVideo, settings: EncodeSettings): Int {
+        val audio = settings.effectiveAudio(source.hasVideo)
+        if (audio == AudioOption.MUTE) return 0
+        if (!source.hasAudio && !source.isCombine) return 0
+        val targetBytes = settings.targetSizeBytes
+        if (targetBytes != null && settings.hasTargetSize() && settings.audioOutput(source.hasVideo)) {
+            val durationMs = Media3EncodePlanner.clipWindow(settings, source.durationMs)
+                .durationMs(source.durationMs)
+            return TargetSizeBitrate.audioKbps(targetBytes, durationMs)
+        }
+        return when (audio) {
+            AudioOption.MUTE -> 0
+            AudioOption.COPY -> 128
+            AudioOption.AAC_64 -> 64
+            AudioOption.AAC_96 -> 96
+            AudioOption.AAC_128 -> 128
+            AudioOption.AAC_192 -> 192
+        }
     }
 
     fun outputFrameRate(source: SourceVideo, settings: EncodeSettings): Float {
@@ -101,18 +129,11 @@ object FfmpegCommandBuilder {
     fun estimateOutputBytes(source: SourceVideo, settings: EncodeSettings): Long {
         val audioOnly = settings.audioOutput(source.hasVideo)
         val video = if (audioOnly) 0 else scaledVideoBitrate(source, settings)
-        val audio = when (settings.effectiveAudio(source.hasVideo)) {
-            AudioOption.MUTE -> 0
-            AudioOption.COPY -> 128
-            AudioOption.AAC_64 -> 64
-            AudioOption.AAC_96 -> 96
-            AudioOption.AAC_128 -> 128
-            AudioOption.AAC_192 -> 192
-        }
+        val audio = budgetAudioBitrateKbps(source, settings)
         val durationMs = Media3EncodePlanner.clipWindow(settings, source.durationMs)
             .durationMs(source.durationMs)
         val seconds = (durationMs / 1000.0).coerceAtLeast(1.0)
-        return ((video + audio) * 1000.0 / 8.0 * seconds).toLong() + 64_000
+        return ((video + audio) * 1000.0 / 8.0 * seconds).toLong() + TargetSizeBitrate.MUXER_OVERHEAD_BYTES
     }
 
     fun selectVideoEncoder(
@@ -171,6 +192,17 @@ object FfmpegCommandBuilder {
     fun audioEncoderName(settings: EncodeSettings): String =
         if (settings.usesWebm()) "libopus" else "aac"
 
+    fun supportsTwoPass(encoder: String): Boolean = when (encoder) {
+        "mpeg4", "libvpx", "libvpx-vp9", "libaom-av1", "libsvtav1" -> true
+        else -> false
+    }
+
+    fun usesTwoPass(settings: EncodeSettings, source: SourceVideo, encoder: String): Boolean =
+        settings.twoPass &&
+            !settings.audioOutput(source.hasVideo) &&
+            !source.stillImage &&
+            supportsTwoPass(encoder)
+
     fun build(
         input: String,
         output: String,
@@ -180,6 +212,7 @@ object FfmpegCommandBuilder {
         pixFmtOverride: String? = null,
         encoderOverride: String? = null,
         audioInput: String? = null,
+        passLogPrefix: String? = null,
     ): EncodePlan {
         val companion = audioInput?.takeIf { it.isNotBlank() }
             ?: source.audioUri.takeIf { it.isNotBlank() }
@@ -188,6 +221,7 @@ object FfmpegCommandBuilder {
             return buildAudio(input, output, settings, source)
         }
         val encoder = encoderOverride ?: selectVideoEncoder(settings, capabilities)
+        val twoPass = usesTwoPass(settings, source, encoder)
         val outH = outputHeight(source, settings)
         val outW = outputWidth(source, outH)
         val videoBitrate = scaledVideoBitrate(source, settings)
@@ -229,18 +263,22 @@ object FfmpegCommandBuilder {
         }
         args += listOf("-c:v", encoder, "-b:v", "${videoBitrate}k")
         if (isLibvpx) {
-            args += listOf("-deadline", "good", "-cpu-used", "5", "-row-mt", "1")
-            if (encoder == "libvpx") {
+            args += listOf("-deadline", "good", "-cpu-used", if (twoPass) "2" else "5", "-row-mt", "1")
+            if (encoder == "libvpx" && !twoPass) {
                 args += listOf("-auto-alt-ref", "0")
             }
         }
         if (encoder == "libaom-av1") {
-            args += listOf("-usage", "realtime", "-cpu-used", "8", "-row-mt", "1", "-tiles", "2x2")
+            if (twoPass) {
+                args += listOf("-cpu-used", "6", "-row-mt", "1", "-tiles", "2x2")
+            } else {
+                args += listOf("-usage", "realtime", "-cpu-used", "8", "-row-mt", "1", "-tiles", "2x2")
+            }
         }
         if (encoder == "libsvtav1") {
             args += listOf("-preset", "10")
         }
-        if (settings.bitrateMode == BitrateMode.CBR) {
+        if ((settings.bitrateMode == BitrateMode.CBR || settings.hasTargetSize()) && !twoPass) {
             if (encoder == "libvpx" || encoder == "libvpx-vp9" || encoder == "libaom-av1") {
                 args += listOf("-minrate", "${videoBitrate}k", "-maxrate", "${videoBitrate}k")
             } else {
@@ -275,6 +313,18 @@ object FfmpegCommandBuilder {
             }
         }
         args += listOf("-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv")
+        val logPrefix = passLogPrefix ?: FfmpegCommandTemplate.PASSLOG
+        val firstPassArgs = if (twoPass) {
+            val pass1 = args.toMutableList()
+            pass1 += listOf("-pass", "1", "-passlogfile", logPrefix)
+            pass1 += listOf("-map", "0:v:0", "-an", "-f", "null", "-")
+            ExtraArgsSanitizer.insert(pass1, settings.ffmpegExtraArgs)
+        } else {
+            null
+        }
+        if (twoPass) {
+            args += listOf("-pass", "2", "-passlogfile", logPrefix)
+        }
         if (changeVolume) {
             args += listOf("-filter:a", "volume=$volume")
         }
@@ -305,7 +355,10 @@ object FfmpegCommandBuilder {
             outputHeight = outH,
             outputWidth = outW,
             videoBitrateKbps = videoBitrate,
-            audioBitrateKbps = audioBitrateKbps(settings),
+            audioBitrateKbps = budgetAudioBitrateKbps(source, settings).let { kbps ->
+                if (settings.audio == AudioOption.COPY && !settings.hasTargetSize()) 0 else kbps
+            },
+            firstPassArgs = firstPassArgs,
         )
     }
 
@@ -317,81 +370,39 @@ object FfmpegCommandBuilder {
         source: SourceVideo,
         capabilities: EncoderCapabilities,
         audioInput: String? = null,
+        passLogPrefix: String? = null,
     ): EncodePlan? {
         if (settings.audioOutput(source.hasVideo) || previous.videoEncoder.isBlank()) return null
+        fun next(encoder: String? = null, pix: String? = null) = build(
+            input, output, settings, source, capabilities,
+            pixFmtOverride = pix,
+            encoderOverride = encoder,
+            audioInput = audioInput,
+            passLogPrefix = passLogPrefix,
+        )
         if (settings.usesWebm()) {
             return when {
-                previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibaomAv1 -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libaom-av1",
-                    audioInput = audioInput,
-                )
-                previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibSvtAv1 -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libsvtav1",
-                    audioInput = audioInput,
-                )
+                previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibaomAv1 -> next("libaom-av1")
+                previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibSvtAv1 -> next("libsvtav1")
                 previous.videoEncoder == "av1_mediacodec" &&
-                    (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libvpx-vp9",
-                    audioInput = audioInput,
-                )
-                previous.videoEncoder == "libaom-av1" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libvpx-vp9",
-                    audioInput = audioInput,
-                )
-                previous.videoEncoder == "libsvtav1" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libvpx-vp9",
-                    audioInput = audioInput,
-                )
-                previous.videoEncoder == "vp9_mediacodec" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libvpx-vp9",
-                    audioInput = audioInput,
-                )
-                previous.videoEncoder == "vp8_mediacodec" && capabilities.hasLibvpx -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libvpx",
-                    audioInput = audioInput,
-                )
-                previous.videoEncoder == "libvpx-vp9" && capabilities.hasLibvpx -> build(
-                    input, output, settings, source, capabilities,
-                    encoderOverride = "libvpx",
-                    audioInput = audioInput,
-                )
+                    (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) -> next("libvpx-vp9")
+                previous.videoEncoder == "libaom-av1" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) ->
+                    next("libvpx-vp9")
+                previous.videoEncoder == "libsvtav1" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) ->
+                    next("libvpx-vp9")
+                previous.videoEncoder == "vp9_mediacodec" && (capabilities.hasLibvpxVp9 || capabilities.hasLibvpx) ->
+                    next("libvpx-vp9")
+                previous.videoEncoder == "vp8_mediacodec" && capabilities.hasLibvpx -> next("libvpx")
+                previous.videoEncoder == "libvpx-vp9" && capabilities.hasLibvpx -> next("libvpx")
                 else -> null
             }
         }
         return when {
-            previous.pixFmt == "nv12" -> build(
-                input, output, settings, source, capabilities,
-                pixFmtOverride = "yuv420p",
-                encoderOverride = previous.videoEncoder,
-                audioInput = audioInput,
-            )
-            previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibaomAv1 -> build(
-                input, output, settings, source, capabilities,
-                encoderOverride = "libaom-av1",
-                audioInput = audioInput,
-            )
-            previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibSvtAv1 -> build(
-                input, output, settings, source, capabilities,
-                encoderOverride = "libsvtav1",
-                audioInput = audioInput,
-            )
-            previous.videoEncoder.endsWith("_mediacodec") && capabilities.hasOpenH264 -> build(
-                input, output, settings, source, capabilities,
-                encoderOverride = "libopenh264",
-                audioInput = audioInput,
-            )
-            previous.videoEncoder != "mpeg4" && capabilities.hasMpeg4 -> build(
-                input, output, settings, source, capabilities,
-                encoderOverride = "mpeg4",
-                audioInput = audioInput,
-            )
+            previous.pixFmt == "nv12" -> next(previous.videoEncoder, "yuv420p")
+            previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibaomAv1 -> next("libaom-av1")
+            previous.videoEncoder == "av1_mediacodec" && capabilities.hasLibSvtAv1 -> next("libsvtav1")
+            previous.videoEncoder.endsWith("_mediacodec") && capabilities.hasOpenH264 -> next("libopenh264")
+            previous.videoEncoder != "mpeg4" && capabilities.hasMpeg4 -> next("mpeg4")
             else -> null
         }
     }
@@ -422,7 +433,7 @@ object FfmpegCommandBuilder {
             outputHeight = 0,
             outputWidth = 0,
             videoBitrateKbps = 0,
-            audioBitrateKbps = if (audio == AudioOption.COPY) 128 else audioBitrateKbps(settings.copy(audio = audio)),
+            audioBitrateKbps = budgetAudioBitrateKbps(source, settings.copy(audio = audio)),
         )
     }
 
@@ -433,21 +444,16 @@ object FfmpegCommandBuilder {
         changeVolume: Boolean,
     ): List<String> {
         val encoder = audioEncoderName(settings)
-        return when (audio) {
-            AudioOption.MUTE -> listOf("-an")
-            AudioOption.COPY -> when {
-                !source.hasAudio -> listOf("-an")
-                changeVolume || !settings.canCopyAudio(source) -> listOf("-c:a", encoder, "-b:a", "128k")
-                else -> listOf("-c:a", "copy")
-            }
-            AudioOption.AAC_64, AudioOption.AAC_96, AudioOption.AAC_128, AudioOption.AAC_192 -> {
-                if (source.hasAudio) {
-                    listOf("-c:a", encoder, "-b:a", "${audioBitrateKbps(settings.copy(audio = audio))}k")
-                } else {
-                    listOf("-an")
-                }
-            }
+        if (audio == AudioOption.MUTE || !source.hasAudio) return listOf("-an")
+        if (audio == AudioOption.COPY &&
+            !settings.hasTargetSize() &&
+            !changeVolume &&
+            settings.canCopyAudio(source)
+        ) {
+            return listOf("-c:a", "copy")
         }
+        val kbps = budgetAudioBitrateKbps(source, settings.copy(audio = audio))
+        return listOf("-c:a", encoder, "-b:a", "${kbps}k")
     }
 
     private fun appendCombineInputs(

@@ -11,6 +11,8 @@ class JobCacheNamesTest {
         assertEquals("abc", InputResolver.cacheJobId("abc.webm"))
         assertEquals("abc", InputResolver.cacheJobId("abc.wav"))
         assertEquals("abc.mic", InputResolver.cacheJobId("abc.mic.wav"))
+        assertEquals("abc", InputResolver.cacheJobId("abc.2pass-0.log"))
+        assertEquals("abc", InputResolver.cacheJobId("abc.2pass-0.log.mbtree"))
     }
 
     @Test

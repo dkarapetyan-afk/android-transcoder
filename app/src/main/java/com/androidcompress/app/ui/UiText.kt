@@ -6,7 +6,10 @@ import androidx.compose.ui.res.stringResource
 import com.androidcompress.app.R
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.JobStatus
+import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.data.TargetSizePreset
+import com.androidcompress.app.encode.BatchRecipe
 
 @StringRes
 fun JobStatus.labelRes(): Int = when (this) {
@@ -29,6 +32,30 @@ fun presetLabel(preset: Preset): String = stringResource(
         Preset.SMALLER -> R.string.preset_smaller
         Preset.BALANCED -> R.string.preset_balanced
         Preset.HIGHER -> R.string.preset_higher
+    },
+)
+
+@Composable
+fun batchRecipeLabel(recipe: BatchRecipe): String = when {
+    recipe.container == ContainerFormat.WEBM && recipe.preset == Preset.SMALLER ->
+        stringResource(R.string.batch_webm_720)
+    recipe.container == ContainerFormat.WEBM && recipe.preset == Preset.BALANCED ->
+        stringResource(R.string.batch_webm_1080)
+    recipe.preset == Preset.SMALLER -> stringResource(R.string.batch_smaller)
+    recipe.preset == Preset.BALANCED -> stringResource(R.string.batch_balanced)
+    recipe.preset == Preset.HIGHER -> stringResource(R.string.batch_higher)
+    else -> presetLabel(recipe.preset)
+}
+
+@Composable
+fun targetSizeLabel(preset: TargetSizePreset): String = stringResource(
+    when (preset) {
+        TargetSizePreset.OFF -> R.string.option_off
+        TargetSizePreset.DISCORD -> R.string.compress_fit_discord
+        TargetSizePreset.WHATSAPP -> R.string.compress_fit_whatsapp
+        TargetSizePreset.WHATSAPP_64 -> R.string.compress_fit_whatsapp_64
+        TargetSizePreset.GMAIL -> R.string.compress_fit_gmail
+        TargetSizePreset.CUSTOM -> R.string.compress_fit_custom
     },
 )
 

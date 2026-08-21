@@ -12,6 +12,7 @@ import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.canCopyAudio
 import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.data.effectiveVideoCodec
+import com.androidcompress.app.data.hasTargetSize
 import com.androidcompress.app.data.usesWebm
 
 data class Media3EncodeSpec(
@@ -120,8 +121,11 @@ object Media3EncodePlanner {
     fun plan(settings: EncodeSettings, source: SourceVideo): Media3EncodeSpec {
         val audioOnly = settings.audioOutput(source.hasVideo)
         val audio = settings.effectiveAudio(source.hasVideo)
+        val clip = clipWindow(settings, source.durationMs)
         val outH = if (audioOnly) 0 else FfmpegCommandBuilder.outputHeight(source, settings)
         val outW = if (audioOnly) 0 else FfmpegCommandBuilder.outputWidth(source, outH)
+        // Fit-to-size uses the same (targetBytes × 8 / duration) − audio − muxer overhead
+        // formula as FfmpegCommandBuilder.scaledVideoBitrate.
         val videoKbps = if (audioOnly) 0 else FfmpegCommandBuilder.scaledVideoBitrate(source, settings)
         val codec = settings.effectiveVideoCodec()
         val webm = settings.usesWebm()
@@ -129,11 +133,14 @@ object Media3EncodePlanner {
         val outputFps = if (!audioOnly && fpsCap != null && source.frameRate > fpsCap + 0.1f) fpsCap else 0
         val volume = FfmpegCommandBuilder.audioVolume(settings)
         val removeAudio = !audioOnly && (audio == AudioOption.MUTE || !source.hasAudio)
-        val remuxAudio = !removeAudio && audio == AudioOption.COPY && volume == 1f && settings.canCopyAudio(source)
+        val remuxAudio = !removeAudio &&
+            audio == AudioOption.COPY &&
+            volume == 1f &&
+            settings.canCopyAudio(source) &&
+            !settings.hasTargetSize()
         val audioKbps = when {
             removeAudio || remuxAudio -> 0
-            audio == AudioOption.COPY -> 128
-            else -> FfmpegCommandBuilder.audioBitrateKbps(settings.copy(audio = audio)).coerceAtLeast(64)
+            else -> FfmpegCommandBuilder.budgetAudioBitrateKbps(source, settings.copy(audio = audio))
         }
         val videoMime = when (codec) {
             VideoCodec.VP8 -> MIME_VP8
@@ -143,11 +150,15 @@ object Media3EncodePlanner {
             VideoCodec.H264 -> MIME_H264
         }
         val audioMime = if (webm) MIME_OPUS else MIME_AAC
-        val clip = clipWindow(settings, source.durationMs)
         val combine = source.isCombine
         val companion = source.audioUri.takeIf { it.isNotBlank() }
         val combineRemoveAudio = combine && audio == AudioOption.MUTE
-        val combineRemux = combine && !combineRemoveAudio && audio == AudioOption.COPY && volume == 1f && settings.canCopyAudio(source)
+        val combineRemux = combine &&
+            !combineRemoveAudio &&
+            audio == AudioOption.COPY &&
+            volume == 1f &&
+            settings.canCopyAudio(source) &&
+            !settings.hasTargetSize()
         return Media3EncodeSpec(
             videoMimeType = videoMime,
             outputHeight = outH,
@@ -158,8 +169,7 @@ object Media3EncodePlanner {
             audioBitrateBps = if (combine) {
                 when {
                     combineRemoveAudio || combineRemux -> 0
-                    audio == AudioOption.COPY -> 128_000
-                    else -> FfmpegCommandBuilder.audioBitrateKbps(settings.copy(audio = audio)).coerceAtLeast(64) * 1000
+                    else -> FfmpegCommandBuilder.budgetAudioBitrateKbps(source, settings.copy(audio = audio)) * 1000
                 }
             } else {
                 audioKbps * 1000
@@ -181,7 +191,7 @@ object Media3EncodePlanner {
                 codec == VideoCodec.HEVC -> "Media3 · HEVC"
                 else -> "Media3 · H.264"
             },
-            preferCbr = settings.bitrateMode == BitrateMode.CBR,
+            preferCbr = settings.bitrateMode == BitrateMode.CBR || settings.hasTargetSize(),
             iFrameIntervalSeconds = FfmpegCommandBuilder.keyframeSeconds(settings),
             h264Profile = settings.h264Profile,
             toneMapHdr = !audioOnly && !source.stillImage && settings.hdrMode == HdrMode.TONE_MAP,

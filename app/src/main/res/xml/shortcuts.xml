@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_qs_record"
+        android:shortcutId="record"
+        android:shortcutLongLabel="@string/shortcut_record_long"
+        android:shortcutShortLabel="@string/shortcut_record_short">
+        <intent
+            android:action="com.androidcompress.app.action.SHORTCUT_RECORD"
+            android:targetClass="com.androidcompress.app.MainActivity"
+            android:targetPackage="${applicationId}" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_compress"
+        android:shortcutId="compress_latest"
+        android:shortcutLongLabel="@string/shortcut_compress_long"
+        android:shortcutShortLabel="@string/shortcut_compress_short">
+        <intent
+            android:action="com.androidcompress.app.action.SHORTCUT_COMPRESS_LATEST"
+            android:targetClass="com.androidcompress.app.MainActivity"
+            android:targetPackage="${applicationId}" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_audio"
+        android:shortcutId="extract_audio"
+        android:shortcutLongLabel="@string/shortcut_audio_long"
+        android:shortcutShortLabel="@string/shortcut_audio_short">
+        <intent
+            android:action="com.androidcompress.app.action.SHORTCUT_EXTRACT_AUDIO"
+            android:targetClass="com.androidcompress.app.MainActivity"
+            android:targetPackage="${applicationId}" />
+    </shortcut>
+</shortcuts>

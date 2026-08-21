@@ -14,6 +14,7 @@ import com.androidcompress.app.data.JobType
 import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -161,6 +162,42 @@ class JobSettingsCodecTest {
         assertEquals("AUDIO", snap.output)
         assertEquals("WEBM", snap.container)
         assertEquals(1440, snap.maxHeight)
+        assertEquals("OFF", snap.targetSizePreset)
+        assertNull(snap.targetSizeBytes)
+        assertFalse(snap.twoPass)
+    }
+
+    @Test
+    fun twoPassPatchApplies() {
+        val next = JobSettingsCodec.apply(
+            EncodeSettings.forPreset(Preset.BALANCED),
+            SettingsPatch(twoPass = true, bitrateMode = BitrateMode.VBR),
+        )
+        assertTrue(next.twoPass)
+        assertEquals(BitrateMode.VBR, next.bitrateMode)
+    }
+
+    @Test
+    fun targetSizePresetSetsBytesAndClearsOnBitrate() {
+        val discord = JobSettingsCodec.apply(
+            EncodeSettings.forPreset(Preset.BALANCED),
+            SettingsPatch(targetSizePreset = TargetSizePreset.DISCORD),
+        )
+        assertEquals(TargetSizePreset.DISCORD, discord.targetSizePreset)
+        assertEquals(10L shl 20, discord.targetSizeBytes)
+        assertEquals(BitrateMode.CBR, discord.bitrateMode)
+        val cleared = JobSettingsCodec.apply(discord, SettingsPatch(videoBitrateKbps = 2500))
+        assertEquals(TargetSizePreset.OFF, cleared.targetSizePreset)
+        assertNull(cleared.targetSizeBytes)
+        val custom = JobSettingsCodec.apply(
+            EncodeSettings.forPreset(Preset.BALANCED),
+            SettingsPatch(targetSizePreset = TargetSizePreset.CUSTOM, targetSizeBytes = 8L shl 20),
+        )
+        assertEquals(TargetSizePreset.CUSTOM, custom.targetSizePreset)
+        assertEquals(8L shl 20, custom.targetSizeBytes)
+        val off = JobSettingsCodec.apply(custom, SettingsPatch(clearTargetSize = true))
+        assertEquals(TargetSizePreset.OFF, off.targetSizePreset)
+        assertNull(off.targetSizeBytes)
     }
 
     @Test

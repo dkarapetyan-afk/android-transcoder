@@ -11,12 +11,15 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,8 +29,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.R
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.ui.components.AppTopBar
+import com.androidcompress.app.ui.components.BatchRecipeChips
 import com.androidcompress.app.ui.label
 import com.androidcompress.app.util.formatDuration
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
@@ -41,6 +46,8 @@ fun ProgressScreen(
     val job = ui.job
     val progress = ui.progress
     val context = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var handedOff by remember { mutableStateOf(false) }
 
     LaunchedEffect(job?.status, ui.active.map { it.id + it.status }) {
@@ -63,7 +70,10 @@ fun ProgressScreen(
     } else {
         0f
     }
-    Scaffold(topBar = { AppTopBar(stringResource(R.string.progress_title), onBack = onBack) }) { padding ->
+    Scaffold(
+        topBar = { AppTopBar(stringResource(R.string.progress_title), onBack = onBack) },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -87,6 +97,10 @@ fun ProgressScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(stringResource(R.string.progress_percent, (fraction * 100).roundToInt()))
+            val passMessage = progress?.message?.takeIf { it.isNotBlank() }
+            if (passMessage != null && job?.status == JobStatus.RUNNING) {
+                Text(passMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (progress != null && job != null && job.status == JobStatus.RUNNING) {
                 Text(
                     stringResource(
@@ -107,6 +121,21 @@ fun ProgressScreen(
                             item.status.label(),
                         ),
                     )
+                }
+            }
+            if (ui.queuedCount > 0) {
+                BatchRecipeChips(waitingCount = ui.queuedCount) { recipe ->
+                    viewModel.applyToQueued(recipe) { count ->
+                        scope.launch {
+                            snackbar.showSnackbar(
+                                if (count > 0) {
+                                    context.getString(R.string.batch_applied, count)
+                                } else {
+                                    context.getString(R.string.batch_none)
+                                },
+                            )
+                        }
+                    }
                 }
             }
             Text(

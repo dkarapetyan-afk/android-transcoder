@@ -13,12 +13,14 @@ import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.effectiveVideoCodec
 import com.androidcompress.app.data.outputExtension
 import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.withContainer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,6 +50,9 @@ class SettingsJsonTest {
             clipEndMs = 20_000,
             output = OutputMode.AUDIO,
             container = ContainerFormat.WEBM,
+            targetSizePreset = TargetSizePreset.CUSTOM,
+            targetSizeBytes = 12L shl 20,
+            twoPass = true,
         )
         val decoded = SettingsJson.decode(SettingsJson.encode(original))
         assertEquals(original, decoded)
@@ -78,6 +83,21 @@ class SettingsJsonTest {
         assertNull(decoded.clipEndMs)
         assertEquals(OutputMode.VIDEO, decoded.output)
         assertEquals(ContainerFormat.MP4, decoded.container)
+        assertEquals(TargetSizePreset.OFF, decoded.targetSizePreset)
+        assertNull(decoded.targetSizeBytes)
+        assertFalse(decoded.twoPass)
+    }
+
+    @Test
+    fun discordBytesInferPresetWhenKeyMissing() {
+        val raw = """
+            {"preset":"BALANCED","maxHeight":1080,"fpsCap":30,"codec":"H264",
+             "preferHardware":true,"videoBitrateKbps":2500,"audio":"AAC_128",
+             "targetSizeBytes":10485760}
+        """.trimIndent()
+        val decoded = SettingsJson.decode(raw)
+        assertEquals(TargetSizePreset.DISCORD, decoded.targetSizePreset)
+        assertEquals(10L shl 20, decoded.targetSizeBytes)
     }
 
     @Test

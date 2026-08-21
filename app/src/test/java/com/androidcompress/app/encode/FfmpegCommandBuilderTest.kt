@@ -633,4 +633,109 @@ class FfmpegCommandBuilderTest {
         assertTrue(plan.args.contains("1:a:0"))
         assertTrue(plan.args.contains("-shortest"))
     }
+
+    @Test
+    fun twoPassMpeg4WritesPassOneAndPassTwo() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(twoPass = true)
+        val plan = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            settings,
+            source,
+            hardwareCaps,
+            passLogPrefix = "/cache/job.2pass",
+        )
+        assertEquals("mpeg4", plan.videoEncoder)
+        val pass1 = plan.firstPassArgs
+        assertNotNull(pass1)
+        assertEquals("1", pass1!![pass1.indexOf("-pass") + 1])
+        assertEquals("/cache/job.2pass", pass1[pass1.indexOf("-passlogfile") + 1])
+        assertTrue(pass1.contains("-an"))
+        assertEquals("null", pass1[pass1.indexOf("-f") + 1])
+        assertEquals("-", pass1.last())
+        assertFalse(pass1.contains("-c:a"))
+        assertEquals("2", plan.args[plan.args.indexOf("-pass") + 1])
+        assertEquals("/cache/job.2pass", plan.args[plan.args.indexOf("-passlogfile") + 1])
+        assertTrue(plan.args.contains("-c:a"))
+        assertFalse(plan.args.contains("-maxrate"))
+        val template = FfmpegCommandTemplate.fromArgs(plan.args)
+        assertTrue(template.contains("PASSLOG"))
+        assertFalse(template.contains("/cache/job.2pass"))
+    }
+
+    @Test
+    fun twoPassVp9UsesLibvpxAndSkipsCbr() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            twoPass = true,
+            container = ContainerFormat.WEBM,
+            codec = VideoCodec.VP9,
+            bitrateMode = BitrateMode.CBR,
+        )
+        val caps = hardwareCaps.copy(hasLibvpx = true, hasLibvpxVp9 = true)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.webm", settings, source, caps)
+        assertEquals("libvpx-vp9", plan.videoEncoder)
+        assertNotNull(plan.firstPassArgs)
+        assertEquals("2", plan.args[plan.args.indexOf("-cpu-used") + 1])
+        assertFalse(plan.args.contains("-minrate"))
+        assertFalse(plan.args.contains("-maxrate"))
+    }
+
+    @Test
+    fun twoPassSkippedForOpenh264AndHardware() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(twoPass = true)
+        val openh264 = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            settings,
+            source,
+            hardwareCaps.copy(hasOpenH264 = true),
+        )
+        assertEquals("libopenh264", openh264.videoEncoder)
+        assertNull(openh264.firstPassArgs)
+        assertFalse(openh264.args.contains("-pass"))
+        val hevc = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            settings.copy(codec = VideoCodec.HEVC),
+            source,
+            hardwareCaps,
+        )
+        assertEquals("hevc_mediacodec", hevc.videoEncoder)
+        assertNull(hevc.firstPassArgs)
+    }
+
+    @Test
+    fun twoPassSkippedForAudioOnlyAndStills() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            twoPass = true,
+            output = OutputMode.AUDIO,
+        )
+        val audio = FfmpegCommandBuilder.build("in.mp4", "out.m4a", settings, source, hardwareCaps)
+        assertNull(audio.firstPassArgs)
+        val still = source.copy(stillImage = true, audioUri = "content://a", durationMs = 8_000)
+        val stillPlan = FfmpegCommandBuilder.build(
+            "cover.jpg",
+            "out.mp4",
+            EncodeSettings.forPreset(Preset.BALANCED).copy(twoPass = true),
+            still,
+            hardwareCaps,
+            audioInput = "song.m4a",
+        )
+        assertNull(stillPlan.firstPassArgs)
+    }
+
+    @Test
+    fun twoPassAv1DropsRealtimeUsage() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            twoPass = true,
+            codec = VideoCodec.AV1,
+            preferHardware = false,
+        )
+        val caps = hardwareCaps.copy(hasLibaomAv1 = true)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, caps)
+        assertEquals("libaom-av1", plan.videoEncoder)
+        assertNotNull(plan.firstPassArgs)
+        assertFalse(plan.args.contains("-usage"))
+        assertFalse(plan.firstPassArgs!!.contains("-usage"))
+    }
 }

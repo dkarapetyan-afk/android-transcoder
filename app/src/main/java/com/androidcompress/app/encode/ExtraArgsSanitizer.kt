@@ -26,6 +26,7 @@ object ExtraArgsSanitizer {
         "formats", "muxers", "demuxers", "devices", "codecs", "decoders", "encoders",
         "bsfs", "protocols", "filters", "pix_fmts", "layouts", "sample_fmts", "colors",
         "hide_banner",
+        "pass", "passlogfile",
     )
 
     private val blockedValueHints = listOf(

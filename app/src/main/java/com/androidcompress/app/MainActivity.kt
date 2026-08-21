@@ -51,6 +51,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        container().refreshShortcuts()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         enterRecordPip()

@@ -18,6 +18,7 @@ import com.androidcompress.app.data.galleryFolder
 import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.di.AppContainer
+import com.androidcompress.app.encode.BatchRecipe
 import com.androidcompress.app.encode.CompressService
 import com.androidcompress.app.encode.EncodeQueue
 import com.androidcompress.app.encode.FfmpegCommandBuilder
@@ -37,14 +38,18 @@ class JobAgent(
 ) {
     fun describeCapabilities(): AppCapabilities = AppCapabilities(
         summary = "Recording Compressor encodes videos and audio on this device with FFmpeg or Media3. " +
-            "It can also combine a picture or video with a separate soundtrack.",
+            "It can also combine a picture or video with a separate soundtrack. " +
+            "Fit-to-size (targetSizeBytes) derives video bitrate from duration so the file stays under " +
+            "Discord 10 MB, WhatsApp 16/64 MB, or Gmail 25 MB.",
         workflow = "1) If libraryAccessGranted is false, call requestLibraryAccess and ask the user to Allow all. " +
             "2) For one file, call compressNow(uriOrPath, settings, wait=true). " +
             "3) For several files, listDeviceMedia with relativePath or date filters, then importDeviceMediaBatch. " +
+            "applyToQueue(preset, container) sets the same encode options on every waiting job (e.g. SMALLER + WEBM). " +
             "4) Use cloneJob for a second encode of the same source, or retryJob after a failure. " +
             "5) waitForJob or waitForQueue (max 180s; call again if timedOut). " +
             "6) shareOutput or openOutput when done. discardJob removes history only.",
         presets = JobSettingsCodec.presets,
+        targetSizePresets = JobSettingsCodec.targetSizePresets,
         engines = JobSettingsCodec.engines,
         outputs = JobSettingsCodec.outputs,
         containers = JobSettingsCodec.containers,
@@ -68,6 +73,7 @@ class JobAgent(
             "waitForJob",
             "listDeviceMedia",
             "importDeviceMediaBatch",
+            "applyToQueue",
             "cloneJob",
             "retryJob",
             "getProgress",
@@ -237,7 +243,12 @@ class JobAgent(
                 append("Extra FFmpeg args are ignored on the Media3 engine. ")
             }
             if (settings.engine == EncodeEngine.MEDIA3 && settings.ffmpegCommandOverride.isNotBlank()) {
-                append("The FFmpeg command override is ignored on the Media3 engine.")
+                append("The FFmpeg command override is ignored on the Media3 engine. ")
+            }
+            if (ffmpegPlan?.firstPassArgs != null) {
+                append("FFmpeg will run a 2-pass VBR encode.")
+            } else if (settings.twoPass && settings.engine == EncodeEngine.FFMPEG) {
+                append("Two-pass is on, but this encoder stays one pass (libopenh264 and hardware encoders).")
             }
         }.trim()
         return EncodePreview(
@@ -313,6 +324,32 @@ class JobAgent(
         return JobActionResult(
             message = "Cancel requested for ${updated.displayName}.",
             jobs = listOf(toDetail(updated, container.jobs.listAll())),
+        )
+    }
+
+    suspend fun applyToQueue(preset: String, containerName: String?, queuedOnly: Boolean): JobActionResult {
+        val recipe = BatchRecipe(
+            preset = JobSettingsCodec.requirePreset(preset),
+            container = containerName?.takeIf { it.isNotBlank() }?.let { raw ->
+                JobSettingsCodec.parseContainer(raw)
+                    ?: error("Unknown container \"$raw\". Use one of: ${JobSettingsCodec.containers.joinToString()}")
+            },
+        )
+        val count = container.applyBatchRecipe(recipe, queuedOnly)
+        val all = container.jobs.listAll()
+        val jobs = EncodeQueue.active(all)
+            .ifEmpty { all.filter { it.status == JobStatus.READY } }
+            .take(40)
+            .map { toDetail(it, all) }
+        return JobActionResult(
+            message = if (count == 0) {
+                "No waiting jobs to update."
+            } else {
+                "Applied ${recipe.preset.name}" +
+                    (recipe.container?.let { " ${it.name}" } ?: "") +
+                    " to $count waiting job(s). The running encode is unchanged."
+            },
+            jobs = jobs,
         )
     }
 

@@ -2,6 +2,8 @@ package com.androidcompress.app.util
 
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 fun formatBytes(bytes: Long): String {
     if (bytes < 0) return "—"
@@ -51,6 +53,21 @@ fun parseDurationMs(raw: String): Long? {
         else -> return null
     }
     return millis.coerceAtLeast(0L)
+}
+
+fun formatMegabytes(bytes: Long): String {
+    val mb = bytes / (1024.0 * 1024.0)
+    return if (abs(mb - mb.roundToInt()) < 0.0005) {
+        mb.roundToInt().toString()
+    } else {
+        String.format(Locale.US, "%.2f", mb)
+    }
+}
+
+fun parseMegabytesToBytes(raw: String): Long? {
+    val mb = raw.trim().toDoubleOrNull() ?: return null
+    if (mb <= 0.0) return null
+    return (mb * 1024.0 * 1024.0).toLong()
 }
 
 fun formatResolution(width: Int, height: Int): String {

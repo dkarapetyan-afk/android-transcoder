@@ -50,6 +50,12 @@ class ExtraArgsSanitizerTest {
     }
 
     @Test
+    fun rejectsPassFlags() {
+        assertFalse(ExtraArgsSanitizer.parse("-pass 1").isValid)
+        assertFalse(ExtraArgsSanitizer.parse("-passlogfile /tmp/x").isValid)
+    }
+
+    @Test
     fun emptyIsValid() {
         val parsed = ExtraArgsSanitizer.parse("   ")
         assertTrue(parsed.isValid)

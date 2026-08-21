@@ -9,6 +9,36 @@ enum class JobStatus { DRAFT, RECORDING, READY, QUEUED, RUNNING, SUCCEEDED, FAIL
 
 enum class Preset { SMALLER, BALANCED, HIGHER }
 
+/** Fit-to-size caps used by compress. Bytes are binary megabytes (1024²), matching Discord / WhatsApp / Gmail. */
+enum class TargetSizePreset {
+    OFF,
+    DISCORD,
+    WHATSAPP,
+    WHATSAPP_64,
+    GMAIL,
+    CUSTOM,
+    ;
+
+    val bytes: Long?
+        get() = when (this) {
+            OFF, CUSTOM -> null
+            DISCORD -> 10L shl 20
+            WHATSAPP -> 16L shl 20
+            WHATSAPP_64 -> 64L shl 20
+            GMAIL -> 25L shl 20
+        }
+
+    companion object {
+        const val MIN_BYTES = 256L * 1024
+        const val MAX_BYTES = 2L shl 30
+
+        fun of(bytes: Long?): TargetSizePreset {
+            val value = bytes?.takeIf { it > 0L } ?: return OFF
+            return entries.firstOrNull { it.bytes == value } ?: CUSTOM
+        }
+    }
+}
+
 enum class VideoCodec { H264, HEVC, VP8, VP9, AV1 }
 
 enum class EncodeEngine { FFMPEG, MEDIA3 }
@@ -67,6 +97,9 @@ data class EncodeSettings(
     val clipEndMs: Long? = null,
     val output: OutputMode = OutputMode.VIDEO,
     val container: ContainerFormat = ContainerFormat.MP4,
+    val targetSizePreset: TargetSizePreset = TargetSizePreset.OFF,
+    val targetSizeBytes: Long? = null,
+    val twoPass: Boolean = false,
 ) {
     companion object {
         fun forPreset(preset: Preset, engine: EncodeEngine = EncodeEngine.FFMPEG): EncodeSettings = when (preset) {
@@ -160,6 +193,51 @@ fun EncodeSettings.outputMime(): String = when {
 
 fun EncodeSettings.galleryFolder(): String =
     if (output == OutputMode.AUDIO) "Music/RecordingCompressor" else "Movies/RecordingCompressor"
+
+fun EncodeSettings.hasTargetSize(): Boolean =
+    targetSizePreset != TargetSizePreset.OFF && (targetSizeBytes ?: 0L) > 0L
+
+fun EncodeSettings.withTargetPreset(preset: TargetSizePreset): EncodeSettings = when (preset) {
+    TargetSizePreset.OFF -> copy(targetSizePreset = TargetSizePreset.OFF, targetSizeBytes = null)
+    TargetSizePreset.CUSTOM -> copy(
+        targetSizePreset = TargetSizePreset.CUSTOM,
+        targetSizeBytes = targetSizeBytes?.takeIf { it >= TargetSizePreset.MIN_BYTES }
+            ?: TargetSizePreset.DISCORD.bytes,
+        bitrateMode = BitrateMode.CBR,
+    )
+    TargetSizePreset.DISCORD,
+    TargetSizePreset.WHATSAPP,
+    TargetSizePreset.WHATSAPP_64,
+    TargetSizePreset.GMAIL -> namedTarget(preset)
+}
+
+private fun EncodeSettings.namedTarget(preset: TargetSizePreset): EncodeSettings {
+    val bytes = preset.bytes ?: return copy(targetSizePreset = TargetSizePreset.OFF, targetSizeBytes = null)
+    val nextAudio = when {
+        audio == AudioOption.MUTE -> AudioOption.MUTE
+        preset == TargetSizePreset.WHATSAPP -> AudioOption.AAC_96
+        audio == AudioOption.COPY -> AudioOption.AAC_128
+        else -> audio
+    }
+    var next = copy(
+        targetSizePreset = preset,
+        targetSizeBytes = bytes,
+        bitrateMode = BitrateMode.CBR,
+        audio = nextAudio,
+    )
+    if (next.output == OutputMode.AUDIO) return next
+    next = next.withContainer(ContainerFormat.MP4).copy(
+        codec = VideoCodec.H264,
+        fpsCap = fpsCap ?: 30,
+        maxHeight = if (preset == TargetSizePreset.WHATSAPP) 720 else 1080,
+        h264Profile = if (preset == TargetSizePreset.WHATSAPP) {
+            H264Profile.BASELINE
+        } else {
+            h264Profile
+        },
+    )
+    return next
+}
 
 fun EncodeSettings.canCopyAudio(source: SourceVideo): Boolean {
     val codec = source.audioCodec.orEmpty().lowercase()

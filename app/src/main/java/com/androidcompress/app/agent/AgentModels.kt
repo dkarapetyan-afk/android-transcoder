@@ -9,8 +9,10 @@ data class AppCapabilities(
     val summary: String,
     /** Ordered steps an agent should follow for a typical compress request. */
     val workflow: String,
-    /** Built-in preset names. */
+    /** Built-in quality preset names. */
     val presets: List<String>,
+    /** Fit-to-size preset names: OFF, DISCORD, WHATSAPP, WHATSAPP_64, GMAIL, CUSTOM. */
+    val targetSizePresets: List<String>,
     /** Encode engines: FFMPEG or MEDIA3. */
     val engines: List<String>,
     /** Output modes: VIDEO or AUDIO. */
@@ -99,6 +101,16 @@ data class JobSettingsSnapshot(
     val clipStartMs: Long,
     /** Clip end in milliseconds, or null for the end of the source. */
     val clipEndMs: Long?,
+    /** Fit-to-size preset: OFF, DISCORD, WHATSAPP, WHATSAPP_64, GMAIL, or CUSTOM. */
+    val targetSizePreset: String,
+    /**
+     * Target output size in bytes. Discord free is 10485760, WhatsApp 16777216 or 67108864,
+     * Gmail 26214400. Null when fit-to-size is off. Video bitrate is
+     * (targetBytes × 8 / duration) minus audio and muxer overhead.
+     */
+    val targetSizeBytes: Long?,
+    /** True when FFmpeg should run a 2-pass VBR encode. Ignored by Media3 and audio-only jobs. */
+    val twoPass: Boolean,
 )
 
 /**
@@ -159,6 +171,17 @@ data class JobSettingsUpdate(
     val clearClipEnd: Boolean = false,
     /** If true, encode the whole source with no clip. */
     val clearClip: Boolean = false,
+    /** Fit-to-size preset: OFF, DISCORD, WHATSAPP, WHATSAPP_64, GMAIL, or CUSTOM. */
+    val targetSizePreset: String? = null,
+    /**
+     * Target output size in bytes, 262144 to 2147483648.
+     * Discord free = 10485760, WhatsApp = 16777216 or 67108864, Gmail = 26214400.
+     */
+    val targetSizeBytes: Long? = null,
+    /** If true, turn off fit-to-size and use videoBitrateKbps instead. */
+    val clearTargetSize: Boolean = false,
+    /** True to run FFmpeg 2-pass VBR. Media3 and audio-only jobs ignore this. */
+    val twoPass: Boolean? = null,
 )
 
 /** Compact job row for lists. */

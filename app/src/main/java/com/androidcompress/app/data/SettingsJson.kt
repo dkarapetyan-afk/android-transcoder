@@ -28,12 +28,26 @@ object SettingsJson {
         put("clipEndMs", settings.clipEndMs ?: JSONObject.NULL)
         put("output", settings.output.name)
         put("container", settings.container.name)
+        put("targetSizePreset", settings.targetSizePreset.name)
+        put("targetSizeBytes", settings.targetSizeBytes ?: JSONObject.NULL)
+        put("twoPass", settings.twoPass)
     }.toString()
 
     fun decode(raw: String?): EncodeSettings {
         if (raw.isNullOrBlank()) return EncodeSettings.forPreset(Preset.BALANCED)
         return runCatching {
             val obj = JSONObject(raw)
+            val storedTargetBytes = if (!obj.has("targetSizeBytes") || obj.isNull("targetSizeBytes")) {
+                null
+            } else {
+                obj.getLong("targetSizeBytes").takeIf { it > 0L }
+            }
+            val targetPreset = enumOr(obj.optString("targetSizePreset"), TargetSizePreset.of(storedTargetBytes))
+            val targetBytes = when (targetPreset) {
+                TargetSizePreset.OFF -> null
+                TargetSizePreset.CUSTOM -> storedTargetBytes
+                else -> storedTargetBytes ?: targetPreset.bytes
+            }
             EncodeSettings(
                 preset = Preset.valueOf(obj.getString("preset")),
                 maxHeight = if (obj.isNull("maxHeight")) null else obj.getInt("maxHeight"),
@@ -60,6 +74,9 @@ object SettingsJson {
                 },
                 output = enumOr(obj.optString("output"), OutputMode.VIDEO),
                 container = enumOr(obj.optString("container"), ContainerFormat.MP4),
+                targetSizePreset = if (targetBytes == null) TargetSizePreset.OFF else targetPreset,
+                targetSizeBytes = targetBytes,
+                twoPass = obj.optBoolean("twoPass", false),
             )
         }.getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }
     }

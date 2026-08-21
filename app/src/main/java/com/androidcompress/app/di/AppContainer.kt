@@ -8,14 +8,18 @@ import com.androidcompress.app.data.HistoryJanitor
 import com.androidcompress.app.data.JobRepository
 import com.androidcompress.app.data.PreferencesRepository
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.encode.BatchQueueSettings
+import com.androidcompress.app.encode.BatchRecipe
 import com.androidcompress.app.encode.EncodeProgressStore
 import com.androidcompress.app.encode.FfmpegGateway
 import com.androidcompress.app.encode.FfmpegKitGateway
 import com.androidcompress.app.encode.JobLogStore
 import com.androidcompress.app.encode.Media3Transcoder
 import com.androidcompress.app.encode.MediaCodecEncoderCaps
+import com.androidcompress.app.media.AppShortcuts
 import com.androidcompress.app.media.InputResolver
 import com.androidcompress.app.media.JobImporter
+import com.androidcompress.app.media.LatestShortcutOpener
 import com.androidcompress.app.media.MediaProbe
 import com.androidcompress.app.media.MediaStoreExporter
 import com.androidcompress.app.media.SourceFileDeleter
@@ -43,10 +47,28 @@ class AppContainer(context: Context) {
     val recording = RecordingStore()
     val history = HistoryJanitor(jobs, jobLogs, inputs)
     val importer = JobImporter(appContext, jobs, prefs, probe, inputs, history)
+    val shortcutOpener = LatestShortcutOpener(appContext, jobs, importer)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         appScope.launch { runCatching { history.prune() } }
+        refreshShortcuts()
+    }
+
+    fun refreshShortcuts() {
+        appScope.launch {
+            val latest = runCatching { shortcutOpener.latestLabel() }.getOrNull()
+            AppShortcuts.publishDynamic(appContext, latest?.first, latest?.second)
+        }
+    }
+
+    suspend fun applyBatchRecipe(recipe: BatchRecipe, queuedOnly: Boolean): Int {
+        val targets = BatchQueueSettings.targets(jobs.listAll(), queuedOnly)
+        for (job in targets) {
+            val next = BatchQueueSettings.apply(job, recipe)
+            if (next.settingsJson != job.settingsJson) jobs.upsert(next)
+        }
+        return targets.size
     }
 
     private val capsMutex = Mutex()

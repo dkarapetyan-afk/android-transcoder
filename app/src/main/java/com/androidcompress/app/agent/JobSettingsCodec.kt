@@ -14,6 +14,7 @@ import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SourceVideo
+import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.withContainer
 import com.androidcompress.app.encode.ExtraArgsSanitizer
@@ -46,6 +47,10 @@ data class SettingsPatch(
     val clipEndMs: Long? = null,
     val clearClipEnd: Boolean = false,
     val clearClip: Boolean = false,
+    val targetSizePreset: TargetSizePreset? = null,
+    val targetSizeBytes: Long? = null,
+    val clearTargetSize: Boolean = false,
+    val twoPass: Boolean? = null,
 )
 
 object JobSettingsCodec {
@@ -61,6 +66,7 @@ object JobSettingsCodec {
     val hdrModes = enumNames<HdrMode>()
     val bFrameSettings = enumNames<BFrameSetting>()
     val jobStatuses = enumNames<JobStatus>()
+    val targetSizePresets = enumNames<TargetSizePreset>()
 
     fun apply(base: EncodeSettings, patch: SettingsPatch): EncodeSettings {
         var next = if (patch.preset != null) {
@@ -84,7 +90,11 @@ object JobSettingsCodec {
         }
         if (patch.preferHardware != null) next = next.copy(preferHardware = patch.preferHardware)
         if (patch.videoBitrateKbps != null) {
-            next = next.copy(videoBitrateKbps = sanitizeBitrate(patch.videoBitrateKbps))
+            next = next.copy(
+                videoBitrateKbps = sanitizeBitrate(patch.videoBitrateKbps),
+                targetSizePreset = TargetSizePreset.OFF,
+                targetSizeBytes = null,
+            )
         }
         if (patch.audio != null) next = next.copy(audio = patch.audio)
         if (patch.bitrateMode != null) next = next.copy(bitrateMode = patch.bitrateMode)
@@ -119,6 +129,17 @@ object JobSettingsCodec {
                 next.copy(clipStartMs = start, clipEndMs = end)
             }
         }
+        next = when {
+            patch.clearTargetSize -> next.copy(
+                targetSizePreset = TargetSizePreset.OFF,
+                targetSizeBytes = null,
+            )
+            patch.targetSizePreset != null || patch.targetSizeBytes != null -> {
+                applyTargetSize(next, patch.targetSizePreset, patch.targetSizeBytes)
+            }
+            else -> next
+        }
+        if (patch.twoPass != null) next = next.copy(twoPass = patch.twoPass)
         return next
     }
 
@@ -144,6 +165,9 @@ object JobSettingsCodec {
         ffmpegCommandOverride = settings.ffmpegCommandOverride,
         clipStartMs = settings.clipStartMs,
         clipEndMs = settings.clipEndMs,
+        targetSizePreset = settings.targetSizePreset.name,
+        targetSizeBytes = settings.targetSizeBytes,
+        twoPass = settings.twoPass,
     )
 
     fun parsePreset(raw: String?): Preset? = parseEnum(raw)
@@ -158,6 +182,7 @@ object JobSettingsCodec {
     fun parseHdr(raw: String?): HdrMode? = parseEnum(raw)
     fun parseBFrames(raw: String?): BFrameSetting? = parseEnum(raw)
     fun parseStatus(raw: String?): JobStatus? = parseEnum(raw)
+    fun parseTargetSizePreset(raw: String?): TargetSizePreset? = parseEnum(raw)
 
     fun requirePreset(raw: String): Preset =
         parsePreset(raw) ?: error("Unknown preset \"$raw\". Use one of: ${presets.joinToString()}")
@@ -195,6 +220,10 @@ object JobSettingsCodec {
         clipEndMs = update.clipEndMs,
         clearClipEnd = update.clearClipEnd,
         clearClip = update.clearClip,
+        targetSizePreset = parseTargetSizePreset(update.targetSizePreset),
+        targetSizeBytes = update.targetSizeBytes,
+        clearTargetSize = update.clearTargetSize,
+        twoPass = update.twoPass,
     )
 
     fun canEdit(status: JobStatus): Boolean = when (status) {
@@ -305,6 +334,38 @@ object JobSettingsCodec {
     private fun sanitizeVolume(value: Int): Int {
         if (value !in 10..400) error("audioVolumePercent must be between 10 and 400.")
         return value
+    }
+
+    private fun applyTargetSize(
+        current: EncodeSettings,
+        preset: TargetSizePreset?,
+        bytes: Long?,
+    ): EncodeSettings {
+        val resolvedPreset = preset ?: TargetSizePreset.of(bytes ?: current.targetSizeBytes)
+        if (resolvedPreset == TargetSizePreset.OFF) {
+            return current.copy(targetSizePreset = TargetSizePreset.OFF, targetSizeBytes = null)
+        }
+        val resolvedBytes = when (resolvedPreset) {
+            TargetSizePreset.OFF -> null
+            TargetSizePreset.CUSTOM -> sanitizeTargetBytes(bytes ?: current.targetSizeBytes)
+            else -> resolvedPreset.bytes
+        }
+        return current.copy(
+            targetSizePreset = if (resolvedBytes == null) TargetSizePreset.OFF else resolvedPreset,
+            targetSizeBytes = resolvedBytes,
+            bitrateMode = if (resolvedBytes != null) BitrateMode.CBR else current.bitrateMode,
+        )
+    }
+
+    private fun sanitizeTargetBytes(value: Long?): Long {
+        val bytes = value ?: error("targetSizeBytes is required for CUSTOM.")
+        if (bytes !in TargetSizePreset.MIN_BYTES..TargetSizePreset.MAX_BYTES) {
+            error(
+                "targetSizeBytes must be between ${TargetSizePreset.MIN_BYTES} and " +
+                    "${TargetSizePreset.MAX_BYTES}, or clearTargetSize.",
+            )
+        }
+        return bytes
     }
 
     private fun validateClip(startMs: Long, endMs: Long?) {

@@ -186,6 +186,14 @@ class GeminiFfmpegAssistant(
                 appendLine("Codec setting: ${settings.codec}")
                 appendLine("Video bitrate kbps: ${settings.videoBitrateKbps}")
                 appendLine("Bitrate mode: ${settings.bitrateMode}")
+                appendLine("Two-pass: ${settings.twoPass}")
+                appendLine(
+                    "Target size: " + if (settings.targetSizeBytes != null && settings.targetSizeBytes > 0L) {
+                        "${settings.targetSizePreset} ${settings.targetSizeBytes} bytes"
+                    } else {
+                        "off"
+                    },
+                )
                 appendLine("Audio: ${settings.audio}")
                 appendLine("Hardware preferred: ${settings.preferHardware}")
             }

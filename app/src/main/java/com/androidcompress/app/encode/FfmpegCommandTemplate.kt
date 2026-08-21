@@ -16,6 +16,7 @@ object FfmpegCommandTemplate {
     const val INPUT = "INPUT"
     const val AUDIO = "AUDIO"
     const val OUTPUT = "OUTPUT"
+    const val PASSLOG = "PASSLOG"
 
     private val blockedFlags = setOf(
         "filter_complex", "filter_complex_script", "lavfi", "filter_script",
@@ -43,6 +44,10 @@ object FfmpegCommandTemplate {
         }
         if (inputAts.size > 1 && inputAts[1] + 1 < tokens.size) {
             tokens[inputAts[1] + 1] = AUDIO
+        }
+        val passLogAt = tokens.indices.firstOrNull { tokens[it] == "-passlogfile" }
+        if (passLogAt != null && passLogAt + 1 < tokens.size) {
+            tokens[passLogAt + 1] = PASSLOG
         }
         tokens[tokens.lastIndex] = OUTPUT
         return quoteArgs(tokens)
@@ -155,7 +160,7 @@ object FfmpegCommandTemplate {
     }
 
     private fun validateValue(flag: String, value: String, isLast: Boolean): String? {
-        if (value == INPUT || value == OUTPUT || value == AUDIO) return null
+        if (value == INPUT || value == OUTPUT || value == AUDIO || value == PASSLOG) return null
         val name = flagName(flag)
         if (name == "map") {
             return if (value.matches(Regex("""\d+:[av](?::\d+)?"""))) null else "Invalid -map value."

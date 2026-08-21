@@ -155,6 +155,24 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
     ): JobActionResult = io { agent.startReadyJobs(limit, settings) }
 
     /**
+     * Apply one quality preset to every waiting job at once (READY and QUEUED
+     * by default). The job currently encoding is not changed.
+     *
+     * Examples: preset SMALLER (720p), or SMALLER plus container WEBM for
+     * “convert all to 720p WebM”.
+     *
+     * @param preset SMALLER, BALANCED, or HIGHER.
+     * @param container Optional MP4 or WEBM. Null keeps each job’s container.
+     * @param queuedOnly If true, only jobs already in the encode queue are updated.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun applyToQueue(
+        preset: String,
+        container: String? = null,
+        queuedOnly: Boolean = false,
+    ): JobActionResult = io { agent.applyToQueue(preset, container, queuedOnly) }
+
+    /**
      * Cancel one queued or running job. Later queued jobs keep running.
      *
      * @param jobId Job to cancel.

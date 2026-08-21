@@ -39,6 +39,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.androidcompress.app.agent.AgentLaunch
 import com.androidcompress.app.container
+import com.androidcompress.app.media.AppShortcuts
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.di.AppViewModelFactory
 import com.androidcompress.app.media.ShareIntents
@@ -141,6 +142,32 @@ fun CompressApp(
                 nav.openResult(request.jobId)
             }
             AgentLaunch.OPEN_RECORD -> nav.navigate("record") { launchSingleTop = true }
+            AgentLaunch.OPEN_COMPRESS_LATEST, AgentLaunch.OPEN_EXTRACT_AUDIO -> {
+                importing = true
+                try {
+                    val audioOnly = request.destination == AgentLaunch.OPEN_EXTRACT_AUDIO
+                    val opened = container.shortcutOpener.openLatest(
+                        audioOnly = audioOnly,
+                        uriOverride = request.uri,
+                    )
+                    AppShortcuts.reportUsed(context, request.destination)
+                    container.refreshShortcuts()
+                    when {
+                        opened.jobId != null -> nav.openCompressKeepingHome(opened.jobId)
+                        opened.needLibrary -> {
+                            snackbar.showSnackbar(opened.message)
+                            nav.navigate("settings/library") { launchSingleTop = true }
+                        }
+                        else -> snackbar.showSnackbar(
+                            opened.message.ifBlank { errorReadFile },
+                        )
+                    }
+                } catch (error: Throwable) {
+                    snackbar.showSnackbar(error.message ?: errorReadFile)
+                } finally {
+                    importing = false
+                }
+            }
         }
         onAgentUiConsumed(request.nonce)
     }

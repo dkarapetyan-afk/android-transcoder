@@ -15,4 +15,14 @@ class FormatTest {
         assertNull(parseDurationMs(""))
         assertNull(parseDurationMs("nope"))
     }
+
+    @Test
+    fun megabytesRoundTripBinaryUnits() {
+        assertEquals("10", formatMegabytes(10L shl 20))
+        assertEquals("16", formatMegabytes(16L shl 20))
+        assertEquals(10L shl 20, parseMegabytesToBytes("10"))
+        assertEquals(25L shl 20, parseMegabytesToBytes("25"))
+        assertNull(parseMegabytesToBytes(""))
+        assertNull(parseMegabytesToBytes("nope"))
+    }
 }

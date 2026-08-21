@@ -110,22 +110,52 @@ object Notifications {
         queueIndex: Int,
         queueTotal: Int,
         cancelIntent: PendingIntent,
+        statusMessage: String? = null,
+        twoPass: Boolean = false,
     ): Notification {
         ensureChannels(context)
-        val text = if (queueTotal > 1) {
-            context.getString(R.string.notif_encoding_queue, percent, queueIndex, queueTotal)
-        } else {
-            context.getString(R.string.notif_encoding_percent, percent)
+        val live = EncodeLiveUpdate.create(percent, queueIndex, queueTotal, twoPass)
+        val text = buildString {
+            append(
+                if (queueTotal > 1) {
+                    context.getString(R.string.notif_encoding_queue, live.percent, queueIndex, queueTotal)
+                } else {
+                    context.getString(R.string.notif_encoding_percent, live.percent)
+                },
+            )
+            if (!statusMessage.isNullOrBlank()) {
+                append(" · ")
+                append(statusMessage)
+            }
         }
-        return NotificationCompat.Builder(context, ENCODE_CHANNEL)
+        val style = NotificationCompat.ProgressStyle()
+            .setProgress(live.progress)
+            .setProgressIndeterminate(live.indeterminate)
+            .setStyledByProgress(true)
+        if (live.segmentCount > 1) {
+            repeat(live.segmentCount) {
+                style.addProgressSegment(NotificationCompat.ProgressStyle.Segment(EncodeLiveUpdate.UNIT))
+            }
+        }
+        live.passSplitAt?.let { split ->
+            style.addProgressPoint(NotificationCompat.ProgressStyle.Point(split))
+        }
+        val builder = NotificationCompat.Builder(context, ENCODE_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle(context.getString(R.string.notif_encoding))
             .setContentText(text)
-            .setProgress(100, percent, percent <= 0)
+            .setProgress(live.progressMax, live.progress, live.indeterminate)
+            .setStyle(style)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setRequestPromotedOngoing(true)
             .setContentIntent(openApp(context, "jobId" to jobId))
             .addAction(0, context.getString(R.string.action_cancel), cancelIntent)
-            .build()
+        live.chipText?.let { builder.setShortCriticalText(it) }
+        return builder.build()
     }
 }

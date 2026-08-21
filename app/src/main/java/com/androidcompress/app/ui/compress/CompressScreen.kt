@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.androidcompress.app.R
@@ -51,7 +53,9 @@ import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.hasTargetSize
 import com.androidcompress.app.encode.Media3EncodePlanner
 import com.androidcompress.app.ui.audioLabel
 import com.androidcompress.app.ui.components.AppTopBar
@@ -60,8 +64,10 @@ import com.androidcompress.app.ui.components.VideoThumbnail
 import com.androidcompress.app.ui.fpsLabel
 import com.androidcompress.app.ui.heightLabel
 import com.androidcompress.app.ui.presetLabel
+import com.androidcompress.app.ui.targetSizeLabel
 import com.androidcompress.app.util.formatBytes
 import com.androidcompress.app.util.formatDuration
+import com.androidcompress.app.util.formatMegabytes
 import com.androidcompress.app.util.formatResolution
 import com.androidcompress.app.util.parseDurationMs
 
@@ -135,8 +141,39 @@ fun CompressScreen(
                 }
                 StatLine(
                     stringResource(R.string.compress_estimated_output),
-                    stringResource(R.string.compress_estimate_bytes, formatBytes(ui.estimateBytes)),
+                    if (settings.hasTargetSize()) {
+                        stringResource(
+                            R.string.compress_estimate_target,
+                            formatBytes(ui.estimateBytes),
+                            formatBytes(settings.targetSizeBytes ?: 0L),
+                        )
+                    } else {
+                        stringResource(R.string.compress_estimate_bytes, formatBytes(ui.estimateBytes))
+                    },
                 )
+                if (settings.hasTargetSize()) {
+                    val audioOnlyFit = settings.audioOutput(sourceHasVideo)
+                    Text(
+                        stringResource(
+                            if (audioOnlyFit) {
+                                R.string.compress_fit_calculated_audio
+                            } else {
+                                R.string.compress_fit_calculated
+                            },
+                            if (audioOnlyFit) ui.plannedAudioBitrateKbps else ui.plannedVideoBitrateKbps,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val cap = settings.targetSizeBytes
+                    if (cap != null && ui.estimateBytes > cap) {
+                        Text(
+                            stringResource(R.string.compress_fit_overshoot, formatBytes(cap)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
                 if (ui.encoderLabel.isNotBlank()) {
                     StatLine(stringResource(R.string.compress_encoder), ui.encoderLabel)
                 }
@@ -150,6 +187,42 @@ fun CompressScreen(
                         label = { Text(presetLabel(preset)) },
                     )
                 }
+            }
+            Text(stringResource(R.string.compress_fit_to_size), style = MaterialTheme.typography.titleMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TargetSizePreset.entries.forEach { preset ->
+                    FilterChip(
+                        selected = settings.targetSizePreset == preset,
+                        onClick = { viewModel.applyTargetPreset(preset) },
+                        label = { Text(targetSizeLabel(preset)) },
+                    )
+                }
+            }
+            if (settings.targetSizePreset != TargetSizePreset.OFF) {
+                Text(
+                    stringResource(R.string.compress_fit_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (settings.targetSizePreset == TargetSizePreset.CUSTOM) {
+                var customMb by rememberSaveable(settings.targetSizePreset) {
+                    mutableStateOf(settings.targetSizeBytes?.let(::formatMegabytes).orEmpty())
+                }
+                OutlinedTextField(
+                    value = customMb,
+                    onValueChange = { value ->
+                        customMb = value
+                        viewModel.setCustomTargetMegabytes(value)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.compress_fit_custom_mb)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    supportingText = {
+                        Text(stringResource(R.string.compress_fit_custom_hint))
+                    },
+                )
             }
             Text(stringResource(R.string.compress_engine), style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -320,30 +393,77 @@ fun CompressScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Text(stringResource(R.string.compress_quality_kbps, settings.videoBitrateKbps))
-                Slider(
-                    value = settings.videoBitrateKbps.toFloat(),
-                    onValueChange = { value -> viewModel.update { it.copy(videoBitrateKbps = value.toInt()) } },
-                    valueRange = 400f..20000f,
-                )
+                if (settings.hasTargetSize()) {
+                    Text(
+                        stringResource(
+                            R.string.compress_fit_calculated,
+                            ui.plannedVideoBitrateKbps,
+                        ),
+                    )
+                } else {
+                    Text(stringResource(R.string.compress_quality_kbps, settings.videoBitrateKbps))
+                    Slider(
+                        value = settings.videoBitrateKbps.toFloat(),
+                        onValueChange = { value -> viewModel.update { it.copy(videoBitrateKbps = value.toInt()) } },
+                        valueRange = 400f..20000f,
+                    )
+                }
                 Text(stringResource(R.string.compress_bitrate_mode))
+                val cbrLocked = settings.hasTargetSize()
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
-                        selected = settings.bitrateMode == BitrateMode.CBR,
+                        selected = settings.bitrateMode == BitrateMode.CBR || cbrLocked,
                         onClick = { viewModel.update { it.copy(bitrateMode = BitrateMode.CBR) } },
+                        enabled = !cbrLocked,
                         label = { Text(stringResource(R.string.bitrate_cbr)) },
                     )
                     FilterChip(
-                        selected = settings.bitrateMode == BitrateMode.VBR,
+                        selected = settings.bitrateMode == BitrateMode.VBR && !cbrLocked,
                         onClick = { viewModel.update { it.copy(bitrateMode = BitrateMode.VBR) } },
+                        enabled = !cbrLocked,
                         label = { Text(stringResource(R.string.bitrate_vbr)) },
                     )
                 }
                 Text(
-                    stringResource(R.string.compress_bitrate_hint),
+                    stringResource(
+                        if (cbrLocked) R.string.compress_fit_cbr_hint else R.string.compress_bitrate_hint,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (settings.engine == EncodeEngine.FFMPEG && !audioOnly) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.compress_two_pass))
+                            Text(
+                                stringResource(
+                                    if (settings.twoPass && !ui.twoPassActive) {
+                                        R.string.compress_two_pass_skipped
+                                    } else {
+                                        R.string.compress_two_pass_hint
+                                    },
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = settings.twoPass,
+                            onCheckedChange = { on ->
+                                viewModel.update { current ->
+                                    current.copy(
+                                        twoPass = on,
+                                        bitrateMode = if (on && !current.hasTargetSize()) {
+                                            BitrateMode.VBR
+                                        } else {
+                                            current.bitrateMode
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
                 Text(stringResource(R.string.compress_frame_rate))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(null, 60, 30, 24).forEach { fps ->
