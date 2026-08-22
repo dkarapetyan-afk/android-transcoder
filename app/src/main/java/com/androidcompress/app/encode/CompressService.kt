@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import com.androidcompress.app.R
+import com.androidcompress.app.capture.RecordCaptureLog
 import com.androidcompress.app.container
 import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeProgress
@@ -146,6 +147,10 @@ class CompressService : Service() {
         val output = app.inputs.encodeOutputFile(jobId, settings.outputExtension())
         output.delete()
         val log = StringBuilder()
+        RecordCaptureLog.extract(app.jobLogs.read(jobId))?.let {
+            log.appendLine(it)
+            log.appendLine()
+        }
         log.appendLine("jobId=$jobId")
         log.appendLine("name=${job.displayName}")
         log.appendLine("engine=${settings.engine}")

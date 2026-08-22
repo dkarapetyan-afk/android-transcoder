@@ -59,22 +59,25 @@ class RecordOverlayHost(private val context: Context) {
     private var bubbleParams: WindowManager.LayoutParams? = null
     private var facecam: FacecamOverlay? = null
 
-    fun showRegion(onConfirm: (RecordRegion) -> Unit, onCancel: () -> Unit) {
+    fun showRegion(
+        onConfirm: (region: RecordRegion, overlayWidth: Int, overlayHeight: Int) -> Unit,
+        onCancel: () -> Unit,
+    ) {
         if (!canDrawOverlays(app)) {
-            onConfirm(RecordRegion.FULL)
+            onConfirm(RecordRegion.FULL, 0, 0)
             return
         }
         hideRegion()
-        val view = RegionSelectView(app, onConfirm = {
+        val view = RegionSelectView(app, onConfirm = { region, overlayWidth, overlayHeight ->
             hideRegion()
-            onConfirm(it)
+            onConfirm(region, overlayWidth, overlayHeight)
         }, onCancel = {
             hideRegion()
             onCancel()
         })
         regionView = view
         runCatching { wm.addView(view, overlayParams()) }
-            .onFailure { onConfirm(RecordRegion.FULL) }
+            .onFailure { onConfirm(RecordRegion.FULL, 0, 0) }
     }
 
     fun hideRegion() {
@@ -261,7 +264,7 @@ class RecordOverlayHost(private val context: Context) {
 @SuppressLint("ViewConstructor")
 private class RegionSelectView(
     context: Context,
-    private val onConfirm: (RecordRegion) -> Unit,
+    private val onConfirm: (RecordRegion, Int, Int) -> Unit,
     private val onCancel: () -> Unit,
 ) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
@@ -300,10 +303,10 @@ private class RegionSelectView(
         }
         bar.addView(textButton(context.getString(R.string.record_region_cancel)) { onCancel() })
         bar.addView(textButton(context.getString(R.string.record_region_full)) {
-            onConfirm(RecordRegion.FULL)
+            confirm(RecordRegion.FULL)
         })
         bar.addView(textButton(context.getString(R.string.record_region_confirm)) {
-            onConfirm(currentRegion())
+            confirm(currentRegion())
         })
         addView(
             bar,
@@ -412,6 +415,10 @@ private class RegionSelectView(
         val w = width.coerceAtLeast(1).toFloat()
         val h = height.coerceAtLeast(1).toFloat()
         return RecordRegion(rect.left / w, rect.top / h, rect.right / w, rect.bottom / h).sanitized()
+    }
+
+    private fun confirm(region: RecordRegion) {
+        onConfirm(region, width.coerceAtLeast(0), height.coerceAtLeast(0))
     }
 
     private fun textButton(label: String, onClick: () -> Unit): Button = Button(context).apply {

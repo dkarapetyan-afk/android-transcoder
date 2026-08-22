@@ -29,6 +29,7 @@ import com.androidcompress.app.data.RecordAudioMode
 import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.encode.FfmpegMuxCommands
 import com.androidcompress.app.encode.RecordingCrop
+import com.androidcompress.app.encode.quoteArgs
 import com.androidcompress.app.util.Notifications
 import com.androidcompress.app.util.even
 import com.androidcompress.app.util.formatDuration
@@ -76,6 +77,11 @@ class ScreenRecordService : Service() {
     private var encodeSize: Pair<Int, Int> = 1280 to 720
     private var overlays: RecordOverlayHost? = null
     private var stopNotice: String? = null
+    private var regionOverlayWidth = 0
+    private var regionOverlayHeight = 0
+    private var plannedLiveCrop: RecordingCrop? = null
+    private var liveCropError: String? = null
+    private var pipeCoverDestPx = 0
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
@@ -133,6 +139,11 @@ class ScreenRecordService : Service() {
         options = RecordOptions.fromJson(intent.getStringExtra(EXTRA_OPTIONS)).resolvedForSdk(Build.VERSION.SDK_INT)
         usesMicrophone = options.audioMode.usesMicrophone
         overlays = RecordOverlayHost(this)
+        regionOverlayWidth = 0
+        regionOverlayHeight = 0
+        plannedLiveCrop = null
+        liveCropError = null
+        pipeCoverDestPx = 0
 
         startAsForeground(0)
         val manager = getSystemService(MediaProjectionManager::class.java)
@@ -179,11 +190,17 @@ class ScreenRecordService : Service() {
     private suspend fun awaitRegion(): RecordRegion? = suspendCancellableCoroutine { cont ->
         val host = overlays
         if (host == null || !canDrawOverlays(this)) {
+            regionOverlayWidth = 0
+            regionOverlayHeight = 0
             cont.resume(RecordRegion.FULL)
             return@suspendCancellableCoroutine
         }
         host.showRegion(
-            onConfirm = { region -> if (cont.isActive) cont.resume(region) },
+            onConfirm = { region, overlayWidth, overlayHeight ->
+                regionOverlayWidth = overlayWidth
+                regionOverlayHeight = overlayHeight
+                if (cont.isActive) cont.resume(region)
+            },
             onCancel = { if (cont.isActive) cont.resume(null) },
         )
         cont.invokeOnCancellation { host.hideRegion() }
@@ -192,6 +209,8 @@ class ScreenRecordService : Service() {
     private fun beginEncoder(id: String, projection: MediaProjection) {
         val full = captureSize(options.resolution)
         val liveCrop = options.region?.liveEncoderCrop(full.first, full.second)
+        plannedLiveCrop = liveCrop
+        liveCropError = null
         val sourceCoverPx = if (options.coverStatusBar) {
             StatusBarCover.sourcePixels(this, full.second)
         } else {
@@ -199,6 +218,7 @@ class ScreenRecordService : Service() {
         }
         val pipeCrop = liveCrop ?: RecordingCrop(0, 0, full.first, full.second).takeIf { sourceCoverPx > 0 }
         val coverDestPx = StatusBarCover.destPixels(sourceCoverPx, pipeCrop)
+        pipeCoverDestPx = coverDestPx
         val encW = liveCrop?.width ?: full.first
         val encH = liveCrop?.height ?: full.second
         encodeSize = full
@@ -211,7 +231,7 @@ class ScreenRecordService : Service() {
             recorder = rec
             var displaySurface = rec.surface
             if (pipeCrop != null) {
-                val pipe = runCatching {
+                val pipeResult = runCatching {
                     CropDisplayPipe.start(
                         rec.surface,
                         full.first,
@@ -219,7 +239,9 @@ class ScreenRecordService : Service() {
                         pipeCrop,
                         coverDestPx,
                     )
-                }.getOrNull()
+                }
+                val pipe = pipeResult.getOrNull()
+                liveCropError = pipeResult.exceptionOrNull()?.message
                 if (pipe != null) {
                     cropPipe = pipe
                     displaySurface = pipe.inputSurface
@@ -417,7 +439,11 @@ class ScreenRecordService : Service() {
         container().recording.markSaving()
         startAsForeground(container().recording.state.value.elapsedMs(), saving = true)
         RecordTileService.requestListening(this)
+        var didLiveCrop = liveCropped
+        var didLiveCover = liveCovered
         try {
+            didLiveCrop = liveCropped
+            didLiveCover = liveCovered
             stopEncoderPipeline()
             mediaProjection?.unregisterCallback(projectionCallback)
             mediaProjection?.stop()
@@ -425,8 +451,17 @@ class ScreenRecordService : Service() {
 
             if (id == null || video == null || !video.exists() || video.length() < 1024) {
                 val noVideo = getString(R.string.error_recording_no_video)
+                if (id != null) {
+                    writeRecordLog(
+                        id = id,
+                        liveApplied = didLiveCrop,
+                        softwareCrop = null,
+                        coverDestPx = 0,
+                        extra = "error=$noVideo",
+                    )
+                    container().jobs.updateStatus(id, JobStatus.FAILED, error = noVideo, finished = true)
+                }
                 container().recording.fail(noVideo)
-                if (id != null) container().jobs.updateStatus(id, JobStatus.FAILED, error = noVideo, finished = true)
                 return
             }
 
@@ -438,12 +473,12 @@ class ScreenRecordService : Service() {
             val usableMix = wav.takeIf { it != null && it.exists() && it.length() > 44 }
             val usableMic = micWav.takeIf { it != null && it.exists() && it.length() > 44 }
             val isolate = options.isolateAudioTracks && usableMix != null && usableMic != null
-            val crop = if (liveCropped) {
+            val crop = if (didLiveCrop) {
                 null
             } else {
                 options.region?.encoderCrop(encodeSize.first, encodeSize.second)
             }
-            val coverTopPx = if (liveCovered || !options.coverStatusBar) {
+            val coverTopPx = if (didLiveCover || !options.coverStatusBar) {
                 0
             } else {
                 StatusBarCover.destPixels(
@@ -478,8 +513,10 @@ class ScreenRecordService : Service() {
                 applyGain = false,
                 isolateTracks = isolate,
             )
+            var muxSuccess: Boolean? = null
             if (post != null) {
                 val muxResult = container().ffmpeg.encode(post, onLog = {}, onStats = {}).await()
+                muxSuccess = muxResult.success
                 if (muxResult.success && processed.exists() && processed.length() > 1024) {
                     video.delete()
                     finalFile = if (processed.renameTo(video)) video else processed
@@ -493,6 +530,16 @@ class ScreenRecordService : Service() {
 
             val uri = Uri.fromFile(finalFile)
             val probed = runCatching { container().probe.probe(uri) }.getOrNull()
+            writeRecordLog(
+                id = id,
+                liveApplied = didLiveCrop,
+                softwareCrop = crop,
+                coverDestPx = if (didLiveCover) pipeCoverDestPx else coverTopPx,
+                outputWidth = probed?.width,
+                outputHeight = probed?.height,
+                ffmpegCommand = post?.let(::quoteArgs),
+                muxSuccess = muxSuccess,
+            )
             val existing = container().jobs.get(id)
             val direct = options.directEncode
             var outputUri: String? = null
@@ -539,10 +586,17 @@ class ScreenRecordService : Service() {
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
-            container().recording.fail(t.message ?: getString(R.string.error_save_recording))
             if (id != null) {
+                writeRecordLog(
+                    id = id,
+                    liveApplied = didLiveCrop,
+                    softwareCrop = null,
+                    coverDestPx = if (didLiveCover) pipeCoverDestPx else 0,
+                    extra = "exception=${t.message}",
+                )
                 container().jobs.updateStatus(id, JobStatus.FAILED, error = t.message, finished = true)
             }
+            container().recording.fail(t.message ?: getString(R.string.error_save_recording))
         } finally {
             RecordTileService.requestListening(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -828,6 +882,45 @@ class ScreenRecordService : Service() {
             types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         }
         return types
+    }
+
+    private fun writeRecordLog(
+        id: String,
+        liveApplied: Boolean,
+        softwareCrop: RecordingCrop?,
+        coverDestPx: Int,
+        outputWidth: Int? = null,
+        outputHeight: Int? = null,
+        ffmpegCommand: String? = null,
+        muxSuccess: Boolean? = null,
+        extra: String? = null,
+    ) {
+        val capture = captureSize(options.resolution)
+        val text = buildString {
+            appendLine("jobId=$id")
+            appendLine(
+                RecordCaptureLog.build(
+                    captureWidth = capture.first,
+                    captureHeight = capture.second,
+                    encodeWidth = encodeSize.first,
+                    encodeHeight = encodeSize.second,
+                    overlayWidth = regionOverlayWidth,
+                    overlayHeight = regionOverlayHeight,
+                    region = options.region,
+                    liveCrop = plannedLiveCrop,
+                    softwareCrop = softwareCrop,
+                    liveApplied = liveApplied,
+                    liveError = liveCropError,
+                    coverDestPx = coverDestPx,
+                    outputWidth = outputWidth,
+                    outputHeight = outputHeight,
+                    ffmpegCommand = ffmpegCommand,
+                    muxSuccess = muxSuccess,
+                ),
+            )
+            extra?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+        }
+        runCatching { container().jobLogs.write(id, text) }
     }
 
     /**

@@ -12,7 +12,7 @@ These cannot be fully automated in this workspace.
 - Pause and Resume from the Record screen, the notification, the Quick Settings tile, and the optional floating bubble freeze the timer and omit paused time from the file. Stop still finalizes.
 - Countdown 3/5/10 waits after consent, then starts capture. The big number is not in the file.
 - Max length auto-stops and leaves a usable file. Low-storage auto-stop fires when free space is under 200 MB.
-- Region: after consent, drag the box and tap Record region. Overlay permission required. Output is cropped during capture (no second encode). If live crop fails, a software fallback still crops at stop. Full screen skips crop.
+- Region: after consent, drag the box and tap Record region. Overlay permission required. Output is cropped during capture (no second encode). If live crop fails, a software fallback still crops at stop. Full screen skips crop. Result → View log shows overlay size, the selected region, live vs software crop pixels, and `liveApplied`.
 - Camera inset appears in the recording; it is draggable. Front/rear, rectangle/round, and size apply. Hide inset while paused removes it from the video until resume. Needs camera + overlay permission.
 - Tap highlights: enable the Recording Compressor accessibility service, then record. Taps show ripples; a mouse/stylus shows a pointer. Laser is a red dot while the pointer is down. Draw on screen leaves yellow ink until stop. Disable the service when finished.
 - Record already compressed + HEVC/AV1 (when the chips appear) writes a gallery file and opens Result, skipping the compress screen. Auto-compress after record does not run. WebM capture writes VP8. 60 fps and a manual bitrate change the MediaRecorder settings.

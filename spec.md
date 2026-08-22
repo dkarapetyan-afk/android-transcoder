@@ -172,9 +172,9 @@ Routes: `home`, `record`, `compress/{jobId}`, `progress/{jobId}`, `result/{jobId
 | **Record** | Capture options, live timer, pause/resume, bookmarks, stop |
 | **Compress** | Presets, fit-to-size, engine, output, container, clip (when applicable), advanced, Start |
 | **Progress** | Current + queued jobs, pass label, cancel this / cancel all, batch chips for **queued** jobs only |
-| **Result** | Open, Share, Delete original, View log; sizes + bytes saved |
+| **Result** | Open, Share, Delete original, View log; sizes + bytes saved. Recordings write a job log (region crop pixels, live vs software crop). |
 | **Library** | Full job list, open by status, discard one, clear all |
-| **Log** | Encode log text |
+| **Log** | Encode or recording log text |
 | **Settings** | Engine, preset, remember advanced, auto-compress, delete original, stall timeouts, library access, hardware test, Gemini key |
 | **Hardware test** | 1-second encodes per listed encoder |
 | **About** | Privacy blurb, FFmpeg LGPL, Media3, HEVC notice |
@@ -227,7 +227,7 @@ Capture is MediaProjection + MediaRecorder. Consent is requested every session (
 | Countdown | 0, 3, 5, 10 (clamped 0–15); overlay number is not in the file |
 | Max length | 0–180 minutes; auto-stop leaves a usable file |
 | Low-storage auto-stop | Default on; fires after ≥3 s and ≥1 KB written when free space < 200 MB |
-| Region crop | Overlay box after consent; live crop aligned to 16 px; software crop at stop if live crop fails |
+| Region crop | Overlay box after consent; live crop aligned to 16 px; software crop at stop if live crop fails. Result → View log lists overlay size, normalized region, live/software crop pixels, whether live GL crop ran, and the FFmpeg command if a fallback crop ran. |
 | Camera inset | Front/rear, rect/round, S/M/L, draggable; optional hide while paused |
 | Floating bubble | Overlay pause/stop |
 | PiP controls | Pause / mark / stop in a system PiP window |
