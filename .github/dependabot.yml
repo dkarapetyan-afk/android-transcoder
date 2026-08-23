@@ -1,0 +1,46 @@
+# Weekly version updates for the Gradle catalog and GitHub Actions.
+# Media3, App Functions, and ffmpeg-kit stay manual (encode path / alpha / native).
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # First matching group wins. AGP, Kotlin, KSP, and the wrapper move together.
+      toolchain:
+        patterns:
+          - "com.android*"
+          - "org.jetbrains.kotlin:*"
+          - "org.jetbrains.kotlin.*"
+          - "com.google.devtools.ksp*"
+          - "gradle"
+      androidx:
+        patterns:
+          - "androidx*"
+        exclude-patterns:
+          - "androidx.media3*"
+          - "androidx.appfunctions*"
+      libraries:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "androidx.media3*"
+          - "androidx.appfunctions*"
+          - "dev.ffmpegkit-maintained:*"
+    ignore:
+      - dependency-name: "dev.ffmpegkit-maintained:ffmpeg-kit-full"
+      - dependency-name: "androidx.media3:*"
+      - dependency-name: "androidx.appfunctions:*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
