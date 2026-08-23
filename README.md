@@ -30,7 +30,7 @@ export ANDROID_HOME=$HOME/Android/Sdk
 
 The debug APK is written to `app/build/outputs/apk/debug/`.
 
-Release builds sign with `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` when those env vars are set. Otherwise they read `keystore.properties` at the repo root (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Neither `release.jks` nor `keystore.properties` is committed. If the keystore file or passwords are missing, `assembleRelease` still succeeds and writes an unsigned APK.
+Release builds sign with `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` when those env vars are set. Otherwise they read `keystore.properties` at the repo root (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Plaintext `release.jks` and `keystore.properties` are gitignored. Encrypted copies in `signing/` are committed; decrypt with `SIGNING_PASSPHRASE` (see [signing/README.md](signing/README.md)). If the keystore file or passwords are missing, `assembleRelease` still succeeds and writes an unsigned APK.
 
 ```bash
 ./gradlew :app:assembleRelease :app:bundleRelease
@@ -40,7 +40,7 @@ The release APK is `app/build/outputs/apk/release/` (`app-release.apk` when sign
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on `master`, pull requests, and manual dispatch. It uses JDK 17, installs Android SDK 37, then runs `assembleDebug`, `testDebugUnitTest`, `lintDebug`, and unsigned `assembleRelease`. The job does not read `release.jks` or `keystore.properties`. Device checks in [docs/manual-qa.md](docs/manual-qa.md) stay manual.
+GitHub Actions (`.github/workflows/ci.yml`) runs on `master`, pull requests, and manual dispatch. It uses JDK 17, installs Android SDK 37, then runs `assembleDebug`, `testDebugUnitTest`, `lintDebug`, and `assembleRelease`. On `master` and `workflow_dispatch` it decrypts `signing/*.enc` with the `SIGNING_PASSPHRASE` repository secret, signs the release APK/AAB, and uploads them as the `app-release` artifact. Pull requests stay unsigned so fork PRs never see the key. Device checks in [docs/manual-qa.md](docs/manual-qa.md) stay manual.
 
 ## App Functions (Android 16+)
 

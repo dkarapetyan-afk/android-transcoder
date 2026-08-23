@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      # CI has no keystore; assembleRelease writes an unsigned APK.
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
     steps:
       - name: Checkout
@@ -45,11 +44,49 @@ jobs:
           # API 37+ uses minor versions in sdkmanager (android-37 is not a package).
           packages: "tools platform-tools platforms;android-37.0"
 
-      - name: Grant Gradle wrapper execute permission
-        run: chmod +x gradlew
+      - name: Grant execute permission
+        run: chmod +x gradlew scripts/decrypt-signing.sh
 
-      - name: Assemble, unit test, lint, and unsigned release
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+      - name: Decrypt release signing
+        if: github.event_name != 'pull_request'
+        env:
+          SIGNING_PASSPHRASE: ${{ secrets.SIGNING_PASSPHRASE }}
+        run: |
+          if [ -z "$SIGNING_PASSPHRASE" ]; then
+            echo "SIGNING_PASSPHRASE secret is empty; assembleRelease will be unsigned."
+            echo "SIGNED_RELEASE=false" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          ./scripts/decrypt-signing.sh
+          echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
+
+      - name: Assemble, unit test, lint, and release
+        run: |
+          tasks=":app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease"
+          if [ "${SIGNED_RELEASE:-false}" = true ]; then
+            tasks="$tasks :app:bundleRelease"
+          fi
+          ./gradlew $tasks
+
+      - name: Verify signed release APK
+        if: env.SIGNED_RELEASE == 'true'
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -f "$apk"
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          apksigner="$(find "$sdk/build-tools" -name apksigner | sort | tail -1)"
+          "$apksigner" verify --print-certs "$apk"
+
+      - name: Upload signed release
+        if: success() && env.SIGNED_RELEASE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload reports on failure
         if: failure()

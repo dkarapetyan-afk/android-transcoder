@@ -29,9 +29,9 @@ The app records the screen and compresses video/audio **on the device**. It does
 | Media3 | 1.11.0 (transformer, effect, common, muxer) |
 | FFmpeg | `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.x, 16 KB pages, LGPL) |
 | App Functions | `androidx.appfunctions` 1.0.0-alpha10 |
-| CI | GitHub Actions (`.github/workflows/ci.yml`): debug APK, unit tests, lint, unsigned release |
+| CI | GitHub Actions (`.github/workflows/ci.yml`): debug APK, unit tests, lint, release APK. Signed APK/AAB on `master` / `workflow_dispatch` via encrypted `signing/*.enc` and the `SIGNING_PASSPHRASE` secret. |
 
-**Release signing.** Env vars `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` win; otherwise `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Missing keystore still produces an unsigned APK. `release.jks` and `keystore.properties` are not committed.
+**Release signing.** Env vars `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` win; otherwise `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Missing keystore still produces an unsigned APK. Plaintext `release.jks` and `keystore.properties` are gitignored. AES-256-CBC ciphertext is committed as `signing/release.jks.enc` and `signing/keystore.properties.enc`; decrypt with `SIGNING_PASSPHRASE`.
 
 **Packaging.** R8 minify + shrink resources on release. `usesCleartextTraffic` is false. JNI uses non-legacy packaging.
 

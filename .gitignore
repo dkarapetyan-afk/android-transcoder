@@ -15,6 +15,7 @@ session-id
 *.jks
 *.keystore
 keystore.properties
+# Encrypted copies in signing/*.enc are committed.
 *.dex
 *.class
 .kotlin
