@@ -5,18 +5,27 @@ import com.androidcompress.app.data.EncodeStats
 import com.androidcompress.app.data.EncoderCapabilities
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 
 class FfmpegKitGateway : FfmpegGateway {
 
     override suspend fun detectEncoders(): EncoderCapabilities {
-        val listing = suspendCancellableCoroutine { cont ->
-            val session = FFmpegKit.executeAsync("-hide_banner -encoders") { done ->
-                if (cont.isActive) cont.resume(done.output.orEmpty())
+        val listing: String = try {
+            withTimeout(DETECT_TIMEOUT_MS) {
+                suspendCancellableCoroutine { cont ->
+                    val session = FFmpegKit.executeAsync("-hide_banner -encoders") { done ->
+                        if (cont.isActive) cont.resume(done.output.orEmpty())
+                    }
+                    cont.invokeOnCancellation { runCatching { FFmpegKit.cancel(session.sessionId) } }
+                }
             }
-            cont.invokeOnCancellation { FFmpegKit.cancel(session.sessionId) }
+        } catch (e: TimeoutCancellationException) {
+            throw IllegalStateException("FFmpeg encoder listing timed out", e)
         }
         return EncoderListing.parse(listing)
     }
@@ -44,29 +53,17 @@ class FfmpegKitGateway : FfmpegGateway {
         )
         return object : EncodeSession {
             override val id: Long = session.sessionId
-            override suspend fun await(): EncodeResult = deferred.await()
+
+            override suspend fun await(): EncodeResult =
+                try {
+                    deferred.await()
+                } catch (e: CancellationException) {
+                    runCatching { FFmpegKit.cancel(session.sessionId) }
+                    throw e
+                }
+
             override fun cancel() {
                 runCatching { FFmpegKit.cancel(session.sessionId) }
-                runCatching { FFmpegKit.cancel() }
-                Thread({
-                    try {
-                        Thread.sleep(2_000)
-                    } catch (_: InterruptedException) {
-                        return@Thread
-                    }
-                    deferred.complete(
-                        EncodeResult(
-                            success = false,
-                            cancelled = true,
-                            outputPath = null,
-                            error = null,
-                            logs = "FFmpeg cancel requested",
-                        ),
-                    )
-                }, "ffmpeg-cancel").apply {
-                    isDaemon = true
-                    start()
-                }
             }
         }
     }
@@ -119,3 +116,5 @@ private fun com.arthenica.ffmpegkit.Session.toResult(): EncodeResult {
         },
     )
 }
+
+private const val DETECT_TIMEOUT_MS = 30_000L

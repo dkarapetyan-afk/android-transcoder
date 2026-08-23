@@ -54,9 +54,37 @@ interface JobDao {
 
     @Query("UPDATE compress_jobs SET status = 'CANCELLED', finishedAt = :now WHERE status = 'QUEUED'")
     suspend fun cancelAllQueued(now: Long)
+
+    @Query(
+        "UPDATE compress_jobs SET status = 'QUEUED', settingsJson = COALESCE(:settingsJson, settingsJson), " +
+            "queuedAt = :now, error = NULL, finishedAt = NULL " +
+            "WHERE id = :id AND status NOT IN ('QUEUED', 'RUNNING')",
+    )
+    suspend fun enqueueQueued(id: String, settingsJson: String?, now: Long): Int
+
+    @Query("UPDATE compress_jobs SET status = 'CANCELLED', finishedAt = :now WHERE id = :id AND status = 'QUEUED'")
+    suspend fun cancelQueued(id: String, now: Long): Int
+
+    @Query("UPDATE compress_jobs SET sourceDeleted = :deleted WHERE id = :id")
+    suspend fun markSourceDeleted(id: String, deleted: Boolean): Int
+
+    @Query(
+        "UPDATE compress_jobs SET status = :status, error = COALESCE(:error, error), " +
+            "outputUri = COALESCE(:outputUri, outputUri), outputBytes = COALESCE(:outputBytes, outputBytes), " +
+            "finishedAt = CASE WHEN :finished THEN :now ELSE finishedAt END WHERE id = :id",
+    )
+    suspend fun updateStatus(
+        id: String,
+        status: JobStatus,
+        error: String?,
+        outputUri: String?,
+        outputBytes: Long?,
+        finished: Boolean,
+        now: Long,
+    ): Int
 }
 
-@Database(entities = [CompressJob::class], version = 4, exportSchema = false)
+@Database(entities = [CompressJob::class], version = 4, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun jobDao(): JobDao
@@ -64,7 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         fun create(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "recording-compressor.db")
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2, 3)
                 .build()
     }
 }

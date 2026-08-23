@@ -612,6 +612,7 @@ class CompressService : Service() {
     }
 
     override fun onDestroy() {
+        session?.cancel()
         scope.cancel()
         releaseWakeLock()
         super.onDestroy()

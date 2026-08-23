@@ -15,36 +15,17 @@ class JobRepository(private val dao: JobDao) {
     suspend fun listActive(): List<CompressJob> = dao.listActive()
 
     suspend fun enqueue(id: String, settingsJson: String? = null) {
-        val current = dao.get(id) ?: return
-        if (current.status == JobStatus.QUEUED || current.status == JobStatus.RUNNING) return
-        dao.upsert(
-            current.copy(
-                status = JobStatus.QUEUED,
-                settingsJson = settingsJson ?: current.settingsJson,
-                queuedAt = System.currentTimeMillis(),
-                error = null,
-                finishedAt = null,
-            ),
-        )
+        dao.enqueueQueued(id, settingsJson, System.currentTimeMillis())
     }
 
     suspend fun cancelQueued(id: String) {
-        val current = dao.get(id) ?: return
-        if (current.status == JobStatus.QUEUED) {
-            dao.upsert(
-                current.copy(
-                    status = JobStatus.CANCELLED,
-                    finishedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
+        dao.cancelQueued(id, System.currentTimeMillis())
     }
 
     suspend fun cancelAllQueued() = dao.cancelAllQueued(System.currentTimeMillis())
 
     suspend fun markSourceDeleted(id: String, deleted: Boolean) {
-        val current = dao.get(id) ?: return
-        dao.upsert(current.copy(sourceDeleted = deleted))
+        dao.markSourceDeleted(id, deleted)
     }
 
     suspend fun updateStatus(
@@ -55,15 +36,6 @@ class JobRepository(private val dao: JobDao) {
         outputBytes: Long? = null,
         finished: Boolean = false,
     ) {
-        val current = dao.get(id) ?: return
-        dao.upsert(
-            current.copy(
-                status = status,
-                error = error ?: current.error,
-                outputUri = outputUri ?: current.outputUri,
-                outputBytes = outputBytes ?: current.outputBytes,
-                finishedAt = if (finished) System.currentTimeMillis() else current.finishedAt,
-            ),
-        )
+        dao.updateStatus(id, status, error, outputUri, outputBytes, finished, System.currentTimeMillis())
     }
 }
