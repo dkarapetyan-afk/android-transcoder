@@ -29,6 +29,7 @@ The app records the screen and compresses video/audio **on the device**. It does
 | Media3 | 1.11.0 (transformer, effect, common, muxer) |
 | FFmpeg | `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.x, 16 KB pages, LGPL) |
 | App Functions | `androidx.appfunctions` 1.0.0-alpha10 |
+| CI | GitHub Actions (`.github/workflows/ci.yml`): debug APK, unit tests, lint, unsigned release |
 
 **Release signing.** Env vars `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` win; otherwise `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Missing keystore still produces an unsigned APK. `release.jks` and `keystore.properties` are not committed.
 

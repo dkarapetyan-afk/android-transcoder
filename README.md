@@ -1,5 +1,7 @@
 # Recording Compressor
 
+[![CI](https://github.com/dkarapetyan-afk/android-transcoder/actions/workflows/ci.yml/badge.svg)](https://github.com/dkarapetyan-afk/android-transcoder/actions/workflows/ci.yml)
+
 Android app that records the screen and compresses recordings on-device with FFmpeg or the device encoder (Media3 Transformer).
 
 - Kotlin, Jetpack Compose, Material 3
@@ -35,6 +37,10 @@ Release builds sign with `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and 
 ```
 
 The release APK is `app/build/outputs/apk/release/` (`app-release.apk` when signed, `app-release-unsigned.apk` otherwise). The Play upload is `app/build/outputs/bundle/release/`.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on `master`, pull requests, and manual dispatch. It uses JDK 17, installs Android SDK 37, then runs `assembleDebug`, `testDebugUnitTest`, `lintDebug`, and unsigned `assembleRelease`. The job does not read `release.jks` or `keystore.properties`. Device checks in [docs/manual-qa.md](docs/manual-qa.md) stay manual.
 
 ## App Functions (Android 16+)
 
