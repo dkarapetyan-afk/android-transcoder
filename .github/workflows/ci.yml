@@ -42,7 +42,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "tools platform-tools platforms;android-37"
+          # API 37+ uses minor versions in sdkmanager (android-37 is not a package).
+          packages: "tools platform-tools platforms;android-37.0"
 
       - name: Grant Gradle wrapper execute permission
         run: chmod +x gradlew
