@@ -137,6 +137,7 @@ UI (Compose screens)
 | `clipStartMs` / `clipEndMs` | Applied for Media3, audio-only, and combine |
 | `targetSizePreset` / `targetSizeBytes` | Fit-to-size |
 | `twoPass` | FFmpeg 2-pass VBR (ignored by Media3 and audio-only) |
+| `grayscale` | Black-and-white. FFmpeg `format=gray` (YUV imports and RGB stills). Combine jobs put it on `[0:v]…[v]` via `-filter_complex` so the soundtrack input cannot bypass it. Media3 `RgbFilter` (including still+audio). Ignored by audio-only. Also merged into extra `-vf` and command overrides. |
 
 **Preset table**
 
@@ -232,6 +233,7 @@ Capture is MediaProjection + MediaRecorder. Consent is requested every session (
 | Floating bubble | Overlay pause/stop |
 | PiP controls | Pause / mark / stop in a system PiP window |
 | Cover status bar | Black bar burned into captured frames (live GL, FFmpeg `drawbox` if that path fails). Overlay windows cannot sit above system UI, so this does **not** use “Display over other apps.” OS indicators still show on the phone. |
+| Grayscale | Rec.709 luma in the live GL pipe (same path as region crop / status-bar cover; the pipe also runs for grayscale alone). FFmpeg `format=gray` at stop if live GL fails. RECORD jobs stamp `EncodeSettings.grayscale` so Compress starts with the same toggle. Direct encode writes gray to the gallery file. Result → View log lists `grayscale`, `liveGray`, and `softwareGray`. |
 | Quiet notification | FGS notice at `IMPORTANCE_MIN` (cannot be removed) |
 | Taps / laser / ink | Accessibility service; ripples, red laser while pointer down, yellow ink until stop |
 | Bookmarks | Off, Chapters (`FFMETADATA1`), or Split jobs (extra READY/SUCCEEDED rows, min segment 400 ms) |
@@ -255,7 +257,7 @@ When audio is Both **and** Isolate tracks is on:
 - Later FFmpeg video encodes map **all** audio streams (`-map 0:a`).
 - Media3 Transformer muxes one audio stream natively; if the source has more than one audio track, a separate extract → encode → mux pass keeps every track.
 
-If isolate is off, mic + internal are mixed live into one WAV and muxed without re-encoding video (unless a software region crop needs a video re-encode).
+If isolate is off, mic + internal are mixed live into one WAV and muxed without re-encoding video (unless a software region crop, status-bar cover, or grayscale needs a video re-encode).
 
 ### 7.4 Auto-compress after record
 
@@ -282,10 +284,10 @@ Command built by `FfmpegCommandBuilder`. Inputs resolved through FFmpeg-Kit SAF 
 **Other FFmpeg behavior**
 
 - Software paths force CFR `-r` (screen recordings at 90k tbr otherwise drop/duplicate). Hardware mediacodec does not get `-r` unless an FPS cap requires it (avoids a hang after the first stats tick).
-- Scale uses even dimensions, bt709 TV range. Tone-map / WebM / yuv420p add `format=yuv420p`.
+- Scale uses even dimensions, bt709 TV range. Grayscale adds `format=gray` after scale. Tone-map / WebM / yuv420p add `format=yuv420p`. Combine (picture or video + soundtrack) uses `-filter_complex [0:v]…[v]` and maps `[v]`; a lone `-vf` plus `-map 0:v:0` can leave the picture unfiltered. Extra `-vf` and command overrides get grayscale merged into the last video filter or the `[0:v]` chain.
 - CBR (and fit-to-size) sets min/maxrate on libvpx/libaom, or maxrate+bufsize on other encoders. Skipped on 2-pass.
 - HEVC tagged `hvc1`; AV1 in MP4 tagged `av01`.
-- Audio: AAC in MP4, `libopus` in WebM. Volume filter when not 100%. Mute drops audio. Combine maps `0:v:0` + `1:a:0`.
+- Audio: AAC in MP4, `libopus` in WebM. Volume filter when not 100%. Mute drops audio. Combine maps `[v]` (filtered picture) or `0:v:0` plus `1:a:0`.
 - Faststart on MP4.
 - Extra args inserted before the output path.
 
@@ -305,10 +307,10 @@ Hardware MediaCodec via Transformer (same idea as Compressor Edge).
 
 - Video MIME: AVC, HEVC, VP8, VP9, AV1.
 - Audio MIME: AAC or Opus.
-- Scale, frame-rate cap, clip, volume, CBR preference, I-frame interval, H.264 profile, HDR tone-map, B-frames, still-image (frame rate required so ImageAssetLoader does not crash).
+- Scale, frame-rate cap, clip, volume, CBR preference, I-frame interval, H.264 profile, HDR tone-map, B-frames, grayscale (`RgbFilter.createGrayscaleFilter()`), still-image (frame rate required so ImageAssetLoader does not crash).
 - WebM uses a wrapped `WebmMuxer` that supplies missing language / Opus CodecPrivate and swallows unsupported metadata.
 - Fallback: WebM → VP9; MP4 → H.264. AV1 Media3 failure falls back that way.
-- 2-pass is ignored.
+- 2-pass is ignored. Grayscale is applied.
 
 ### 8.3 Clip window
 
@@ -623,7 +625,7 @@ About includes FFmpeg/LGPL, Media3, and HEVC notices.
 
 ## 22. Unit tests (implemented)
 
-Covered areas include: FFmpeg command builder (including `/dev/null` pass 1, fps in vf, stats_period), 2-pass support, extra-args and command-template sanitizers, fit-to-size bitrate, stall `toMs`, progress dump parsing, session “nothing encoded”, batch recipes, encode queue, Media3 planner and multi-audio survival, WebM muxer workarounds, combine pairing, storage reserve, job cache/SAF names, record options JSON, live mixer, bookmarks, agent wait clamp, Gemini reply parse, live-update chip math, share MIME filters, history policy, hardware target list.
+Covered areas include: FFmpeg command builder (including `/dev/null` pass 1, fps in vf, stats_period, grayscale `format=gray`, combine `filter_complex`), 2-pass support, extra-args and command-template sanitizers, fit-to-size bitrate, stall `toMs`, progress dump parsing, session “nothing encoded”, batch recipes, encode queue, Media3 planner and multi-audio survival, WebM muxer workarounds, combine pairing, storage reserve, job cache/SAF names, record options JSON, live mixer, bookmarks, capture log (crop/grayscale), agent wait clamp, Gemini reply parse, live-update chip math, share MIME filters, history policy, hardware target list.
 
 Device-only checks live in `docs/manual-qa.md` (MediaProjection, QS tile, PiP, dual-track, App Functions on device, etc.).
 

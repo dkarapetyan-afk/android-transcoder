@@ -44,6 +44,7 @@ class BatchQueueSettingsTest {
             clipStartMs = 1_000,
             clipEndMs = 5_000,
             twoPass = true,
+            grayscale = true,
             targetSizePreset = TargetSizePreset.DISCORD,
             targetSizeBytes = 10L shl 20,
         )
@@ -60,6 +61,7 @@ class BatchQueueSettingsTest {
         assertEquals(1_000L, next.clipStartMs)
         assertEquals(5_000L, next.clipEndMs)
         assertTrue(next.twoPass)
+        assertTrue(next.grayscale)
         assertEquals(TargetSizePreset.OFF, next.targetSizePreset)
         assertEquals(null, next.targetSizeBytes)
     }

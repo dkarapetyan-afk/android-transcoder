@@ -256,14 +256,20 @@ object FfmpegCommandBuilder {
         if (needsScale) {
             vf += "scale=$outW:$outH:in_color_matrix=bt709:out_color_matrix=bt709:in_range=tv:out_range=tv"
         }
+        if (settings.grayscale) vf += FfmpegMuxCommands.GRAYSCALE_FILTER
         if (toneMap || settings.usesWebm() || pixFmt == "yuv420p") vf += "format=yuv420p"
         if (pixFmt == "nv12") vf += "format=nv12"
         // libvpx 2-pass needs CFR timestamps before the encoder. `-r` alone with
         // `-f null` can dup/drop every frame and report `nothing was encoded`.
         if (twoPass && needsFps) vf += "fps=$fpsOut"
-        if (vf.isNotEmpty()) {
+        val useComplex = combine && vf.isNotEmpty()
+        if (useComplex) {
+            // Two inputs: `-vf` + `-map 0:v:0` can leave the picture unfiltered.
+            args += listOf("-filter_complex", "[0:v]${vf.joinToString(",")}[v]")
+        } else if (vf.isNotEmpty()) {
             args += listOf("-vf", vf.joinToString(","))
         }
+        val videoMap = if (useComplex) "[v]" else "0:v:0"
         if (needsFps) {
             args += listOf("-r", fpsOut.toString())
         }
@@ -326,8 +332,11 @@ object FfmpegCommandBuilder {
         val firstPassArgs = if (twoPass) {
             val pass1 = args.toMutableList()
             pass1 += listOf("-pass", "1", "-passlogfile", logPrefix)
-            pass1 += listOf("-map", "0:v:0", "-an", "-f", "null", TWO_PASS_NULL_OUTPUT)
-            ExtraArgsSanitizer.insert(pass1, settings.ffmpegExtraArgs)
+            pass1 += listOf("-map", videoMap, "-an", "-f", "null", TWO_PASS_NULL_OUTPUT)
+            FfmpegMuxCommands.ensureGrayscale(
+                ExtraArgsSanitizer.insert(pass1, settings.ffmpegExtraArgs),
+                settings.grayscale,
+            )
         } else {
             null
         }
@@ -338,7 +347,7 @@ object FfmpegCommandBuilder {
             args += listOf("-filter:a", "volume=$volume")
         }
         if (combine) {
-            args += listOf("-map", "0:v:0")
+            args += listOf("-map", videoMap)
             if (settings.audio != AudioOption.MUTE) {
                 args += listOf("-map", "1:a:0")
             }
@@ -358,7 +367,10 @@ object FfmpegCommandBuilder {
         }
         args += output
         return EncodePlan(
-            args = ExtraArgsSanitizer.insert(args, settings.ffmpegExtraArgs),
+            args = FfmpegMuxCommands.ensureGrayscale(
+                ExtraArgsSanitizer.insert(args, settings.ffmpegExtraArgs),
+                settings.grayscale,
+            ),
             videoEncoder = encoder,
             pixFmt = pixFmt,
             outputHeight = outH,

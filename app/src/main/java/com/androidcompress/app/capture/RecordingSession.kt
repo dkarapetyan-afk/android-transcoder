@@ -35,7 +35,9 @@ object RecordingSession {
                 width = 0,
                 height = 0,
                 settingsJson = SettingsJson.encode(
-                    EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine),
+                    EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine).copy(
+                        grayscale = options.grayscale,
+                    ),
                 ),
                 error = null,
                 createdAt = System.currentTimeMillis(),

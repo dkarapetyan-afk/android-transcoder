@@ -70,6 +70,7 @@ object FfmpegMuxCommands {
         containerWebm: Boolean = false,
         applyGain: Boolean = true,
         isolateTracks: Boolean = false,
+        grayscale: Boolean = false,
     ): List<String>? {
         val hasInternal = !internalWav.isNullOrBlank()
         val hasMicWav = !micWav.isNullOrBlank()
@@ -80,7 +81,7 @@ object FfmpegMuxCommands {
         val micVol = applyGain && !gainIsUnity(micGainPercent)
         val intVol = applyGain && !gainIsUnity(internalGainPercent)
         val isolate = isolateTracks && hasInternal && hasMicWav
-        val videoFilter = buildVideoFilter(cropOn, coverPx)
+        val videoFilter = buildVideoFilter(cropOn, coverPx, grayscale)
         val vEncode = videoFilter != null
         val needsWork = videoFilter != null ||
             hasInternal ||
@@ -251,8 +252,13 @@ object FfmpegMuxCommands {
 
     const val TRACK_TITLE_VOICE = "Voice"
     const val TRACK_TITLE_SYSTEM = "System"
+    /**
+     * Works on YUV imports and RGB stills (combine picture + audio).
+     * `hue=s=0` skips planar YUV; `lutyuv` skips RGB JPEGs/PNGs.
+     */
+    const val GRAYSCALE_FILTER = "format=gray"
 
-    fun buildVideoFilter(crop: RecordingCrop?, coverTopPx: Int): String? {
+    fun buildVideoFilter(crop: RecordingCrop?, coverTopPx: Int, grayscale: Boolean = false): String? {
         val parts = buildList {
             if (crop != null && crop.isUsable) {
                 add("crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}")
@@ -260,8 +266,54 @@ object FfmpegMuxCommands {
             if (coverTopPx > 0) {
                 add("drawbox=x=0:y=0:w=iw:h=$coverTopPx:color=black:t=fill")
             }
+            if (grayscale) add(GRAYSCALE_FILTER)
         }
         return parts.takeIf { it.isNotEmpty() }?.joinToString(",")
+    }
+
+    fun hasGrayscaleFilter(vf: String): Boolean {
+        if (vf.isBlank()) return false
+        return vf.contains(GRAYSCALE_FILTER) ||
+            vf.contains("hue=s=0") ||
+            vf.split(',').any { it.trim().startsWith("format=gray") }
+    }
+
+    /**
+     * Make sure grayscale is on the video filter FFmpeg will actually run.
+     * Extra `-vf` / command overrides replace an earlier filter graph, so this
+     * appends to the last `-vf`/`-filter:v` instead of adding a second flag.
+     */
+    fun ensureGrayscale(args: List<String>, enabled: Boolean): List<String> {
+        if (!enabled || args.isEmpty() || args.contains("-vn")) return args
+        val vfFlags = setOf("-vf", "-filter:v")
+        val valueIdxs = args.indices.mapNotNull { i ->
+            if (args[i] in vfFlags && i + 1 < args.size && !args[i + 1].startsWith("-")) i + 1 else null
+        }
+        if (valueIdxs.isNotEmpty()) {
+            val last = valueIdxs.last()
+            if (hasGrayscaleFilter(args[last])) return args
+            return args.toMutableList().also { it[last] = "${args[last]},$GRAYSCALE_FILTER" }
+        }
+        val fcIdx = args.indexOf("-filter_complex")
+        if (fcIdx >= 0 && fcIdx + 1 < args.size && !args[fcIdx + 1].startsWith("-")) {
+            val fc = args[fcIdx + 1]
+            if (hasGrayscaleFilter(fc)) return args
+            return args.toMutableList().also { it[fcIdx + 1] = appendGrayscaleToVideoChain(fc) }
+        }
+        val at = args.lastIndex.coerceAtLeast(0)
+        return args.toMutableList().also {
+            it.addAll(at, listOf("-vf", GRAYSCALE_FILTER))
+        }
+    }
+
+    internal fun appendGrayscaleToVideoChain(filterComplex: String): String {
+        val match = Regex("\\[0:v]([^;]*?)(\\[v])").find(filterComplex)
+        if (match != null) {
+            val filters = match.groupValues[1].trim().trim(',')
+            val inserted = if (filters.isEmpty()) GRAYSCALE_FILTER else "$filters,$GRAYSCALE_FILTER"
+            return filterComplex.replaceRange(match.range, "[0:v]$inserted[v]")
+        }
+        return filterComplex
     }
 
     private fun videoEncode(encoder: String, bitrateKbps: Int, frameRate: Int = 30): List<String> = listOf(

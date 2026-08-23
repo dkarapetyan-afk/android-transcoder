@@ -18,6 +18,9 @@ These cannot be fully automated in this workspace.
 - Record already compressed + HEVC/AV1 (when the chips appear) writes a gallery file and opens Result, skipping the compress screen. Auto-compress after record does not run. WebM capture writes VP8. 60 fps and a manual bitrate change the MediaRecorder settings.
 - Picture-in-Picture: turn on Pop-up controls, start recording, press Home. A small window has pause, mark, and stop. The Record screen is not required after capture starts.
 - Cover status bar hides notifications and privacy dots *in the video* (black bar on the file, not an overlay). Android still shows the green/orange indicators to the user. Does not need “Display over other apps.” Quiet notification keeps the required FGS notice at minimum importance; it cannot be removed.
+- Grayscale on Record: full-screen and region clips are black-and-white in the file. Result → View log shows `grayscale=true` and `liveGray=true` (or `softwareGray=true` if live GL failed). Direct encode writes a gray gallery file.
+- Grayscale on Compress (Home import / Share, FFmpeg or Device): turn the switch on, start, output is black-and-white. A color recording with Compress grayscale on is also gray. Extra FFmpeg `-vf` (for example hflip) must still be gray. Audio-only hides the switch.
+- Grayscale on Combine (photo + audio, or video + audio) on FFmpeg and Device: picture is black-and-white, soundtrack is unchanged. A JPEG/PNG still must be gray, not the original color.
 - Bookmarks: Mark from the notification, bubble, Record screen, or PiP. Chapters writes FFMETADATA chapters. Split jobs creates extra READY/SUCCEEDED rows for each segment.
 - Quick Settings tile: add Record screen. Inactive tap opens capture consent using last options. Active tap pauses/resumes. Long-press opens the Record screen.
 - Compress a file opens one system picker; a video and an audio file both reach the compress screen.

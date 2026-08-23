@@ -174,5 +174,76 @@ class FfmpegMuxCommandsTest {
             FfmpegMuxCommands.buildVideoFilter(RecordingCrop(10, 20, 640, 360), 0),
         )
         assertEquals(null, FfmpegMuxCommands.buildVideoFilter(null, 0))
+        assertEquals(
+            FfmpegMuxCommands.GRAYSCALE_FILTER,
+            FfmpegMuxCommands.buildVideoFilter(null, 0, grayscale = true),
+        )
+        assertEquals(
+            "crop=640:360:10:20,drawbox=x=0:y=0:w=iw:h=40:color=black:t=fill,${FfmpegMuxCommands.GRAYSCALE_FILTER}",
+            FfmpegMuxCommands.buildVideoFilter(RecordingCrop(10, 20, 640, 360), 40, grayscale = true),
+        )
+    }
+
+    @Test
+    fun recordingPostProcessGrayscaleReencodes() {
+        val args = FfmpegMuxCommands.recordingPostProcess(
+            videoPath = "/v.mp4",
+            outputPath = "/out.mp4",
+            grayscale = true,
+            videoEncoder = "libopenh264",
+            videoBitrateKbps = 2500,
+        )!!
+        assertEquals(FfmpegMuxCommands.GRAYSCALE_FILTER, args[args.indexOf("-vf") + 1])
+        assertEquals("libopenh264", args[args.indexOf("-c:v") + 1])
+        assertFalse(args[args.indexOf("-vf") + 1].contains(' '))
+    }
+
+    @Test
+    fun ensureGrayscaleMergesIntoLastVf() {
+        val withVf = FfmpegMuxCommands.ensureGrayscale(
+            listOf("-y", "-i", "in.mp4", "-vf", "hflip", "-c:v", "mpeg4", "out.mp4"),
+            enabled = true,
+        )
+        assertEquals("hflip,${FfmpegMuxCommands.GRAYSCALE_FILTER}", withVf[withVf.indexOf("-vf") + 1])
+        val already = FfmpegMuxCommands.ensureGrayscale(withVf, enabled = true)
+        assertEquals(withVf, already)
+        val laterVfWins = FfmpegMuxCommands.ensureGrayscale(
+            listOf(
+                "-y", "-i", "in.mp4",
+                "-vf", "scale=1280:720,${FfmpegMuxCommands.GRAYSCALE_FILTER}",
+                "-c:v", "mpeg4",
+                "-vf", "hflip",
+                "out.mp4",
+            ),
+            enabled = true,
+        )
+        assertEquals("hflip,${FfmpegMuxCommands.GRAYSCALE_FILTER}", laterVfWins[laterVfWins.lastIndexOf("-vf") + 1])
+        val missing = FfmpegMuxCommands.ensureGrayscale(
+            listOf("-y", "-i", "in.mp4", "-c:v", "mpeg4", "out.mp4"),
+            enabled = true,
+        )
+        assertEquals(FfmpegMuxCommands.GRAYSCALE_FILTER, missing[missing.indexOf("-vf") + 1])
+        assertEquals("out.mp4", missing.last())
+        val audio = FfmpegMuxCommands.ensureGrayscale(
+            listOf("-y", "-i", "in.mp4", "-vn", "-c:a", "aac", "out.m4a"),
+            enabled = true,
+        )
+        assertFalse(audio.contains("-vf"))
+        assertFalse(FfmpegMuxCommands.ensureGrayscale(audio, enabled = false).contains("-vf"))
+        val complex = FfmpegMuxCommands.ensureGrayscale(
+            listOf(
+                "-y", "-i", "cover.jpg", "-i", "song.m4a",
+                "-filter_complex", "[0:v]scale=1280:720:in_color_matrix=bt709:out_color_matrix=bt709:in_range=tv:out_range=tv,format=yuv420p[v]",
+                "-map", "[v]", "-map", "1:a:0",
+                "out.mp4",
+            ),
+            enabled = true,
+        )
+        val fc = complex[complex.indexOf("-filter_complex") + 1]
+        assertTrue(fc.contains(FfmpegMuxCommands.GRAYSCALE_FILTER))
+        assertTrue(fc.startsWith("[0:v]"))
+        assertTrue(fc.endsWith("[v]"))
+        assertFalse(fc.contains(' '))
+        assertEquals(complex, FfmpegMuxCommands.ensureGrayscale(complex, enabled = true))
     }
 }

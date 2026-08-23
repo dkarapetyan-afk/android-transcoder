@@ -303,12 +303,15 @@ class CompressService : Service() {
         }
         try {
             if (settings.ffmpegCommandOverride.isNotBlank()) {
-                val args = FfmpegCommandTemplate.materialize(
-                    settings.ffmpegCommandOverride,
-                    ffmpegInput,
-                    output.absolutePath,
-                    ffmpegAudio,
-                ).getOrThrow()
+                val args = FfmpegMuxCommands.ensureGrayscale(
+                    FfmpegCommandTemplate.materialize(
+                        settings.ffmpegCommandOverride,
+                        ffmpegInput,
+                        output.absolutePath,
+                        ffmpegAudio,
+                    ).getOrThrow(),
+                    settings.grayscale && !settings.audioOutput(source.hasVideo),
+                )
                 log.appendLine("using edited command template")
                 return executePlan(jobId, source, settings, plan.copy(args = args, firstPassArgs = null), log)
             }

@@ -579,6 +579,37 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
+    fun grayscaleAddsLutyuvFilter() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(grayscale = true)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
+        val vf = plan.args[plan.args.indexOf("-vf") + 1]
+        assertTrue(vf.contains(FfmpegMuxCommands.GRAYSCALE_FILTER))
+        assertFalse(vf.contains(' '))
+        val audio = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.m4a",
+            settings.copy(output = OutputMode.AUDIO),
+            source,
+            hardwareCaps,
+        )
+        assertFalse(audio.args.contains("-vf"))
+        assertFalse(audio.args.contains(FfmpegMuxCommands.GRAYSCALE_FILTER))
+    }
+
+    @Test
+    fun extraVfDoesNotDropGrayscale() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            grayscale = true,
+            ffmpegExtraArgs = "-vf hflip",
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
+        val lastVf = plan.args[plan.args.lastIndexOf("-vf") + 1]
+        assertTrue(lastVf.contains("hflip"))
+        assertTrue(lastVf.contains(FfmpegMuxCommands.GRAYSCALE_FILTER))
+        assertEquals("out.mp4", plan.args.last())
+    }
+
+    @Test
     fun toneMapAddsRec709() {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(hdrMode = HdrMode.TONE_MAP)
         val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
@@ -609,10 +640,14 @@ class FfmpegCommandBuilderTest {
         assertEquals("30", plan.args[plan.args.indexOf("-framerate") + 1])
         val inputs = plan.args.withIndex().filter { it.value == "-i" }.map { plan.args[it.index + 1] }
         assertEquals(listOf("cover.jpg", "song.m4a"), inputs)
-        assertEquals("0:v:0", plan.args[plan.args.indexOf("-map") + 1])
+        assertEquals("[v]", plan.args[plan.args.indexOf("-map") + 1])
         assertTrue(plan.args.contains("1:a:0"))
         assertTrue(plan.args.contains("-shortest"))
         assertEquals("45.000", plan.args[plan.args.lastIndexOf("-t") + 1])
+        val fc = plan.args[plan.args.indexOf("-filter_complex") + 1]
+        assertTrue(fc.startsWith("[0:v]"))
+        assertTrue(fc.endsWith("[v]"))
+        assertFalse(fc.contains(' '))
     }
 
     @Test
@@ -629,9 +664,48 @@ class FfmpegCommandBuilderTest {
         val inputs = plan.args.withIndex().filter { it.value == "-i" }.map { plan.args[it.index + 1] }
         assertEquals(listOf("clip.mp4", "song.m4a"), inputs)
         assertFalse(plan.args.contains("-loop"))
-        assertEquals("0:v:0", plan.args[plan.args.indexOf("-map") + 1])
+        assertEquals("[v]", plan.args[plan.args.indexOf("-map") + 1])
         assertTrue(plan.args.contains("1:a:0"))
         assertTrue(plan.args.contains("-shortest"))
+        val fc = plan.args[plan.args.indexOf("-filter_complex") + 1]
+        assertTrue(fc.startsWith("[0:v]"))
+        assertTrue(fc.endsWith("[v]"))
+    }
+
+    @Test
+    fun combineGrayscaleFiltersThePictureStream() {
+        val gray = EncodeSettings.forPreset(Preset.BALANCED).copy(grayscale = true)
+        val still = source.copy(
+            stillImage = true,
+            audioUri = "content://audio",
+            hasAudio = true,
+            durationMs = 12_000,
+        )
+        val stillPlan = FfmpegCommandBuilder.build(
+            "cover.jpg",
+            "out.mp4",
+            gray,
+            still,
+            hardwareCaps,
+            audioInput = "song.m4a",
+        )
+        val stillFc = stillPlan.args[stillPlan.args.indexOf("-filter_complex") + 1]
+        assertTrue(stillFc.contains(FfmpegMuxCommands.GRAYSCALE_FILTER))
+        assertEquals("[v]", stillPlan.args[stillPlan.args.indexOf("-map") + 1])
+        assertTrue(stillPlan.args.contains("1:a:0"))
+        val mixed = source.copy(audioUri = "content://audio", hasAudio = true)
+        val videoPlan = FfmpegCommandBuilder.build(
+            "clip.mp4",
+            "out.mp4",
+            gray,
+            mixed,
+            hardwareCaps,
+            audioInput = "song.m4a",
+        )
+        val videoFc = videoPlan.args[videoPlan.args.indexOf("-filter_complex") + 1]
+        assertTrue(videoFc.contains(FfmpegMuxCommands.GRAYSCALE_FILTER))
+        assertEquals("[v]", videoPlan.args[videoPlan.args.indexOf("-map") + 1])
+        assertFalse(videoPlan.args.contains("-vf"))
     }
 
     @Test

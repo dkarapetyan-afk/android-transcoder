@@ -65,6 +65,7 @@ class ScreenRecordService : Service() {
     private var micAudioFile: File? = null
     private var liveCropped = false
     private var liveCovered = false
+    private var liveGray = false
     private var jobId: String? = null
     private var ticker: Job? = null
     private var sessionJob: Job? = null
@@ -216,7 +217,11 @@ class ScreenRecordService : Service() {
         } else {
             0
         }
-        val pipeCrop = liveCrop ?: RecordingCrop(0, 0, full.first, full.second).takeIf { sourceCoverPx > 0 }
+        val pipeCrop = when {
+            liveCrop != null -> liveCrop
+            sourceCoverPx > 0 || options.grayscale -> RecordingCrop(0, 0, full.first, full.second)
+            else -> null
+        }
         val coverDestPx = StatusBarCover.destPixels(sourceCoverPx, pipeCrop)
         pipeCoverDestPx = coverDestPx
         val encW = liveCrop?.width ?: full.first
@@ -224,6 +229,7 @@ class ScreenRecordService : Service() {
         encodeSize = full
         liveCropped = false
         liveCovered = false
+        liveGray = false
         val file = container().inputs.recordOutputFile(id, options.outputExtension)
         outputFile = file
         try {
@@ -238,6 +244,7 @@ class ScreenRecordService : Service() {
                         full.second,
                         pipeCrop,
                         coverDestPx,
+                        grayscale = options.grayscale,
                     )
                 }
                 val pipe = pipeResult.getOrNull()
@@ -247,6 +254,7 @@ class ScreenRecordService : Service() {
                     displaySurface = pipe.inputSurface
                     liveCropped = liveCrop != null
                     liveCovered = coverDestPx > 0
+                    liveGray = options.grayscale
                     if (liveCrop != null) encodeSize = encW to encH
                 } else {
                     runCatching { rec.reset() }
@@ -256,6 +264,7 @@ class ScreenRecordService : Service() {
                     displaySurface = fullRec.surface
                     liveCropped = false
                     liveCovered = false
+                    liveGray = false
                     encodeSize = full
                 }
             }
@@ -441,9 +450,11 @@ class ScreenRecordService : Service() {
         RecordTileService.requestListening(this)
         var didLiveCrop = liveCropped
         var didLiveCover = liveCovered
+        var didLiveGray = liveGray
         try {
             didLiveCrop = liveCropped
             didLiveCover = liveCovered
+            didLiveGray = liveGray
             stopEncoderPipeline()
             mediaProjection?.unregisterCallback(projectionCallback)
             mediaProjection?.stop()
@@ -486,6 +497,7 @@ class ScreenRecordService : Service() {
                     crop,
                 )
             }
+            val softwareGray = options.grayscale && !didLiveGray
             val caps = runCatching { container().encoderCapabilities() }.getOrNull()
             val cropEncoder = when {
                 options.usesWebm && caps?.hasLibvpxVp9 == true -> "libvpx-vp9"
@@ -512,6 +524,7 @@ class ScreenRecordService : Service() {
                 containerWebm = options.usesWebm,
                 applyGain = false,
                 isolateTracks = isolate,
+                grayscale = softwareGray,
             )
             var muxSuccess: Boolean? = null
             if (post != null) {
@@ -539,6 +552,8 @@ class ScreenRecordService : Service() {
                 outputHeight = probed?.height,
                 ffmpegCommand = post?.let(::quoteArgs),
                 muxSuccess = muxSuccess,
+                liveGray = didLiveGray,
+                softwareGray = softwareGray && post != null,
             )
             val existing = container().jobs.get(id)
             val direct = options.directEncode
@@ -894,6 +909,8 @@ class ScreenRecordService : Service() {
         ffmpegCommand: String? = null,
         muxSuccess: Boolean? = null,
         extra: String? = null,
+        liveGray: Boolean = false,
+        softwareGray: Boolean = false,
     ) {
         val capture = captureSize(options.resolution)
         val text = buildString {
@@ -912,6 +929,9 @@ class ScreenRecordService : Service() {
                     liveApplied = liveApplied,
                     liveError = liveCropError,
                     coverDestPx = coverDestPx,
+                    grayscale = options.grayscale,
+                    liveGray = liveGray,
+                    softwareGray = softwareGray,
                     outputWidth = outputWidth,
                     outputHeight = outputHeight,
                     ffmpegCommand = ffmpegCommand,
@@ -937,6 +957,7 @@ class ScreenRecordService : Service() {
         cropPipe = null
         liveCropped = false
         liveCovered = false
+        liveGray = false
         runCatching { recorder?.stop() }
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
@@ -954,6 +975,7 @@ class ScreenRecordService : Service() {
         cropPipe = null
         liveCropped = false
         liveCovered = false
+        liveGray = false
         runCatching { recorder?.reset() }
         runCatching { recorder?.release() }
         recorder = null

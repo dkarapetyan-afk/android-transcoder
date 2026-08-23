@@ -100,6 +100,7 @@ data class EncodeSettings(
     val targetSizePreset: TargetSizePreset = TargetSizePreset.OFF,
     val targetSizeBytes: Long? = null,
     val twoPass: Boolean = false,
+    val grayscale: Boolean = false,
 ) {
     companion object {
         fun forPreset(preset: Preset, engine: EncodeEngine = EncodeEngine.FFMPEG): EncodeSettings = when (preset) {

@@ -52,6 +52,7 @@ object BatchQueueSettings {
             ffmpegExtraArgs = current.ffmpegExtraArgs,
             ffmpegCommandOverride = current.ffmpegCommandOverride,
             twoPass = current.twoPass,
+            grayscale = current.grayscale,
             clipStartMs = current.clipStartMs,
             clipEndMs = current.clipEndMs,
             output = current.output,

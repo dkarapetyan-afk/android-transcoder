@@ -40,6 +40,7 @@ data class Media3EncodeSpec(
     val companionAudioUri: String? = null,
     val stillImage: Boolean = false,
     val imageDurationMs: Long = 0L,
+    val grayscale: Boolean = false,
 ) {
     val clipActive: Boolean get() = clipStartMs > 0 || clipEndMs != null
 
@@ -205,6 +206,7 @@ object Media3EncodePlanner {
             companionAudioUri = companion,
             stillImage = source.stillImage,
             imageDurationMs = if (source.stillImage) clip.durationMs(source.durationMs).coerceAtLeast(MIN_CLIP_MS) else 0L,
+            grayscale = !audioOnly && settings.grayscale,
         )
     }
 

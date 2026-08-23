@@ -45,6 +45,16 @@ class Media3EncodePlannerTest {
         assertFalse(spec.remuxAudio)
         assertEquals("Media3 · H.264", spec.encoderLabel)
         assertEquals(30, spec.outputFps)
+        assertFalse(spec.grayscale)
+    }
+
+    @Test
+    fun grayscaleIsOnForVideoAndOffForAudio() {
+        val gray = EncodeSettings.forPreset(Preset.BALANCED).copy(grayscale = true)
+        assertTrue(Media3EncodePlanner.plan(gray, source).grayscale)
+        assertFalse(
+            Media3EncodePlanner.plan(gray.copy(output = OutputMode.AUDIO), source).grayscale,
+        )
     }
 
     @Test
@@ -74,6 +84,21 @@ class Media3EncodePlannerTest {
         assertFalse(spec.removeAudio)
         assertTrue(spec.encoderLabel.contains("still"))
         assertTrue(spec.imageDurationMs >= Media3EncodePlanner.MIN_CLIP_MS)
+        assertFalse(spec.grayscale)
+    }
+
+    @Test
+    fun combineKeepsGrayscaleOnStillAndVideo() {
+        val gray = EncodeSettings.forPreset(Preset.BALANCED).copy(grayscale = true)
+        val still = source.copy(
+            stillImage = true,
+            audioUri = "content://audio/1",
+            durationMs = 12_000,
+            hasAudio = true,
+        )
+        assertTrue(Media3EncodePlanner.plan(gray, still).grayscale)
+        val mixed = source.copy(audioUri = "content://audio/1", hasAudio = true)
+        assertTrue(Media3EncodePlanner.plan(gray, mixed).grayscale)
     }
 
     @Test

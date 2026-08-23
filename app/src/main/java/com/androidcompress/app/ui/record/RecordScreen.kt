@@ -634,6 +634,13 @@ fun RecordScreen(
                 onChecked = { viewModel.update { o -> o.copy(coverStatusBar = it) } },
             )
             SwitchRow(
+                title = stringResource(R.string.record_grayscale),
+                hint = stringResource(R.string.record_grayscale_hint),
+                checked = options.grayscale,
+                enabled = controlsEnabled,
+                onChecked = { viewModel.update { o -> o.copy(grayscale = it) } },
+            )
+            SwitchRow(
                 title = stringResource(R.string.record_quiet_notif),
                 hint = stringResource(R.string.record_quiet_notif_hint),
                 checked = options.quietNotification,

@@ -19,6 +19,7 @@ import androidx.media3.common.util.Clock
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
+import androidx.media3.effect.RgbFilter
 import androidx.media3.transformer.AudioEncoderSettings
 import androidx.media3.transformer.Codec
 import androidx.media3.transformer.Composition
@@ -451,6 +452,9 @@ class Media3Transcoder(context: Context) {
     private fun composition(input: Uri, spec: Media3EncodeSpec): Composition {
         val effects = mutableListOf<Effect>()
         if (!spec.removeVideo) {
+            if (spec.grayscale) {
+                effects.add(RgbFilter.createGrayscaleFilter())
+            }
             if (spec.outputHeight > 0) {
                 val width = spec.outputWidth
                 val height = spec.outputHeight

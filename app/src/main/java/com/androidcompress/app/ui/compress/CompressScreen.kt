@@ -325,6 +325,22 @@ fun CompressScreen(
                     onClear = viewModel::clearClip,
                 )
             }
+            if (!settings.audioOutput(sourceHasVideo)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.compress_grayscale))
+                        Text(
+                            stringResource(R.string.compress_grayscale_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.grayscale,
+                        onCheckedChange = { on -> viewModel.update { it.copy(grayscale = on) } },
+                    )
+                }
+            }
             TextButton(onClick = viewModel::toggleAdvanced) {
                 Text(
                     stringResource(

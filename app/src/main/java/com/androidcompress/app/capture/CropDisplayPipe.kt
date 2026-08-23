@@ -39,6 +39,8 @@ class CropDisplayPipe private constructor(
     private val destWidth: Int,
     private val destHeight: Int,
     private val coverTopPx: Int,
+    private val grayHandle: Int,
+    private val grayscale: Boolean,
 ) {
     private val texMatrix = FloatArray(16)
     private val paused = AtomicBoolean(false)
@@ -116,6 +118,7 @@ class CropDisplayPipe private constructor(
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         GLES20.glUseProgram(program)
+        GLES20.glUniform1f(grayHandle, if (grayscale) 1f else 0f)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
         GLES20.glUniformMatrix4fv(matrixHandle, 1, false, texMatrix, 0)
@@ -179,8 +182,11 @@ class CropDisplayPipe private constructor(
             precision mediump float;
             varying vec2 vTex;
             uniform samplerExternalOES sTexture;
+            uniform float uGray;
             void main() {
-              gl_FragColor = texture2D(sTexture, vTex);
+              vec4 c = texture2D(sTexture, vTex);
+              float y = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+              gl_FragColor = vec4(mix(c.rgb, vec3(y), uGray), c.a);
             }
         """
 
@@ -212,6 +218,7 @@ class CropDisplayPipe private constructor(
             sourceHeight: Int,
             crop: RecordingCrop,
             coverTopPx: Int = 0,
+            grayscale: Boolean = false,
         ): CropDisplayPipe {
             val thread = HandlerThread("crop-gl").also { it.start() }
             val handler = Handler(thread.looper)
@@ -226,6 +233,7 @@ class CropDisplayPipe private constructor(
                         sourceHeight,
                         crop,
                         coverTopPx,
+                        grayscale,
                         thread,
                         handler,
                     )
@@ -253,6 +261,7 @@ class CropDisplayPipe private constructor(
             sourceHeight: Int,
             crop: RecordingCrop,
             coverTopPx: Int,
+            grayscale: Boolean,
             thread: HandlerThread,
             handler: Handler,
         ): CropDisplayPipe {
@@ -304,6 +313,7 @@ class CropDisplayPipe private constructor(
             val pos = GLES20.glGetAttribLocation(program, "aPos")
             val tex = GLES20.glGetAttribLocation(program, "aTex")
             val matrix = GLES20.glGetUniformLocation(program, "uTexMatrix")
+            val gray = GLES20.glGetUniformLocation(program, "uGray")
             val uv = cropUv(crop, sourceWidth, sourceHeight)
             val uvBuffer = java.nio.ByteBuffer.allocateDirect(uv.size * 4)
                 .order(java.nio.ByteOrder.nativeOrder())
@@ -327,6 +337,8 @@ class CropDisplayPipe private constructor(
                 destWidth = crop.width,
                 destHeight = crop.height,
                 coverTopPx = coverTopPx.coerceAtLeast(0),
+                grayHandle = gray,
+                grayscale = grayscale,
             )
             st.setOnFrameAvailableListener({ pipe.requestFrame() }, handler)
             return pipe

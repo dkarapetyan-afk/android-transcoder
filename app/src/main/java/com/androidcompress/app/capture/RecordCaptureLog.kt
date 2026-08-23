@@ -57,6 +57,9 @@ object RecordCaptureLog {
         liveApplied: Boolean = false,
         liveError: String? = null,
         coverDestPx: Int = 0,
+        grayscale: Boolean = false,
+        liveGray: Boolean = false,
+        softwareGray: Boolean = false,
         outputWidth: Int? = null,
         outputHeight: Int? = null,
         ffmpegCommand: String? = null,
@@ -77,6 +80,9 @@ object RecordCaptureLog {
         appendLine("liveApplied=$liveApplied")
         if (!liveError.isNullOrBlank()) appendLine("liveError=$liveError")
         appendLine("coverDestPx=$coverDestPx")
+        appendLine("grayscale=$grayscale")
+        appendLine("liveGray=$liveGray")
+        appendLine("softwareGray=$softwareGray")
         if (outputWidth != null && outputHeight != null) {
             appendLine("output=${outputWidth}x$outputHeight")
         }

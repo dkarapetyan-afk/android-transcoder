@@ -51,6 +51,7 @@ data class SettingsPatch(
     val targetSizeBytes: Long? = null,
     val clearTargetSize: Boolean = false,
     val twoPass: Boolean? = null,
+    val grayscale: Boolean? = null,
 )
 
 object JobSettingsCodec {
@@ -140,6 +141,7 @@ object JobSettingsCodec {
             else -> next
         }
         if (patch.twoPass != null) next = next.copy(twoPass = patch.twoPass)
+        if (patch.grayscale != null) next = next.copy(grayscale = patch.grayscale)
         return next
     }
 
@@ -168,6 +170,7 @@ object JobSettingsCodec {
         targetSizePreset = settings.targetSizePreset.name,
         targetSizeBytes = settings.targetSizeBytes,
         twoPass = settings.twoPass,
+        grayscale = settings.grayscale,
     )
 
     fun parsePreset(raw: String?): Preset? = parseEnum(raw)
@@ -224,6 +227,7 @@ object JobSettingsCodec {
         targetSizeBytes = update.targetSizeBytes,
         clearTargetSize = update.clearTargetSize,
         twoPass = update.twoPass,
+        grayscale = update.grayscale,
     )
 
     fun canEdit(status: JobStatus): Boolean = when (status) {

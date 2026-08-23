@@ -146,6 +146,7 @@ data class RecordOptions(
     val showAnnotation: Boolean = false,
     val pipControls: Boolean = false,
     val coverStatusBar: Boolean = false,
+    val grayscale: Boolean = false,
     val quietNotification: Boolean = false,
     val bookmarkMode: BookmarkMode = BookmarkMode.CHAPTERS,
 ) {
@@ -201,6 +202,7 @@ data class RecordOptions(
         put("draw", showAnnotation)
         put("pip", pipControls)
         put("coverBar", coverStatusBar)
+        put("gray", grayscale)
         put("quietNotif", quietNotification)
         put("marks", bookmarkMode.name)
     }.toString()
@@ -247,6 +249,7 @@ data class RecordOptions(
                     showAnnotation = obj.optBoolean("draw", false),
                     pipControls = obj.optBoolean("pip", false),
                     coverStatusBar = obj.optBoolean("coverBar", false),
+                    grayscale = obj.optBoolean("gray", false),
                     quietNotification = obj.optBoolean("quietNotif", false),
                     bookmarkMode = enumOr(obj.optString("marks"), BookmarkMode.CHAPTERS),
                 )

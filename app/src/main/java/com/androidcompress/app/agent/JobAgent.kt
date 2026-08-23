@@ -23,6 +23,7 @@ import com.androidcompress.app.encode.CompressService
 import com.androidcompress.app.encode.EncodeQueue
 import com.androidcompress.app.encode.FfmpegCommandBuilder
 import com.androidcompress.app.encode.FfmpegCommandTemplate
+import com.androidcompress.app.encode.FfmpegMuxCommands
 import com.androidcompress.app.encode.Media3EncodePlanner
 import com.androidcompress.app.media.DeviceMediaQueries
 import com.androidcompress.app.media.DeviceMediaStore
@@ -219,7 +220,21 @@ class JobAgent(
         val generated = ffmpegPlan?.let { FfmpegCommandTemplate.fromArgs(it.args) }.orEmpty()
         val override = settings.ffmpegCommandOverride
         val customized = override.isNotBlank() && override.trim() != generated.trim()
-        val command = if (customized) override else generated
+        val command = if (customized) {
+            val parsed = FfmpegCommandTemplate.parse(override)
+            if (parsed.isValid) {
+                FfmpegCommandTemplate.fromArgs(
+                    FfmpegMuxCommands.ensureGrayscale(
+                        parsed.tokens,
+                        settings.grayscale && !settings.audioOutput(source.hasVideo),
+                    ),
+                )
+            } else {
+                override
+            }
+        } else {
+            generated
+        }
         val encoderLabel = when {
             settings.engine == EncodeEngine.MEDIA3 -> Media3EncodePlanner.plan(settings, source).encoderLabel
             settings.audioOutput(source.hasVideo) -> when {

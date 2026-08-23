@@ -111,6 +111,8 @@ data class JobSettingsSnapshot(
     val targetSizeBytes: Long?,
     /** True when FFmpeg should run a 2-pass VBR encode. Ignored by Media3 and audio-only jobs. */
     val twoPass: Boolean,
+    /** True when the video is converted to grayscale. Ignored by audio-only jobs. */
+    val grayscale: Boolean = false,
 )
 
 /**
@@ -182,6 +184,8 @@ data class JobSettingsUpdate(
     val clearTargetSize: Boolean = false,
     /** True to run FFmpeg 2-pass VBR. Media3 and audio-only jobs ignore this. */
     val twoPass: Boolean? = null,
+    /** True to convert video to grayscale on FFmpeg and Media3. Audio-only jobs ignore this. */
+    val grayscale: Boolean? = null,
 )
 
 /** Compact job row for lists. */

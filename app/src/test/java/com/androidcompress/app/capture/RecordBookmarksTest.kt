@@ -131,6 +131,9 @@ class RecordCaptureLogTest {
         assertTrue(text.contains("liveCrop=none"))
         assertTrue(text.contains("softwareCrop=none"))
         assertTrue(text.contains("liveApplied=false"))
+        assertTrue(text.contains("grayscale=false"))
+        assertTrue(text.contains("liveGray=false"))
+        assertTrue(text.contains("softwareGray=false"))
         assertFalse(text.contains("overlay="))
         assertFalse(text.contains("liveError="))
         assertTrue(text.endsWith(RecordCaptureLog.FOOTER))
@@ -208,6 +211,34 @@ class RecordCaptureLogTest {
         assertTrue(text.endsWith(RecordCaptureLog.FOOTER))
         val wrapped = "jobId=abc\n$text\nengine=FFMPEG\n"
         assertEquals(text, RecordCaptureLog.extract(wrapped))
+    }
+
+    @Test
+    fun logsGrayscaleLiveAndSoftware() {
+        val live = RecordCaptureLog.build(
+            captureWidth = 480,
+            captureHeight = 1080,
+            encodeWidth = 480,
+            encodeHeight = 1080,
+            grayscale = true,
+            liveGray = true,
+        )
+        assertTrue(live.contains("grayscale=true"))
+        assertTrue(live.contains("liveGray=true"))
+        assertTrue(live.contains("softwareGray=false"))
+        val software = RecordCaptureLog.build(
+            captureWidth = 480,
+            captureHeight = 1080,
+            encodeWidth = 480,
+            encodeHeight = 1080,
+            grayscale = true,
+            softwareGray = true,
+            ffmpegCommand = "-vf ${FfmpegMuxCommands.GRAYSCALE_FILTER}",
+            muxSuccess = true,
+        )
+        assertTrue(software.contains("liveGray=false"))
+        assertTrue(software.contains("softwareGray=true"))
+        assertTrue(software.contains("ffmpeg=-vf ${FfmpegMuxCommands.GRAYSCALE_FILTER}"))
     }
 }
 

@@ -31,6 +31,7 @@ object SettingsJson {
         put("targetSizePreset", settings.targetSizePreset.name)
         put("targetSizeBytes", settings.targetSizeBytes ?: JSONObject.NULL)
         put("twoPass", settings.twoPass)
+        put("grayscale", settings.grayscale)
     }.toString()
 
     fun decode(raw: String?): EncodeSettings {
@@ -77,6 +78,7 @@ object SettingsJson {
                 targetSizePreset = if (targetBytes == null) TargetSizePreset.OFF else targetPreset,
                 targetSizeBytes = targetBytes,
                 twoPass = obj.optBoolean("twoPass", false),
+                grayscale = obj.optBoolean("grayscale", false),
             )
         }.getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }
     }
