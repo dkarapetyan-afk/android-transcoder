@@ -44,7 +44,7 @@ class FfmpegKitGateway : FfmpegGateway {
                 onStats(
                     EncodeStats(
                         timeMs = stats.time.toLong().coerceAtLeast(0L),
-                        sizeBytes = stats.size.toLong().coerceAtLeast(0L),
+                        sizeBytes = stats.size.coerceAtLeast(0L),
                         speed = stats.speed.toFloat(),
                         videoFrameNumber = stats.videoFrameNumber.coerceAtLeast(0),
                     ),

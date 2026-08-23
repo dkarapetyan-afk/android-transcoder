@@ -140,7 +140,7 @@ object MediaTrackMux {
                 info.offset = 0
                 info.size = size
                 info.presentationTimeUs = chosen.extractor.sampleTime.coerceAtLeast(0L)
-                info.flags = chosen.extractor.sampleFlags
+                info.flags = muxerFlags(chosen.extractor.sampleFlags)
                 writer.writeSampleData(chosen.muxerTrack, buffer, info)
                 chosen.extractor.advance()
             }
@@ -156,6 +156,18 @@ object MediaTrackMux {
         val lower = mime.lowercase()
         if (lower.contains("mp4a") || lower.contains("aac")) return false
         return webmOutput || lower.contains("opus") || lower.contains("vorbis") || lower.contains("webm")
+    }
+
+    /** MediaExtractor sample flags are not MediaCodec buffer flags (values overlap incorrectly). */
+    private fun muxerFlags(sampleFlags: Int): Int {
+        var flags = 0
+        if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+            flags = flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+        }
+        if (sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
+            flags = flags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+        }
+        return flags
     }
 
     private fun audioIndexes(extractor: MediaExtractor): List<Int> =
@@ -196,7 +208,7 @@ object MediaTrackMux {
                 info.offset = 0
                 info.size = size
                 info.presentationTimeUs = (time - startUs).coerceAtLeast(0L)
-                info.flags = extractor.sampleFlags
+                info.flags = muxerFlags(extractor.sampleFlags)
                 muxer.writeSampleData(muxerTrack, buffer, info)
                 wrote++
             }

@@ -110,6 +110,15 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+
+    kotlin {
+        compilerOptions {
+            // App Functions KSP emits `parameters["uriOrPaths"] as List<String>`
+            // in generated CompressAppFunctionService; that generic cast cannot
+            // be annotated from our source.
+            freeCompilerArgs.add("-Xwarning-level=UNCHECKED_CAST:disabled")
+        }
+    }
 }
 
 ksp {

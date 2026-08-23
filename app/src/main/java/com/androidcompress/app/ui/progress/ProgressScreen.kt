@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,6 +47,7 @@ fun ProgressScreen(
     val job = ui.job
     val progress = ui.progress
     val context = LocalContext.current
+    val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var handedOff by remember { mutableStateOf(false) }
@@ -129,9 +131,9 @@ fun ProgressScreen(
                         scope.launch {
                             snackbar.showSnackbar(
                                 if (count > 0) {
-                                    context.getString(R.string.batch_applied, count)
+                                    resources.getString(R.string.batch_applied, count)
                                 } else {
-                                    context.getString(R.string.batch_none)
+                                    resources.getString(R.string.batch_none)
                                 },
                             )
                         }

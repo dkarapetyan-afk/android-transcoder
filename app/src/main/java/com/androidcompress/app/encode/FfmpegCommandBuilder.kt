@@ -247,8 +247,8 @@ object FfmpegCommandBuilder {
         val outputDurationMs = if (combine) clip.durationMs(source.durationMs) else 0L
 
         val args = mutableListOf("-y", "-hide_banner")
-        if (combine) {
-            appendCombineInputs(args, input, companion!!, source, clip, outputDurationMs)
+        if (companion != null && source.isCombine) {
+            appendCombineInputs(args, input, companion, source, clip, outputDurationMs)
         } else {
             args += listOf("-i", input)
         }

@@ -123,13 +123,14 @@ object FfmpegCommandTemplate {
         var expectingValueFor: String? = null
         tokens.forEachIndexed { index, token ->
             if (expectingValueFor != null) {
-                val flag = expectingValueFor!!
+                val flag = expectingValueFor
                 expectingValueFor = null
-                if (flagName(token) != null) {
+                val nested = flagName(token)
+                if (nested != null) {
                     val err = validateFlag(token, inputFlags)
                     if (err != null) return err
                     if (isInputFlag(token)) inputFlags += 1
-                    if (takesValue(flagName(token)!!)) expectingValueFor = token
+                    if (takesValue(nested)) expectingValueFor = token
                     return@forEachIndexed
                 }
                 val err = validateValue(flag, token, index == tokens.lastIndex)

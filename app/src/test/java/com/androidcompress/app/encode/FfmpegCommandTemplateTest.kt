@@ -67,7 +67,8 @@ class FfmpegCommandTemplateTest {
             "-i INPUT -i other.mp4 -c:v h264_mediacodec OUTPUT",
         )
         assertFalse(parsed.isValid)
-        assertTrue(parsed.error!!.contains("AUDIO") || parsed.error!!.contains("INPUT"))
+        val error = requireNotNull(parsed.error)
+        assertTrue(error.contains("AUDIO") || error.contains("INPUT"))
     }
 
     @Test
