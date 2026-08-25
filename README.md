@@ -70,6 +70,28 @@ PowerShell helper (Windows). Finds `adb.exe` from `ANDROID_HOME` / `ANDROID_SDK_
 .\scripts\test-app-functions.ps1 -RelativePath Download -Kind VIDEO
 ```
 
+## Automation (Tasker / MacroDroid / adb)
+
+Exported receiver `com.androidcompress.app.agent.AutomationReceiver`. Send an explicit broadcast to this app’s package (`com.androidcompress.app` or `com.androidcompress.app.debug`):
+
+| Action | Effect |
+|---|---|
+| `com.androidcompress.app.automation.COMPRESS` | Import + start encode (`uri`, `path`, or intent data). Optional extras: `preset`, `engine`, `container`, `codec`, `output`, `requestId`, `replyPackage`, … |
+| `com.androidcompress.app.automation.RECORD_STOP` | Stop the active screen recording. Does not start capture. |
+| `com.androidcompress.app.automation.CANCEL_QUEUE` | Cancel the running encode and every queued job. |
+
+When the work finishes, the app broadcasts `com.androidcompress.app.automation.COMPLETED` (`status`, `jobId`, `outputUri`, `error`, `requestId`, …). Listen for that instead of polling. Paths need Device library access.
+
+```bash
+adb shell am broadcast -p com.androidcompress.app.debug \
+  -a com.androidcompress.app.automation.COMPRESS \
+  --es path /sdcard/Download/clip.mp4 --es preset SMALLER --es requestId t1
+adb shell am broadcast -p com.androidcompress.app.debug \
+  -a com.androidcompress.app.automation.RECORD_STOP
+adb shell am broadcast -p com.androidcompress.app.debug \
+  -a com.androidcompress.app.automation.CANCEL_QUEUE
+```
+
 ## FFmpeg
 
 Day-to-day builds use `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.2, 16 KB pages, arm64-v8a, LGPL — no x264/x265). A Play Store binary can stay on that AAR or be rebuilt from FFmpegKitNext — see [docs/ffmpeg-build.md](docs/ffmpeg-build.md).

@@ -257,13 +257,13 @@ class Media3EncodePlannerTest {
     }
 
     @Test
-    fun outputDurationIgnoresClipOnFfmpeg() {
+    fun outputDurationAppliesClipOnFfmpeg() {
         val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
             engine = EncodeEngine.FFMPEG,
             clipStartMs = 5_000,
             clipEndMs = 15_000,
         )
-        assertEquals(60_000L, Media3EncodePlanner.outputDurationMs(settings, 60_000))
+        assertEquals(10_000L, Media3EncodePlanner.outputDurationMs(settings, 60_000))
         assertEquals(
             10_000L,
             Media3EncodePlanner.outputDurationMs(settings.copy(engine = EncodeEngine.MEDIA3), 60_000),
@@ -456,6 +456,6 @@ class Media3EncodePlannerTest {
             clipStartMs = 5_000,
             clipEndMs = 15_000,
         )
-        assertEquals(10_000L, Media3EncodePlanner.outputDurationMs(settings, 60_000, true))
+        assertEquals(10_000L, Media3EncodePlanner.outputDurationMs(settings, 60_000))
     }
 }

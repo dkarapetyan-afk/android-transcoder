@@ -48,7 +48,6 @@ class ProgressViewModel(
                 Media3EncodePlanner.outputDurationMs(
                     SettingsJson.decode(it.settingsJson),
                     it.durationMs,
-                    it.width > 0 && it.height > 0,
                 )
             } ?: 0L,
             queuedCount = BatchQueueSettings.targets(ordered, queuedOnly = true).size,

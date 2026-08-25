@@ -4,7 +4,7 @@ This document describes **what the app currently does**, as implemented in this 
 
 - **App name:** Recording Compressor
 - **Application ID:** `com.androidcompress.app` (debug: `com.androidcompress.app.debug`)
-- **Version:** 1.1.0 / versionCode 2
+- **Version:** 1.2.0 / versionCode 3
 - **License:** MIT for app source. Bundled FFmpeg remains LGPL-3.0.
 
 The app records the screen and compresses video/audio **on the device**. It does not upload recordings. Optional HTTPS is used for the Gemini extra-args helper and to download the Whisper tiny / Silero VAD models on first captions use. Audio is never uploaded.
@@ -48,7 +48,7 @@ The app records the screen and compresses video/audio **on the device**. It does
 - FFmpeg prefers `libvpx` / `libvpx-vp9` over `vp8_mediacodec` / `vp9_mediacodec` (same class of garbage-frame bug).
 - HEVC and AV1 hardware only, unless the FFmpeg build lists `libaom-av1` or `libsvtav1`.
 - No `MANAGE_EXTERNAL_STORAGE`. Gallery write is MediaStore (`Movies/RecordingCompressor` or `Music/RecordingCompressor`). Optional `READ_MEDIA_*` is for agent/library listing only.
-- App Functions return job **metadata**, never media bytes. They do not start/stop screen recording, delete gallery files, clear all history, or get/set the Gemini API key.
+- App Functions return job **metadata**, never media bytes. They do not start/stop screen recording, delete gallery files, clear all history, or get/set the Gemini API key. The exported automation receiver can stop an in-progress recording and cancel the encode queue; it cannot start capture (MediaProjection consent still has to happen on the device).
 - Extra FFmpeg args and command templates cannot add extra file paths, URLs, or extra inputs beyond the job’s source (and optional combine soundtrack).
 
 ---
@@ -63,7 +63,7 @@ UI (Compose screens)
       → JobImporter / InputResolver / MediaProbe / MediaStoreExporter
       → ScreenRecordService / CompressService
       → FfmpegKitGateway / Media3Transcoder
-      → JobAgent (App Functions)
+      → JobAgent (App Functions + automation receiver)
 ```
 
 **Services**
@@ -75,6 +75,7 @@ UI (Compose screens)
 | `RecordTileService` | Quick Settings tile |
 | `TapHighlightService` | Accessibility overlay (taps / laser / ink) |
 | `CompressAppFunctionService` | Android 16 App Functions (`BIND_APP_FUNCTION_SERVICE`) |
+| `AutomationReceiver` | Exported Tasker/MacroDroid/`am broadcast` entry (`COMPRESS`, `RECORD_STOP`, `CANCEL_QUEUE`). Completion is `…COMPLETED`. |
 | `RecordConsentActivity` | Transparent MediaProjection consent |
 | `MainActivity` | Single-top, PiP-capable, share/shortcut/VIEW entry |
 
@@ -136,7 +137,7 @@ UI (Compose screens)
 | `bFrames` | `AUTO`, `NONE`, `ONE`, `TWO` |
 | `ffmpegExtraArgs` | Sanitized extra flags |
 | `ffmpegCommandOverride` | Template with `INPUT` / `AUDIO` / `OUTPUT` / `PASSLOG` |
-| `clipStartMs` / `clipEndMs` | Applied for Media3, audio-only, and combine |
+| `clipStartMs` / `clipEndMs` | Applied for FFmpeg, Media3, audio-only, and combine |
 | `targetSizePreset` / `targetSizeBytes` | Fit-to-size |
 | `twoPass` | FFmpeg 2-pass VBR (ignored by Media3 and audio-only) |
 | `grayscale` | Black-and-white. FFmpeg `format=gray` (YUV imports and RGB stills). Combine jobs put it on `[0:v]…[v]` via `-filter_complex` so the soundtrack input cannot bypass it. Media3 `RgbFilter` (including still+audio). Ignored by audio-only. Also merged into extra `-vf` and command overrides. |
@@ -174,7 +175,7 @@ Routes: `home`, `record`, `compress/{jobId}`, `progress/{jobId}`, `result/{jobId
 |---|---|
 | **Home** | Record; pick one video/audio; multi-pick combine; Recent list; batch recipe chips when ≥1 READY/QUEUED job; Last log; Library; Settings; About; Clear all (confirm) |
 | **Record** | Capture options, live timer, pause/resume, bookmarks, stop |
-| **Compress** | Presets, fit-to-size, engine, output, container, clip (when applicable), advanced, Start |
+| **Compress** | Presets, fit-to-size, engine, output, container, clip, advanced, Start |
 | **Progress** | Current + queued jobs, pass label, cancel this / cancel all, batch chips for **queued** jobs only |
 | **Result** | Open, Share, Delete original, View log; sizes + bytes saved. Recordings write a job log (region crop pixels, live vs software crop). |
 | **Library** | Full job list, open by status, discard one, clear all |
@@ -286,6 +287,7 @@ Command built by `FfmpegCommandBuilder`. Inputs resolved through FFmpeg-Kit SAF 
 
 **Other FFmpeg behavior**
 
+- Clip start/end become input `-ss` / `-t` on video jobs (before `-i`, both 2-pass legs). Audio-only puts the same flags after `-i`. Combine already seeks each input.
 - Software paths force CFR `-r` (screen recordings at 90k tbr otherwise drop/duplicate). Hardware mediacodec does not get `-r` unless an FPS cap requires it (avoids a hang after the first stats tick).
 - Scale uses even dimensions, bt709 TV range. Grayscale adds `format=gray` after scale. Tone-map / WebM / yuv420p add `format=yuv420p`. Combine (picture or video + soundtrack) uses `-filter_complex [0:v]…[v]` and maps `[v]`; a lone `-vf` plus `-map 0:v:0` can leave the picture unfiltered. Extra `-vf` and command overrides get grayscale merged into the last video filter or the `[0:v]` chain.
 - CBR (and fit-to-size) sets min/maxrate on libvpx/libaom, or maxrate+bufsize on other encoders. Skipped on 2-pass.
@@ -317,7 +319,7 @@ Hardware MediaCodec via Transformer (same idea as Compressor Edge).
 
 ### 8.3 Clip window
 
-Applied when engine is Media3, output is audio-only, or the job is combine. Start/end in ms; minimum 100 ms. FFmpeg video-only jobs do not show clip controls and do not seek, even if the JSON fields are set.
+Start/end in ms; minimum 100 ms. Applied on FFmpeg video (`-ss` / `-t` before `-i`, including both 2-pass legs), Media3 (`ClippingConfiguration`), audio-only, and combine. Clip controls show on the Compress screen for every job.
 
 ### 8.4 Bitrate scaling (non-fit-to-size)
 
@@ -583,6 +585,20 @@ Cannot edit `QUEUED`, `RUNNING`, or `RECORDING`. Cannot start those either. Retr
 |---|---|---|
 | `timeoutSec` on wait/compressNow | 5–180, default 45 | How long the **function call** blocks |
 | `stallTimeoutSec` / `twoPassStallTimeoutSec` | stored as given | How long FFmpeg may sit with **no progress** before the encode is cancelled |
+
+### 18.4 Automation broadcasts (Tasker / MacroDroid / adb)
+
+Exported receiver `com.androidcompress.app.agent.AutomationReceiver`. Actions are the same in debug and release; set the broadcast package to `com.androidcompress.app` or `com.androidcompress.app.debug`.
+
+Inbound (manifest, `android:exported="true"`):
+
+| Action | What it does |
+|---|---|
+| `com.androidcompress.app.automation.COMPRESS` | Same as App Function `compressNow` (import + start). Does not block. Source: extra `uri` / `path` / `file`, `Intent` data, `EXTRA_STREAM`, or clip data. Settings extras match `JobSettingsUpdate` field names (`preset`, `engine`, `container`, `codec`, `output`, `clipStartMs`, `twoPass`, `grayscale`, `captions`, …). `deleteSourceAfter` defaults false. Optional `requestId`, `replyPackage`. Paths need Device library access. |
+| `com.androidcompress.app.automation.RECORD_STOP` | Stops the active screen recording (same as the notification Stop). Does not start capture. |
+| `com.androidcompress.app.automation.CANCEL_QUEUE` | Same as App Function `cancelQueue`. |
+
+Outbound: `com.androidcompress.app.automation.COMPLETED` with extras `action`, `requestId`, `jobId`, `status`, `displayName`, `message`, `error`, `outputUri`, `outputBytes`, `durationMs`, `type`, `count`. If `replyPackage` was set on the command, the completion is explicit to that package and a content `outputUri` is granted read. COMPRESS waits until SUCCEEDED/FAILED/CANCELLED. RECORD_STOP waits until the recording job is READY (auto-compress off) or terminal (auto-compress on, including the encode). CANCEL_QUEUE completes immediately. Does not return media bytes.
 
 ---
 

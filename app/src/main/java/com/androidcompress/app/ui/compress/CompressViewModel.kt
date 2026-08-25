@@ -130,14 +130,7 @@ class CompressViewModel(
             capabilities = cap,
             advancedOpen = open,
             estimateBytes = realSource?.let { src ->
-                val estimateSource = if (enc.engine == EncodeEngine.MEDIA3 || enc.audioOutput(src.hasVideo) || src.isCombine) {
-                    src.copy(
-                        durationMs = Media3EncodePlanner.outputDurationMs(enc, src),
-                    )
-                } else {
-                    src
-                }
-                FfmpegCommandBuilder.estimateOutputBytes(estimateSource, enc)
+                FfmpegCommandBuilder.estimateOutputBytes(src, enc)
             } ?: 0,
             encoderLabel = encoderLabel,
             queueBusy = active.any { it.id != jobId },

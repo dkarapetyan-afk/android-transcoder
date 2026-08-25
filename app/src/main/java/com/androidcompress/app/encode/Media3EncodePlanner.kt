@@ -2,7 +2,6 @@ package com.androidcompress.app.encode
 
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.BitrateMode
-import com.androidcompress.app.data.EncodeEngine
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
@@ -105,19 +104,11 @@ object Media3EncodePlanner {
         return Media3ClipWindow(start, end)
     }
 
-    fun outputDurationMs(settings: EncodeSettings, sourceDurationMs: Long, hasVideo: Boolean = true): Long {
-        val useClip = settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(hasVideo)
-        if (!useClip) return sourceDurationMs
-        return clipWindow(settings, sourceDurationMs).durationMs(sourceDurationMs)
-    }
+    fun outputDurationMs(settings: EncodeSettings, sourceDurationMs: Long): Long =
+        clipWindow(settings, sourceDurationMs).durationMs(sourceDurationMs)
 
-    fun outputDurationMs(settings: EncodeSettings, source: SourceVideo): Long {
-        val useClip = settings.engine == EncodeEngine.MEDIA3 ||
-            settings.audioOutput(source.hasVideo) ||
-            source.isCombine
-        if (!useClip) return source.durationMs
-        return clipWindow(settings, source.durationMs).durationMs(source.durationMs)
-    }
+    fun outputDurationMs(settings: EncodeSettings, source: SourceVideo): Long =
+        outputDurationMs(settings, source.durationMs)
 
     fun plan(settings: EncodeSettings, source: SourceVideo): Media3EncodeSpec {
         val audioOnly = settings.audioOutput(source.hasVideo)

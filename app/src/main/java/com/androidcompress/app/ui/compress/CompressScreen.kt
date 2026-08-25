@@ -124,20 +124,18 @@ fun CompressScreen(
                     )
                 }
                 val sourceHasVideo = job.width > 0 && job.height > 0 || job.stillImage
-                if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo) || job.isCombine) {
-                    val clip = Media3EncodePlanner.clipWindow(settings, job.durationMs)
-                    if (clip.active) {
-                        val endLabel = clip.endMs?.let { formatDuration(it) } ?: formatDuration(job.durationMs)
-                        StatLine(
-                            stringResource(R.string.compress_clip),
-                            stringResource(
-                                R.string.compress_clip_range,
-                                formatDuration(clip.startMs),
-                                endLabel,
-                                formatDuration(clip.durationMs(job.durationMs)),
-                            ),
-                        )
-                    }
+                val clip = Media3EncodePlanner.clipWindow(settings, job.durationMs)
+                if (clip.active) {
+                    val endLabel = clip.endMs?.let { formatDuration(it) } ?: formatDuration(job.durationMs)
+                    StatLine(
+                        stringResource(R.string.compress_clip),
+                        stringResource(
+                            R.string.compress_clip_range,
+                            formatDuration(clip.startMs),
+                            endLabel,
+                            formatDuration(clip.durationMs(job.durationMs)),
+                        ),
+                    )
                 }
                 StatLine(
                     stringResource(R.string.compress_estimated_output),
@@ -315,16 +313,14 @@ fun CompressScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (settings.engine == EncodeEngine.MEDIA3 || settings.audioOutput(sourceHasVideo) || combineJob) {
-                Media3ClipControls(
-                    durationMs = job?.durationMs ?: 0L,
-                    startMs = settings.clipStartMs,
-                    endMs = settings.clipEndMs,
-                    onStart = viewModel::setClipStartMs,
-                    onEnd = viewModel::setClipEndMs,
-                    onClear = viewModel::clearClip,
-                )
-            }
+            ClipControls(
+                durationMs = job?.durationMs ?: 0L,
+                startMs = settings.clipStartMs,
+                endMs = settings.clipEndMs,
+                onStart = viewModel::setClipStartMs,
+                onEnd = viewModel::setClipEndMs,
+                onClear = viewModel::clearClip,
+            )
             if (!settings.audioOutput(sourceHasVideo)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -789,7 +785,7 @@ fun CompressScreen(
 }
 
 @Composable
-private fun Media3ClipControls(
+private fun ClipControls(
     durationMs: Long,
     startMs: Long,
     endMs: Long?,

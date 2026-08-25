@@ -491,6 +491,10 @@ class CompressService : Service() {
         plan: EncodePlan,
         log: StringBuilder,
     ): EncodeResult {
+        val clip = Media3EncodePlanner.clipWindow(settings, source.durationMs)
+        if (clip.active) {
+            log.appendLine("clip start=${clip.startMs}ms end=${clip.endMs ?: "eos"}")
+        }
         val pass1 = plan.firstPassArgs
         if (pass1.isNullOrEmpty()) {
             log.appendLine("FFmpeg command: ${quoteArgs(plan.args)}")

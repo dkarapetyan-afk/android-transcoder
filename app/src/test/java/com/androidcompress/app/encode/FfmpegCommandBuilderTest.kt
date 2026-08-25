@@ -356,6 +356,68 @@ class FfmpegCommandBuilderTest {
     }
 
     @Test
+    fun videoClipSeeksBeforeInput() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            clipStartMs = 5_000,
+            clipEndMs = 20_000,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
+        val ssAt = plan.args.indexOf("-ss")
+        val tAt = plan.args.indexOf("-t")
+        val iAt = plan.args.indexOf("-i")
+        assertTrue(ssAt in 0 until iAt)
+        assertTrue(tAt in 0 until iAt)
+        assertEquals("5.000", plan.args[ssAt + 1])
+        assertEquals("15.000", plan.args[tAt + 1])
+        assertEquals("in.mp4", plan.args[iAt + 1])
+        assertFalse(plan.args.drop(iAt + 2).contains("-ss"))
+    }
+
+    @Test
+    fun videoClipStartOnlyRunsToEnd() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(clipStartMs = 10_000)
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
+        assertEquals("10.000", plan.args[plan.args.indexOf("-ss") + 1])
+        assertEquals("50.000", plan.args[plan.args.indexOf("-t") + 1])
+        assertTrue(plan.args.indexOf("-ss") < plan.args.indexOf("-i"))
+    }
+
+    @Test
+    fun videoClipWholeSourceOmitsSeek() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            clipStartMs = 0,
+            clipEndMs = 60_000,
+        )
+        val plan = FfmpegCommandBuilder.build("in.mp4", "out.mp4", settings, source, hardwareCaps)
+        assertFalse(plan.args.contains("-ss"))
+        assertFalse(plan.args.contains("-t"))
+    }
+
+    @Test
+    fun twoPassVideoClipAppliesToBothPasses() {
+        val settings = EncodeSettings.forPreset(Preset.BALANCED).copy(
+            twoPass = true,
+            clipStartMs = 10_000,
+            clipEndMs = 25_000,
+        )
+        val plan = FfmpegCommandBuilder.build(
+            "in.mp4",
+            "out.mp4",
+            settings,
+            source,
+            hardwareCaps,
+            passLogPrefix = "/cache/job.2pass",
+        )
+        val pass1 = requireNotNull(plan.firstPassArgs)
+        assertEquals("10.000", pass1[pass1.indexOf("-ss") + 1])
+        assertEquals("15.000", pass1[pass1.indexOf("-t") + 1])
+        assertTrue(pass1.indexOf("-ss") < pass1.indexOf("-i"))
+        assertEquals("10.000", plan.args[plan.args.indexOf("-ss") + 1])
+        assertEquals("15.000", plan.args[plan.args.indexOf("-t") + 1])
+        assertTrue(plan.args.indexOf("-ss") < plan.args.indexOf("-i"))
+    }
+
+    @Test
     fun audioEstimateOmitsVideoBitrate() {
         val video = FfmpegCommandBuilder.estimateOutputBytes(source, EncodeSettings.forPreset(Preset.BALANCED))
         val audio = FfmpegCommandBuilder.estimateOutputBytes(

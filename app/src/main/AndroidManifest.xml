@@ -139,6 +139,16 @@
             android:exported="false"
             android:foregroundServiceType="mediaProcessing|dataSync" />
 
+        <receiver
+            android:name=".agent.AutomationReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.androidcompress.app.automation.COMPRESS" />
+                <action android:name="com.androidcompress.app.automation.RECORD_STOP" />
+                <action android:name="com.androidcompress.app.automation.CANCEL_QUEUE" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".agent.CompressAppFunctionService"
             android:exported="true"

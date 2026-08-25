@@ -11,6 +11,7 @@ import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.asr.CaptionPass
 import com.androidcompress.app.asr.SherpaWhisperCaptioner
 import com.androidcompress.app.asr.WhisperModelStore
+import com.androidcompress.app.agent.AutomationCoordinator
 import com.androidcompress.app.encode.BatchQueueSettings
 import com.androidcompress.app.encode.BatchRecipe
 import com.androidcompress.app.encode.EncodeProgressStore
@@ -53,6 +54,7 @@ class AppContainer(context: Context) {
     val history = HistoryJanitor(jobs, jobLogs, inputs)
     val importer = JobImporter(appContext, jobs, prefs, probe, inputs, history)
     val shortcutOpener = LatestShortcutOpener(appContext, jobs, importer)
+    val automation = AutomationCoordinator(appContext)
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {

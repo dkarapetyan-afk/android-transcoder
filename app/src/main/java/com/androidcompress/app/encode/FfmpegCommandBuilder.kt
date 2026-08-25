@@ -250,6 +250,7 @@ object FfmpegCommandBuilder {
         if (companion != null && source.isCombine) {
             appendCombineInputs(args, input, companion, source, clip, outputDurationMs)
         } else {
+            appendSeek(args, clip, source.durationMs)
             args += listOf("-i", input)
         }
         val vf = mutableListOf<String>()
@@ -509,16 +510,14 @@ object FfmpegCommandBuilder {
     }
 
     private fun appendClip(args: MutableList<String>, settings: EncodeSettings, source: SourceVideo) {
-        val start = settings.clipStartMs.coerceAtLeast(0L)
-        val end = settings.clipEndMs?.takeIf { it > start }
-        val duration = source.durationMs
-        if (start <= 0L && (end == null || (duration > 0L && end >= duration))) return
-        if (start > 0L) args += listOf("-ss", formatFfmpegSeconds(start))
-        val span = when {
-            end != null -> end - start
-            duration > start -> duration - start
-            else -> 0L
-        }
+        appendSeek(args, Media3EncodePlanner.clipWindow(settings, source.durationMs), source.durationMs)
+    }
+
+    /** `-ss` / `-t` as input options when placed before `-i`, output options after. */
+    private fun appendSeek(args: MutableList<String>, clip: Media3ClipWindow, sourceDurationMs: Long) {
+        if (!clip.active) return
+        if (clip.startMs > 0L) args += listOf("-ss", formatFfmpegSeconds(clip.startMs))
+        val span = clip.durationMs(sourceDurationMs)
         if (span > 0L) args += listOf("-t", formatFfmpegSeconds(span))
     }
 
