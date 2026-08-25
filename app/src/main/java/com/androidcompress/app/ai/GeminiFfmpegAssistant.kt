@@ -188,6 +188,7 @@ class GeminiFfmpegAssistant(
                 appendLine("Bitrate mode: ${settings.bitrateMode}")
                 appendLine("Two-pass: ${settings.twoPass}")
                 appendLine("Grayscale: ${settings.grayscale}")
+                appendLine("Captions: ${settings.captions}")
                 appendLine(
                     "Target size: " + if (settings.targetSizeBytes != null && settings.targetSizeBytes > 0L) {
                         "${settings.targetSizePreset} ${settings.targetSizeBytes} bytes"

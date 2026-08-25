@@ -184,6 +184,42 @@ object FfmpegMuxCommands {
         return args
     }
 
+    fun extractPcmS16le(inputPath: String, outputPath: String): List<String> = listOf(
+        "-y", "-hide_banner",
+        "-i", inputPath,
+        "-vn",
+        "-ac", "1",
+        "-ar", "16000",
+        "-f", "s16le",
+        "-acodec", "pcm_s16le",
+        outputPath,
+    )
+
+    fun applySubtitles(
+        videoPath: String,
+        srtPath: String,
+        outputPath: String,
+        containerWebm: Boolean = false,
+    ): List<String> = buildList {
+        addAll(
+            listOf(
+                "-y", "-hide_banner",
+                "-i", videoPath,
+                "-i", srtPath,
+                "-map", "0:v?",
+                "-map", "0:a?",
+                "-map", "1",
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-c:s", if (containerWebm) "webvtt" else "mov_text",
+                "-metadata:s:s:0", "language=eng",
+                "-disposition:s:0", "default",
+            ),
+        )
+        if (!containerWebm) addAll(listOf("-movflags", "+faststart"))
+        add(outputPath)
+    }
+
     fun applyChapters(
         videoPath: String,
         metadataPath: String,

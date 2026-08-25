@@ -341,6 +341,22 @@ fun CompressScreen(
                     )
                 }
             }
+            if (settings.audio != AudioOption.MUTE) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.compress_captions))
+                        Text(
+                            stringResource(R.string.compress_captions_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = settings.captions,
+                        onCheckedChange = { on -> viewModel.update { it.copy(captions = on) } },
+                    )
+                }
+            }
             TextButton(onClick = viewModel::toggleAdvanced) {
                 Text(
                     stringResource(

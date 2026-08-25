@@ -19,7 +19,8 @@ import java.nio.ByteBuffer
  *
  * Media3 1.11 WebM muxing is incomplete: [WebmMuxer.addMetadataEntry] throws,
  * and [WebmMuxer] requires [Format.language] plus Opus CodecPrivate. Transformer
- * still emits those gaps, so this wrapper fills them in.
+ * still emits those gaps, so this wrapper fills them in. Android MediaCodec's
+ * Opus CSD is an `AOPUSHDR` blob; FFmpeg needs the inner RFC 7845 OpusHead.
  */
 @OptIn(UnstableApi::class)
 class AndroidWebmMuxerFactory : Muxer.Factory {
@@ -92,9 +93,14 @@ internal fun sanitizeForWebm(format: Format): Format {
             builder.setSampleRate(sampleRate)
             changed = true
         }
-        if (format.initializationData.isEmpty() && mime == MimeTypes.AUDIO_OPUS) {
-            builder.setInitializationData(listOf(opusIdentificationHeader(channels, sampleRate)))
-            changed = true
+        if (mime == MimeTypes.AUDIO_OPUS) {
+            val current = format.initializationData.firstOrNull()
+            val head = OpusCodecPrivate.rfcHead(current, channels, sampleRate)
+            val already = format.initializationData.size == 1 && current != null && current.contentEquals(head)
+            if (!already) {
+                builder.setInitializationData(listOf(head))
+                changed = true
+            }
         }
     }
     return if (changed) builder.build() else format

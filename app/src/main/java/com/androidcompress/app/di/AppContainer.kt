@@ -8,6 +8,9 @@ import com.androidcompress.app.data.HistoryJanitor
 import com.androidcompress.app.data.JobRepository
 import com.androidcompress.app.data.PreferencesRepository
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.asr.CaptionPass
+import com.androidcompress.app.asr.SherpaWhisperCaptioner
+import com.androidcompress.app.asr.WhisperModelStore
 import com.androidcompress.app.encode.BatchQueueSettings
 import com.androidcompress.app.encode.BatchRecipe
 import com.androidcompress.app.encode.EncodeProgressStore
@@ -42,6 +45,8 @@ class AppContainer(context: Context) {
     val sourceDeleter = SourceFileDeleter(appContext)
     val ffmpeg: FfmpegGateway = FfmpegKitGateway()
     val media3 = Media3Transcoder(appContext)
+    val whisperModels = WhisperModelStore(appContext)
+    val captions = CaptionPass(ffmpeg, whisperModels, SherpaWhisperCaptioner(whisperModels))
     val encodeProgress = EncodeProgressStore()
     val jobLogs = JobLogStore(appContext)
     val recording = RecordingStore()

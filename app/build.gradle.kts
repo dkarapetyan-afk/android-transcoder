@@ -49,10 +49,10 @@ android {
         applicationId = "com.androidcompress.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         ndk {
-            // ffmpeg-kit-full 8.1.7 ships arm64-v8a only.
+            // ffmpeg-kit-full 8.1.7 and the sherpa-onnx AAR we ship are arm64-v8a in the APK.
             abiFilters += "arm64-v8a"
         }
     }
@@ -100,6 +100,7 @@ android {
         }
         jniLibs {
             useLegacyPackaging = false
+            pickFirsts += "**/libc++_shared.so"
         }
     }
     bundle {
@@ -148,6 +149,14 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.ffmpeg.kit)
     implementation(libs.smart.exception)
+    implementation(libs.sherpa.onnx) {
+        isTransitive = false
+        artifact {
+            name = "sherpa-onnx"
+            type = "aar"
+            extension = "aar"
+        }
+    }
     implementation(libs.androidx.media3.transformer)
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.common)

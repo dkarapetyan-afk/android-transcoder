@@ -23,8 +23,13 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.window.layout.WindowMetricsCalculator
 import com.androidcompress.app.R
+import com.androidcompress.app.asr.CaptionProgressNotifier
 import com.androidcompress.app.container
+import com.androidcompress.app.data.AudioOption
+import com.androidcompress.app.data.ContainerFormat
+import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.JobStatus
+import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.RecordAudioMode
 import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.encode.FfmpegMuxCommands
@@ -70,6 +75,7 @@ class ScreenRecordService : Service() {
     private var ticker: Job? = null
     private var sessionJob: Job? = null
     private var stopping = false
+    @Volatile private var captionSkip = false
     private var paused = false
     private var encoderStarted = false
     private var usesMicrophone = false
@@ -112,6 +118,10 @@ class ScreenRecordService : Service() {
             }
             ACTION_BOOKMARK -> {
                 addBookmark()
+                return START_NOT_STICKY
+            }
+            ACTION_CANCEL_CAPTIONS -> {
+                captionSkip = true
                 return START_NOT_STICKY
             }
             ACTION_START -> {
@@ -476,7 +486,7 @@ class ScreenRecordService : Service() {
                 return
             }
 
-            var finalFile = video
+            var finalFile: File = video
             val processed = File(
                 video.parentFile,
                 "${video.nameWithoutExtension}-muxed.${options.outputExtension}",
@@ -539,6 +549,9 @@ class ScreenRecordService : Service() {
             micWav?.delete()
             if (finalFile != processed) processed.delete()
             finalFile = applyChaptersIfNeeded(finalFile, bookmarks)
+            val captioned = applyCaptionsIfNeeded(finalFile)
+            if (captioned != null) finalFile = captioned.first
+            val captionNote = captioned?.second
             val splitFiles = splitIfNeeded(finalFile, bookmarks)
 
             val uri = Uri.fromFile(finalFile)
@@ -554,6 +567,7 @@ class ScreenRecordService : Service() {
                 muxSuccess = muxSuccess,
                 liveGray = didLiveGray,
                 softwareGray = softwareGray && post != null,
+                extra = captionNote,
             )
             val existing = container().jobs.get(id)
             val direct = options.directEncode
@@ -613,6 +627,7 @@ class ScreenRecordService : Service() {
             }
             container().recording.fail(t.message ?: getString(R.string.error_save_recording))
         } finally {
+            Notifications.clearCaptions(this)
             RecordTileService.requestListening(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -647,6 +662,59 @@ class ScreenRecordService : Service() {
             if (out.exists() && out != resultFile) out.delete()
         }
         return resultFile
+    }
+
+    private suspend fun applyCaptionsIfNeeded(file: File): Pair<File, String>? {
+        if (!options.directEncode || !options.captions || options.audioMode == RecordAudioMode.NONE) {
+            return null
+        }
+        val settings = EncodeSettings(
+            captions = true,
+            audio = AudioOption.AAC_128,
+            output = OutputMode.VIDEO,
+            container = if (options.usesWebm) ContainerFormat.WEBM else ContainerFormat.MP4,
+        )
+        val workDir = file.parentFile ?: return null
+        captionSkip = false
+        val notice = captionNotifier()
+        return try {
+            val cap = container().captions.apply(
+                media = file,
+                settings = settings,
+                workDir = workDir,
+                stem = "${file.nameWithoutExtension}-cap",
+                onProgress = { fraction, message -> notice.update(fraction, message) },
+                isCancelled = { captionSkip },
+            )
+            cap.srt?.let { srt ->
+                container().exporter.publishSidecar(
+                    srt,
+                    directDisplayName().substringBeforeLast('.'),
+                    "Movies/RecordingCompressor",
+                )
+                srt.delete()
+            }
+            cap.media to "captions cues=${cap.cueCount} muxed=${cap.muxed}"
+        } catch (t: Throwable) {
+            if (t is CancellationException) throw t
+            if (captionSkip || t.message == "cancelled") {
+                file to "captions cancelled"
+            } else {
+                file to "captions failed: ${t.message}"
+            }
+        } finally {
+            notice.clear()
+        }
+    }
+
+    private fun captionNotifier(): CaptionProgressNotifier {
+        val cancel = PendingIntent.getService(
+            this,
+            4,
+            Intent(this, ScreenRecordService::class.java).setAction(ACTION_CANCEL_CAPTIONS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return CaptionProgressNotifier(this, cancel)
     }
 
     private suspend fun splitIfNeeded(
@@ -1003,6 +1071,8 @@ class ScreenRecordService : Service() {
     }
 
     override fun onDestroy() {
+        captionSkip = true
+        Notifications.clearCaptions(this)
         teardown()
         scope.cancel()
         super.onDestroy()
@@ -1014,6 +1084,7 @@ class ScreenRecordService : Service() {
         const val ACTION_PAUSE = "com.androidcompress.app.RECORD_PAUSE"
         const val ACTION_RESUME = "com.androidcompress.app.RECORD_RESUME"
         const val ACTION_BOOKMARK = "com.androidcompress.app.RECORD_BOOKMARK"
+        const val ACTION_CANCEL_CAPTIONS = "com.androidcompress.app.RECORD_CANCEL_CAPTIONS"
         const val EXTRA_JOB_ID = "jobId"
         const val EXTRA_RESULT_CODE = "resultCode"
         const val EXTRA_RESULT_DATA = "resultData"
@@ -1049,6 +1120,10 @@ class ScreenRecordService : Service() {
 
         fun bookmark(context: Context) {
             context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_BOOKMARK))
+        }
+
+        fun cancelCaptions(context: Context) {
+            context.startService(Intent(context, ScreenRecordService::class.java).setAction(ACTION_CANCEL_CAPTIONS))
         }
     }
 }

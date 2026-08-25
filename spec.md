@@ -4,10 +4,10 @@ This document describes **what the app currently does**, as implemented in this 
 
 - **App name:** Recording Compressor
 - **Application ID:** `com.androidcompress.app` (debug: `com.androidcompress.app.debug`)
-- **Version:** 1.0.0 / versionCode 1
+- **Version:** 1.1.0 / versionCode 2
 - **License:** MIT for app source. Bundled FFmpeg remains LGPL-3.0.
 
-The app records the screen and compresses video/audio **on the device**. It does not upload recordings. Optional HTTPS is used only for the Gemini extra-args helper.
+The app records the screen and compresses video/audio **on the device**. It does not upload recordings. Optional HTTPS is used for the Gemini extra-args helper and to download the Whisper tiny / Silero VAD models on first captions use. Audio is never uploaded.
 
 ---
 
@@ -28,6 +28,7 @@ The app records the screen and compresses video/audio **on the device**. It does
 | DataStore | 1.2.1 |
 | Media3 | 1.11.0 (transformer, effect, common, muxer) |
 | FFmpeg | `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.x, 16 KB pages, LGPL) |
+| Captions | `com.k2fsa.sherpa.onnx:sherpa-onnx:1.13.6` (GitHub Releases AAR) + Whisper tiny int8 + Silero VAD, downloaded on first use into app files |
 | App Functions | `androidx.appfunctions` 1.0.0-alpha10 |
 | CI | GitHub Actions (`.github/workflows/ci.yml`): debug APK, unit tests, lint, release APK. Signed APK/AAB on `master` / `workflow_dispatch` via encrypted `signing/*.enc` and the `SIGNING_PASSPHRASE` secret. |
 
@@ -139,6 +140,7 @@ UI (Compose screens)
 | `targetSizePreset` / `targetSizeBytes` | Fit-to-size |
 | `twoPass` | FFmpeg 2-pass VBR (ignored by Media3 and audio-only) |
 | `grayscale` | Black-and-white. FFmpeg `format=gray` (YUV imports and RGB stills). Combine jobs put it on `[0:v]…[v]` via `-filter_complex` so the soundtrack input cannot bypass it. Media3 `RgbFilter` (including still+audio). Ignored by audio-only. Also merged into extra `-vf` and command overrides. |
+| `captions` | Off by default. After a successful encode, extract 16 kHz mono PCM (MediaCodec first, FFmpeg fallback), run Silero VAD + Whisper tiny (sherpa-onnx) on-device, write SRT, mux `mov_text` (MP4) or `webvtt` (WebM), and publish an `.srt` sidecar. MUTE skips it. A captions failure leaves the video and does not fail the job. First use downloads ~100 MB of models over HTTPS. Direct-encode recordings run the same pass at stop. A separate Transcribing notification tracks download / extract / Whisper / mux with Cancel; that skip keeps the video. Encode Cancel still cancels the job. Media3 WebM Opus CodecPrivate is rewritten from Android’s `AOPUSHDR` blob to an RFC 7845 OpusHead so FFmpeg can mux subtitles; PCM extract still prefers MediaCodec. |
 
 **Preset table**
 
@@ -309,7 +311,7 @@ Hardware MediaCodec via Transformer (same idea as Compressor Edge).
 - Video MIME: AVC, HEVC, VP8, VP9, AV1.
 - Audio MIME: AAC or Opus.
 - Scale, frame-rate cap, clip, volume, CBR preference, I-frame interval, H.264 profile, HDR tone-map, B-frames, grayscale (`RgbFilter.createGrayscaleFilter()`), still-image (frame rate required so ImageAssetLoader does not crash).
-- WebM uses a wrapped `WebmMuxer` that supplies missing language / Opus CodecPrivate and swallows unsupported metadata.
+- WebM uses a wrapped `WebmMuxer` that supplies missing language, rewrites Android `AOPUSHDR` Opus CSD to an RFC 7845 OpusHead, and swallows unsupported metadata.
 - Fallback: WebM → VP9; MP4 → H.264. AV1 Media3 failure falls back that way.
 - 2-pass is ignored. Grayscale is applied.
 

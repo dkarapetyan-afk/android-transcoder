@@ -267,6 +267,7 @@ class CompressViewModel(
             ffmpegCommandOverride = previous.ffmpegCommandOverride,
             twoPass = previous.twoPass,
             grayscale = previous.grayscale,
+            captions = previous.captions,
             clipStartMs = previous.clipStartMs,
             clipEndMs = previous.clipEndMs,
             output = previous.output,

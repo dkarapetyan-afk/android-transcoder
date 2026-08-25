@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import com.androidcompress.app.R
+import com.androidcompress.app.asr.CaptionProgressNotifier
 import com.androidcompress.app.capture.RecordCaptureLog
 import com.androidcompress.app.container
 import com.androidcompress.app.data.EncodeEngine
@@ -24,9 +25,11 @@ import com.androidcompress.app.data.galleryFolder
 import com.androidcompress.app.data.outputExtension
 import com.androidcompress.app.data.outputMime
 import com.androidcompress.app.data.usesWebm
+import com.androidcompress.app.data.wantsCaptions
 import com.androidcompress.app.media.CombinePairing
 import com.androidcompress.app.media.InputResolver
 import com.androidcompress.app.util.Notifications
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,6 +50,8 @@ class CompressService : Service() {
     private var session: EncodeSession? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var cancelAll = false
+    @Volatile private var jobCancel = false
+    @Volatile private var captionCancel = false
     @Volatile private var currentJobId: String? = null
     @Volatile private var queueTotal = 1
     @Volatile private var queueIndex = 1
@@ -56,11 +61,15 @@ class CompressService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CANCEL -> {
+                jobCancel = true
+                captionCancel = true
                 session?.cancel()
                 return START_NOT_STICKY
             }
             ACTION_CANCEL_ALL -> {
                 cancelAll = true
+                jobCancel = true
+                captionCancel = true
                 session?.cancel()
                 scope.launch { container().jobs.cancelAllQueued() }
                 return START_NOT_STICKY
@@ -68,10 +77,16 @@ class CompressService : Service() {
             ACTION_CANCEL_JOB -> {
                 val id = intent.getStringExtra(EXTRA_JOB_ID)
                 if (id != null && id == currentJobId) {
+                    jobCancel = true
+                    captionCancel = true
                     session?.cancel()
                 } else if (id != null) {
                     scope.launch { container().jobs.cancelQueued(id) }
                 }
+                return START_NOT_STICKY
+            }
+            ACTION_CANCEL_CAPTIONS -> {
+                captionCancel = true
                 return START_NOT_STICKY
             }
             ACTION_ENQUEUE, ACTION_START -> {
@@ -79,6 +94,8 @@ class CompressService : Service() {
                 startAsForeground(jobId ?: currentJobId.orEmpty(), 0)
                 if (work?.isActive != true) {
                     cancelAll = false
+                    jobCancel = false
+                    captionCancel = false
                     work = scope.launch { drain() }
                 }
             }
@@ -102,6 +119,7 @@ class CompressService : Service() {
         } finally {
             currentJobId = null
             app.encodeProgress.update(null)
+            Notifications.clearCaptions(this)
             releaseWakeLock()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -142,6 +160,10 @@ class CompressService : Service() {
             audioUri = job.audioUri,
         )
         currentJobId = jobId
+        if (!cancelAll) {
+            jobCancel = false
+            captionCancel = false
+        }
         app.jobs.updateStatus(jobId, JobStatus.RUNNING)
         val audioOnly = settings.audioOutput(source.hasVideo)
         val output = app.inputs.encodeOutputFile(jobId, settings.outputExtension())
@@ -187,14 +209,69 @@ class CompressService : Service() {
                     app.encodeProgress.update(null)
                 }
                 result.success && output.exists() && output.length() > 0 -> {
+                    var publishFile = output
+                    if (settings.wantsCaptions()) {
+                        captionCancel = captionCancel || cancelAll || jobCancel
+                        startAsForeground(jobId, 90)
+                        val notice = captionNotifier(jobId)
+                        try {
+                            val cap = app.captions.apply(
+                                media = output,
+                                settings = settings,
+                                workDir = output.parentFile ?: File(cacheDir, "encode").also { it.mkdirs() },
+                                stem = "$jobId-cap",
+                                onProgress = { fraction, message ->
+                                    val mapped = (0.9f + 0.09f * fraction.coerceIn(0f, 1f)).coerceIn(0f, 0.99f)
+                                    app.encodeProgress.update(EncodeProgress(jobId, mapped, 0L, message))
+                                    notice.update(fraction, message)
+                                },
+                                isCancelled = { captionCancel || jobCancel || cancelAll },
+                            )
+                            publishFile = cap.media
+                            log.append(cap.log)
+                            if (!cap.log.endsWith("\n")) log.appendLine()
+                            cap.srt?.let { srt ->
+                                val sidecarName = compressedName(job.displayName, settings)
+                                    .substringBeforeLast('.')
+                                val sidecar = app.exporter.publishSidecar(
+                                    srt,
+                                    sidecarName,
+                                    settings.galleryFolder(),
+                                )
+                                log.appendLine("srt=${sidecar ?: "unpublished"}")
+                                srt.delete()
+                            }
+                        } catch (err: CancellationException) {
+                            throw err
+                        } catch (err: Throwable) {
+                            if (jobCancel || cancelAll) {
+                                output.delete()
+                                log.appendLine("captions cancelled")
+                                app.jobLogs.write(jobId, log.toString())
+                                app.jobs.updateStatus(jobId, JobStatus.CANCELLED, finished = true)
+                                app.encodeProgress.update(null)
+                                return
+                            }
+                            log.appendLine(
+                                if (captionCancel || err.message == "cancelled") {
+                                    "captions cancelled"
+                                } else {
+                                    "captions failed: ${err.message}"
+                                },
+                            )
+                        } finally {
+                            notice.clear()
+                        }
+                    }
                     val published = app.exporter.publish(
-                        output,
+                        publishFile,
                         compressedName(job.displayName, settings),
                         settings.outputMime(),
                         settings.galleryFolder(),
                     )
-                    val bytes = output.length()
-                    output.delete()
+                    val bytes = publishFile.length()
+                    if (publishFile != output) output.delete()
+                    publishFile.delete()
                     log.appendLine("published=$published")
                     app.jobLogs.write(jobId, log.toString())
                     app.jobs.updateStatus(
@@ -611,8 +688,21 @@ class CompressService : Service() {
         wakeLock = null
     }
 
+    private fun captionNotifier(jobId: String): CaptionProgressNotifier {
+        val cancel = PendingIntent.getService(
+            this,
+            4,
+            Intent(this, CompressService::class.java).setAction(ACTION_CANCEL_CAPTIONS),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        return CaptionProgressNotifier(this, cancel, "jobId" to jobId)
+    }
+
     override fun onDestroy() {
+        jobCancel = true
+        captionCancel = true
         session?.cancel()
+        Notifications.clearCaptions(this)
         scope.cancel()
         releaseWakeLock()
         super.onDestroy()
@@ -624,6 +714,7 @@ class CompressService : Service() {
         const val ACTION_CANCEL = "com.androidcompress.app.ENCODE_CANCEL"
         const val ACTION_CANCEL_ALL = "com.androidcompress.app.ENCODE_CANCEL_ALL"
         const val ACTION_CANCEL_JOB = "com.androidcompress.app.ENCODE_CANCEL_JOB"
+        const val ACTION_CANCEL_CAPTIONS = "com.androidcompress.app.ENCODE_CANCEL_CAPTIONS"
         const val EXTRA_JOB_ID = "jobId"
         fun start(context: Context, jobId: String) = enqueue(context, jobId)
 
@@ -648,6 +739,10 @@ class CompressService : Service() {
                     .setAction(ACTION_CANCEL_JOB)
                     .putExtra(EXTRA_JOB_ID, jobId),
             )
+        }
+
+        fun cancelCaptions(context: Context) {
+            context.startService(Intent(context, CompressService::class.java).setAction(ACTION_CANCEL_CAPTIONS))
         }
     }
 }

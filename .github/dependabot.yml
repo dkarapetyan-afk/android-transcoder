@@ -1,5 +1,5 @@
 # Weekly version updates for the Gradle catalog and GitHub Actions.
-# Media3, App Functions, and ffmpeg-kit stay manual (encode path / alpha / native).
+# Media3, App Functions, ffmpeg-kit, and sherpa-onnx stay manual (encode path / alpha / native).
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
@@ -31,8 +31,10 @@ updates:
           - "androidx.media3*"
           - "androidx.appfunctions*"
           - "dev.ffmpegkit-maintained:*"
+          - "com.k2fsa.sherpa.onnx:*"
     ignore:
       - dependency-name: "dev.ffmpegkit-maintained:ffmpeg-kit-full"
+      - dependency-name: "com.k2fsa.sherpa.onnx:sherpa-onnx"
       - dependency-name: "androidx.media3:*"
       - dependency-name: "androidx.appfunctions:*"
 

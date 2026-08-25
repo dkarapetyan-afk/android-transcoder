@@ -246,4 +246,25 @@ class FfmpegMuxCommandsTest {
         assertFalse(fc.contains(' '))
         assertEquals(complex, FfmpegMuxCommands.ensureGrayscale(complex, enabled = true))
     }
+
+    @Test
+    fun extractPcmIsMono16k() {
+        val args = FfmpegMuxCommands.extractPcmS16le("/in.mp4", "/out.pcm")
+        assertEquals("pcm_s16le", args[args.indexOf("-acodec") + 1])
+        assertEquals("1", args[args.indexOf("-ac") + 1])
+        assertEquals("16000", args[args.indexOf("-ar") + 1])
+        assertEquals("s16le", args[args.indexOf("-f") + 1])
+        assertEquals("/out.pcm", args.last())
+    }
+
+    @Test
+    fun applySubtitlesUsesMovTextOnMp4AndWebvttOnWebm() {
+        val mp4 = FfmpegMuxCommands.applySubtitles("/v.mp4", "/c.srt", "/out.mp4")
+        assertEquals("mov_text", mp4[mp4.indexOf("-c:s") + 1])
+        assertTrue(mp4.contains("+faststart"))
+        val webm = FfmpegMuxCommands.applySubtitles("/v.webm", "/c.srt", "/out.webm", containerWebm = true)
+        assertEquals("webvtt", webm[webm.indexOf("-c:s") + 1])
+        assertFalse(webm.contains("+faststart"))
+        assertEquals("0:v?", webm[webm.indexOf("-map") + 1])
+    }
 }

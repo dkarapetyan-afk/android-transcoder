@@ -54,6 +54,7 @@ class SettingsJsonTest {
             targetSizeBytes = 12L shl 20,
             twoPass = true,
             grayscale = true,
+            captions = true,
         )
         val decoded = SettingsJson.decode(SettingsJson.encode(original))
         assertEquals(original, decoded)
@@ -88,6 +89,7 @@ class SettingsJsonTest {
         assertNull(decoded.targetSizeBytes)
         assertFalse(decoded.twoPass)
         assertFalse(decoded.grayscale)
+        assertFalse(decoded.captions)
     }
 
     @Test

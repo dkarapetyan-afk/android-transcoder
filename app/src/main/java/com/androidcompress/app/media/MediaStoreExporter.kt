@@ -71,4 +71,51 @@ class MediaStoreExporter(private val context: Context) {
             Uri.fromFile(dest)
         }
     }
+
+    suspend fun publishSidecar(
+        file: File,
+        displayName: String,
+        relativePath: String,
+    ): Uri? = withContext(Dispatchers.IO) {
+        if (!file.isFile || file.length() < 8) return@withContext null
+        val safeName = if (displayName.endsWith(".srt", ignoreCase = true)) {
+            displayName
+        } else {
+            "$displayName.srt"
+        }
+        val mime = "application/x-subrip"
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 29) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(MediaStore.Files.getContentUri("external"), values)
+                    ?: return@runCatching null
+                resolver.openOutputStream(uri)?.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                } ?: return@runCatching null
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+                uri
+            } else {
+                val publicDir = if (relativePath.startsWith("Music")) {
+                    Environment.DIRECTORY_MUSIC
+                } else {
+                    Environment.DIRECTORY_MOVIES
+                }
+                val folderName = relativePath.substringAfterLast('/').ifBlank { "RecordingCompressor" }
+                val dir = File(Environment.getExternalStoragePublicDirectory(publicDir), folderName)
+                if (!dir.exists()) dir.mkdirs()
+                val dest = File(dir, safeName)
+                file.copyTo(dest, overwrite = true)
+                MediaScannerConnection.scanFile(context, arrayOf(dest.absolutePath), arrayOf(mime), null)
+                Uri.fromFile(dest)
+            }
+        }.getOrNull()
+    }
 }

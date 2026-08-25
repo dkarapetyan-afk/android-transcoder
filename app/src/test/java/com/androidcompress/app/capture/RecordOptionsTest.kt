@@ -46,6 +46,7 @@ class RecordOptionsTest {
             pipControls = true,
             coverStatusBar = true,
             grayscale = true,
+            captions = true,
             quietNotification = true,
             bookmarkMode = BookmarkMode.SPLIT,
         )
@@ -73,6 +74,7 @@ class RecordOptionsTest {
         assertTrue(restored.pipControls)
         assertTrue(restored.coverStatusBar)
         assertTrue(restored.grayscale)
+        assertTrue(restored.captions)
         assertEquals(BookmarkMode.SPLIT, restored.bookmarkMode)
         val region = restored.region
         assertEquals(0.1f, region?.left ?: -1f, 0.001f)
@@ -94,6 +96,7 @@ class RecordOptionsTest {
         assertTrue(options.autoStopLowStorage)
         assertFalse(options.directEncode)
         assertFalse(options.grayscale)
+        assertFalse(options.captions)
     }
 
     @Test

@@ -113,6 +113,8 @@ data class JobSettingsSnapshot(
     val twoPass: Boolean,
     /** True when the video is converted to grayscale. Ignored by audio-only jobs. */
     val grayscale: Boolean = false,
+    /** True when on-device Whisper captions are muxed after encode. Skipped when audio is MUTE. */
+    val captions: Boolean = false,
 )
 
 /**
@@ -186,6 +188,8 @@ data class JobSettingsUpdate(
     val twoPass: Boolean? = null,
     /** True to convert video to grayscale on FFmpeg and Media3. Audio-only jobs ignore this. */
     val grayscale: Boolean? = null,
+    /** True to transcribe on-device and mux a subtitle track (plus an .srt sidecar). MUTE skips this. */
+    val captions: Boolean? = null,
 )
 
 /** Compact job row for lists. */

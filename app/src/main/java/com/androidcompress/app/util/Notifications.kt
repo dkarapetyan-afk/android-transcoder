@@ -15,8 +15,10 @@ object Notifications {
     const val RECORD_CHANNEL = "record"
     const val RECORD_QUIET_CHANNEL = "record_quiet"
     const val ENCODE_CHANNEL = "encode"
+    const val CAPTIONS_CHANNEL = "captions"
     const val RECORD_ID = 1001
     const val ENCODE_ID = 1002
+    const val CAPTIONS_ID = 1003
 
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -33,6 +35,9 @@ object Notifications {
         )
         manager.createNotificationChannel(
             NotificationChannel(ENCODE_CHANNEL, context.getString(R.string.notif_encode_channel), NotificationManager.IMPORTANCE_LOW),
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CAPTIONS_CHANNEL, context.getString(R.string.notif_captions_channel), NotificationManager.IMPORTANCE_LOW),
         )
     }
 
@@ -157,5 +162,43 @@ object Notifications {
             .addAction(0, context.getString(R.string.action_cancel), cancelIntent)
         live.chipText?.let { builder.setShortCriticalText(it) }
         return builder.build()
+    }
+
+    fun captions(
+        context: Context,
+        percent: Int,
+        message: String,
+        cancelIntent: PendingIntent,
+        openExtra: Pair<String, String>? = null,
+    ): Notification {
+        ensureChannels(context)
+        val pct = percent.coerceIn(0, 100)
+        val text = if (message.isBlank()) {
+            context.getString(R.string.notif_captions_percent, pct)
+        } else {
+            context.getString(R.string.notif_captions_text, pct, message)
+        }
+        val style = NotificationCompat.ProgressStyle()
+            .setProgress(pct)
+            .setProgressIndeterminate(pct <= 0)
+            .setStyledByProgress(true)
+        return NotificationCompat.Builder(context, CAPTIONS_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle(context.getString(R.string.notif_captions))
+            .setContentText(text)
+            .setProgress(100, pct, pct <= 0)
+            .setStyle(style)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setContentIntent(openApp(context, openExtra))
+            .addAction(0, context.getString(R.string.action_cancel), cancelIntent)
+            .build()
+    }
+
+    fun clearCaptions(context: Context) {
+        context.getSystemService(NotificationManager::class.java).cancel(CAPTIONS_ID)
     }
 }

@@ -2,6 +2,9 @@
 -keep class com.arthenica.** { *; }
 -dontwarn com.arthenica.**
 
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+-dontwarn com.k2fsa.sherpa.onnx.**
+
 # AppFunctions serializes these types across the system agent boundary.
 -keep class com.androidcompress.app.agent.** { *; }
 -keep class androidx.appfunctions.** { *; }
