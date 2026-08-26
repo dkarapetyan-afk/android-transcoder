@@ -254,7 +254,7 @@ class GeminiFfmpegAssistant(
                     out.write(body.toByteArray(Charsets.UTF_8))
                 }
                 val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
-                val text = stream?.bufferedReader(Charsets.UTF_8)?.readText().orEmpty()
+                val text = stream?.use { it.bufferedReader(Charsets.UTF_8).readText() }.orEmpty()
                 return HttpText(conn.responseCode, text)
             } finally {
                 conn.disconnect()

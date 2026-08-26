@@ -33,56 +33,60 @@ class SherpaWhisperCaptioner(
         isCancelled: () -> Boolean,
     ): List<CaptionCue> = withContext(Dispatchers.IO) {
         if (!pcm.isFile || pcm.length() < sampleRate) return@withContext emptyList()
-        val asr = recognizer()
-        val vad = Vad(
-            config = VadModelConfig(
-                sileroVadModelConfig = SileroVadModelConfig(
-                    model = models.vad.absolutePath,
-                    threshold = 0.2f,
-                    minSilenceDuration = 0.25f,
-                    minSpeechDuration = 0.25f,
-                    windowSize = WhisperModels.WINDOW_SIZE,
-                    maxSpeechDuration = 5.0f,
-                ),
-                sampleRate = sampleRate,
-                numThreads = threadCount(),
-                provider = "cpu",
-            ),
-        )
-        val cues = ArrayList<CaptionCue>()
         try {
-            val totalSamples = pcm.length() / 2L
-            if (totalSamples <= 0L) return@withContext emptyList()
-            var processed = 0L
-            RandomAccessFile(pcm, "r").use { raf ->
-                val windowBytes = WhisperModels.WINDOW_SIZE * 2
-                val raw = ByteArray(windowBytes)
-                val le = ByteBuffer.allocate(windowBytes).order(ByteOrder.LITTLE_ENDIAN)
-                while (true) {
-                    if (isCancelled()) error("cancelled")
-                    val n = raf.read(raw)
-                    if (n < windowBytes) break
-                    le.clear()
-                    le.put(raw, 0, n)
-                    le.flip()
-                    val samples = FloatArray(WhisperModels.WINDOW_SIZE)
-                    for (i in samples.indices) {
-                        samples[i] = le.short / 32768f
+            val asr = recognizer()
+            val vad = Vad(
+                config = VadModelConfig(
+                    sileroVadModelConfig = SileroVadModelConfig(
+                        model = models.vad.absolutePath,
+                        threshold = 0.2f,
+                        minSilenceDuration = 0.25f,
+                        minSpeechDuration = 0.25f,
+                        windowSize = WhisperModels.WINDOW_SIZE,
+                        maxSpeechDuration = 5.0f,
+                    ),
+                    sampleRate = sampleRate,
+                    numThreads = threadCount(),
+                    provider = "cpu",
+                ),
+            )
+            val cues = ArrayList<CaptionCue>()
+            try {
+                val totalSamples = pcm.length() / 2L
+                if (totalSamples <= 0L) return@withContext emptyList()
+                var processed = 0L
+                RandomAccessFile(pcm, "r").use { raf ->
+                    val windowBytes = WhisperModels.WINDOW_SIZE * 2
+                    val raw = ByteArray(windowBytes)
+                    val le = ByteBuffer.allocate(windowBytes).order(ByteOrder.LITTLE_ENDIAN)
+                    while (true) {
+                        if (isCancelled()) error("cancelled")
+                        val n = raf.read(raw)
+                        if (n < windowBytes) break
+                        le.clear()
+                        le.put(raw, 0, n)
+                        le.flip()
+                        val samples = FloatArray(WhisperModels.WINDOW_SIZE)
+                        for (i in samples.indices) {
+                            samples[i] = le.short / 32768f
+                        }
+                        vad.acceptWaveform(samples)
+                        processed += WhisperModels.WINDOW_SIZE
+                        drainVad(asr, vad, sampleRate, cues)
+                        onProgress((processed.toFloat() / totalSamples.toFloat()).coerceIn(0f, 0.99f))
+                        yield()
                     }
-                    vad.acceptWaveform(samples)
-                    processed += WhisperModels.WINDOW_SIZE
-                    drainVad(asr, vad, sampleRate, cues)
-                    onProgress((processed.toFloat() / totalSamples.toFloat()).coerceIn(0f, 0.99f))
-                    yield()
                 }
+                vad.flush()
+                drainVad(asr, vad, sampleRate, cues)
+                onProgress(1f)
+            } finally {
+                runCatchingLog(TAG, "release vad") { vad.release() }
             }
-            vad.flush()
-            drainVad(asr, vad, sampleRate, cues)
-            onProgress(1f)
+            cues
         } finally {
-            runCatchingLog(TAG, "release vad") { vad.release() }
+            releaseIdle()
         }
-        cues
     }
 
     private fun drainVad(
@@ -136,6 +140,13 @@ class SherpaWhisperCaptioner(
         )
         recognizer = created
         return created
+    }
+
+    @Synchronized
+    private fun releaseIdle() {
+        val held = recognizer ?: return
+        recognizer = null
+        runCatchingLog(TAG, "release recognizer") { held.release() }
     }
 
     private fun threadCount(): Int =

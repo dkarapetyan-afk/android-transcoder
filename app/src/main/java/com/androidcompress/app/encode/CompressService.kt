@@ -49,7 +49,7 @@ class CompressService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var work: Job? = null
-    private var session: EncodeSession? = null
+    @Volatile private var session: EncodeSession? = null
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var cancelAll = false
     @Volatile private var jobCancel = false
