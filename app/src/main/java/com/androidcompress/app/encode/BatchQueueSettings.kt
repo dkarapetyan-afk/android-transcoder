@@ -54,6 +54,7 @@ object BatchQueueSettings {
             twoPass = current.twoPass,
             grayscale = current.grayscale,
             captions = current.captions,
+            burnCaptions = current.burnCaptions,
             clipStartMs = current.clipStartMs,
             clipEndMs = current.clipEndMs,
             output = current.output,

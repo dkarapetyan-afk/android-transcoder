@@ -62,6 +62,7 @@ class AutomationIntentsTest {
                 AutomationIntents.EXTRA_TWO_PASS to "true",
                 AutomationIntents.EXTRA_GRAYSCALE to 1,
                 AutomationIntents.EXTRA_CAPTIONS to "yes",
+                AutomationIntents.EXTRA_BURN_CAPTIONS to "true",
                 AutomationIntents.EXTRA_CLIP_START_MS to "1000",
                 AutomationIntents.EXTRA_CLIP_END_MS to 5_000L,
                 AutomationIntents.EXTRA_DELETE_SOURCE_AFTER to "false",
@@ -80,6 +81,7 @@ class AutomationIntentsTest {
         assertTrue(next.twoPass)
         assertTrue(next.grayscale)
         assertTrue(next.captions)
+        assertTrue(next.burnCaptions)
         assertEquals(1_000L, next.clipStartMs)
         assertEquals(5_000L, next.clipEndMs)
         assertFalse(AutomationIntents.deleteSourceAfter(extras))

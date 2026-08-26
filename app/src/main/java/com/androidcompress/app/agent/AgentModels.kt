@@ -115,6 +115,12 @@ data class JobSettingsSnapshot(
     val grayscale: Boolean = false,
     /** True when on-device Whisper captions are muxed after encode. Skipped when audio is MUTE. */
     val captions: Boolean = false,
+    /**
+     * True when transcribed cues are painted onto video frames at their Whisper timestamps.
+     * Re-encodes the picture. Audio-only jobs ignore this. Implies [captions] when set through
+     * [JobSettingsUpdate] without an explicit captions value.
+     */
+    val burnCaptions: Boolean = false,
 )
 
 /**
@@ -190,6 +196,11 @@ data class JobSettingsUpdate(
     val grayscale: Boolean? = null,
     /** True to transcribe on-device and mux a subtitle track (plus an .srt sidecar). MUTE skips this. */
     val captions: Boolean? = null,
+    /**
+     * True to paint each transcribed cue onto the frames at its timestamp (hard subtitles).
+     * When true and [captions] is omitted, captions is turned on. Audio-only jobs ignore this.
+     */
+    val burnCaptions: Boolean? = null,
 )
 
 /** Compact job row for lists. */

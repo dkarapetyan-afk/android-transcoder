@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">جارٍ استخراج الصوت</string>
     <string name="captions_phase_transcribe">جارٍ التحويل إلى نص</string>
     <string name="captions_phase_mux">جارٍ دمج الترجمة</string>
+    <string name="captions_phase_burn">جارٍ حرق الترجمة</string>
     <string name="action_stop">إيقاف</string>
     <string name="action_pause">إيقاف مؤقت</string>
     <string name="action_resume">استئناف</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">يثبّت صورة أبيض وأسود في التسجيل. نفس مظهر تدرج الرمادي في الضغط. الترميز المباشر يكتبها في ملف المعرض؛ وإلا يبدأ الضغط وهذا الخيار مفعّل.</string>
     <string name="record_captions">الترجمة</string>
     <string name="record_captions_hint">بعد الإيقاف، يحوّل الكلام إلى نص على الهاتف بـ Whisper tiny ويدمج مسار ترجمة. يكتب أيضًا ملف .srt بجانب الملف. يُتخطى إن لم يكن هناك صوت. أول استخدام ينزّل نموذج الكلام (~100 ميغابايت، يُفضَّل Wi-Fi). إشعار منفصل يعرض التقدم؛ الإلغاء هناك يتخطى الترجمة ويحفظ الفيديو.</string>
+    <string name="record_burn_captions">حرق الترجمة</string>
+    <string name="record_burn_captions_hint">بعد التحويل إلى نص، يرسم كل جملة على الإطارات في وقتها ليظهر النص دائمًا. يعيد ترميز الصورة ويكتب .srt أيضًا. الإلغاء على إشعار التحويل يتخطى الحرق ويبقي الفيديو.</string>
     <string name="record_quiet_notif">إشعار تسجيل هادئ</string>
     <string name="record_quiet_notif_hint">يبقي إشعار التسجيل المطلوب صامتًا قليل البروز. لا يمكن إخفاؤه تمامًا.</string>
     <string name="record_bookmarks">العلامات</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">يحوّل الصورة إلى أبيض وأسود على FFmpeg والجهاز. تتخطاه مهام الصوت فقط.</string>
     <string name="compress_captions">الترجمة</string>
     <string name="compress_captions_hint">يحوّل الكلام إلى نص على الجهاز بـ Whisper tiny (sherpa-onnx)، ويدمج مسار ترجمة، ويحفظ ملف .srt. تتخطاه المهام المكتومة. أول استخدام ينزّل نموذج الكلام (~100 ميغابايت). إشعار منفصل يعرض التقدم؛ الإلغاء هناك يتخطى الترجمة ويبقي الفيديو.</string>
+    <string name="compress_burn_captions">حرق الترجمة</string>
+    <string name="compress_burn_captions_hint">يرسم كل جملة محوَّلة على الإطارات حسب توقيت Whisper. تظهر دائمًا في أي مشغّل. يعيد ترميز الصورة ويحفظ .srt أيضًا. تتخطاه مهام الصوت فقط. الإلغاء على إشعار التحويل يتخطى الحرق ويبقي الفيديو.</string>
     <string name="compress_two_pass">VBR بتمريرتين</string>
     <string name="compress_two_pass_hint">يحلّل المقطع ثم يرمّز. تفاصيل أفضل بمعدلات منخفضة؛ يستغرق نحو ضعف الوقت. يعمل مع VP8 وVP9 وAV1 البرمجي وMPEG-4. يبقى libopenh264 والمرمّزات العتادية بتمريرة واحدة.</string>
     <string name="compress_two_pass_skipped">مرمّز FFmpeg الحالي لا يستطيع تمريرتين. انتقل إلى VP9 أو AV1 البرمجي، أو أوقف العتاد لـ AV1.</string>

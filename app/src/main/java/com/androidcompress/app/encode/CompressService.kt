@@ -228,6 +228,7 @@ class CompressService : Service() {
                                     notice.update(fraction, message)
                                 },
                                 isCancelled = { captionCancel || jobCancel || cancelAll },
+                                capabilities = app.encoderCapabilities(),
                             )
                             publishFile = cap.media
                             log.append(cap.log)

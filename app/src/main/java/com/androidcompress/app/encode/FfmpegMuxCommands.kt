@@ -12,6 +12,13 @@ data class RecordingCrop(
     val isUsable: Boolean get() = width >= 2 && height >= 2
 }
 
+/** Timed line for FFmpeg `drawtext` burn-in when the `subtitles` filter is unavailable. */
+data class BurnCaptionCue(
+    val startSec: Double,
+    val endSec: Double,
+    val text: String,
+)
+
 object FfmpegMuxCommands {
     fun copyVideoAac(videoPath: String, audioPath: String, outputPath: String): List<String> = listOf(
         "-y", "-hide_banner",
@@ -219,6 +226,106 @@ object FfmpegMuxCommands {
         if (!containerWebm) addAll(listOf("-movflags", "+faststart"))
         add(outputPath)
     }
+
+    /**
+     * Re-encode video so SRT cues are painted on the frames at their timestamps.
+     * Audio is stream-copied. Never uses h264/vp8/vp9_mediacodec.
+     */
+    fun burnCaptions(
+        videoPath: String,
+        outputPath: String,
+        videoFilter: String,
+        videoEncoder: String,
+        videoBitrateKbps: Int,
+        containerWebm: Boolean = false,
+    ): List<String> {
+        val encoder = videoEncoder.ifBlank { "libopenh264" }
+        check(encoder != "h264_mediacodec" && encoder != "vp8_mediacodec" && encoder != "vp9_mediacodec") {
+            "$encoder writes scrambled frames"
+        }
+        val kbps = videoBitrateKbps.coerceIn(400, 20_000)
+        return buildList {
+            addAll(listOf("-y", "-hide_banner", "-stats_period", "0.25", "-i", videoPath))
+            addAll(listOf("-vf", videoFilter))
+            addAll(listOf("-map", "0:v:0", "-map", "0:a?"))
+            addAll(listOf("-c:v", encoder, "-b:v", "${kbps}k", "-pix_fmt", "yuv420p"))
+            addAll(burnEncoderTune(encoder, kbps, containerWebm))
+            addAll(listOf("-c:a", "copy"))
+            if (!containerWebm) addAll(listOf("-movflags", "+faststart"))
+            add(outputPath)
+        }
+    }
+
+    fun subtitleBurnFilter(srtPath: String, fontsDir: String = ANDROID_FONTS_DIR): String {
+        val file = escapeFilterPath(srtPath)
+        val fonts = escapeFilterPath(fontsDir)
+        val style = "Fontname=Roboto,Fontsize=16,PrimaryColour=&H00FFFFFF," +
+            "OutlineColour=&H00000000,BorderStyle=1,Outline=1.6,Shadow=0,Alignment=2,MarginV=28"
+        return "subtitles=filename=$file:charenc=UTF-8:fontsdir=$fonts:force_style='$style'"
+    }
+
+    fun drawTextBurnFilter(
+        cues: List<BurnCaptionCue>,
+        fontFile: String,
+        maxCues: Int = MAX_DRAWTEXT_CUES,
+    ): String? {
+        if (cues.isEmpty() || fontFile.isBlank()) return null
+        val font = escapeFilterPath(fontFile)
+        return cues.take(maxCues).joinToString(",") { cue ->
+            val text = escapeDrawText(cue.text)
+            val start = String.format(Locale.US, "%.3f", cue.startSec.coerceAtLeast(0.0))
+            val end = String.format(Locale.US, "%.3f", cue.endSec.coerceAtLeast(cue.startSec + 0.05))
+            "drawtext=fontfile=$font:text='$text':x=(w-text_w)/2:y=h-th-(h*0.06):" +
+                "fontsize=h/18:fontcolor=white:borderw=2:bordercolor=black:" +
+                "enable='between(t,$start,$end)'"
+        }.takeIf { it.isNotBlank() }
+    }
+
+    /** Escape a filesystem path for an FFmpeg filter option. Do not wrap in quotes. */
+    fun escapeFilterPath(path: String): String = buildString(path.length + 8) {
+        for (ch in path) {
+            if (ch == '\\' || ch == '\'' || ch == ':' || ch == '[' || ch == ']' ||
+                ch == ',' || ch == ';'
+            ) {
+                append('\\')
+            }
+            append(ch)
+        }
+    }
+
+    fun escapeDrawText(text: String): String {
+        val folded = text.trim().replace(Regex("[\\r\\n]+"), " ").replace(Regex("\\s+"), " ")
+        return buildString(folded.length + 8) {
+            for (ch in folded) {
+                when (ch) {
+                    '\\', '\'', ':', '[', ']', ',', '%', ';' -> append('\\')
+                }
+                append(ch)
+            }
+        }
+    }
+
+    const val ANDROID_FONTS_DIR = "/system/fonts"
+    const val MAX_DRAWTEXT_CUES = 200
+
+    internal fun burnEncoderTune(encoder: String, bitrateKbps: Int, containerWebm: Boolean): List<String> =
+        buildList {
+            when (encoder) {
+                "libvpx", "libvpx-vp9" -> {
+                    addAll(listOf("-deadline", "good", "-cpu-used", "5", "-row-mt", "1"))
+                    if (encoder == "libvpx") addAll(listOf("-auto-alt-ref", "0"))
+                }
+                "libaom-av1" -> addAll(
+                    listOf("-usage", "realtime", "-cpu-used", "8", "-row-mt", "1", "-tiles", "2x2"),
+                )
+                "libsvtav1" -> addAll(listOf("-preset", "10"))
+                "hevc_mediacodec" -> addAll(listOf("-tag:v", "hvc1"))
+                "av1_mediacodec" -> if (!containerWebm) addAll(listOf("-tag:v", "av01"))
+                "libopenh264", "mpeg4" -> addAll(
+                    listOf("-maxrate", "${bitrateKbps}k", "-bufsize", "${bitrateKbps * 2}k"),
+                )
+            }
+        }
 
     fun applyChapters(
         videoPath: String,

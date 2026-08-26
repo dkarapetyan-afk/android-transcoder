@@ -151,6 +151,7 @@ data class RecordOptions(
     val coverStatusBar: Boolean = false,
     val grayscale: Boolean = false,
     val captions: Boolean = false,
+    val burnCaptions: Boolean = false,
     val quietNotification: Boolean = false,
     val bookmarkMode: BookmarkMode = BookmarkMode.CHAPTERS,
 ) {
@@ -208,6 +209,7 @@ data class RecordOptions(
         put("coverBar", coverStatusBar)
         put("gray", grayscale)
         put("caps", captions)
+        put("burnCaps", burnCaptions)
         put("quietNotif", quietNotification)
         put("marks", bookmarkMode.name)
     }.toString()
@@ -256,6 +258,7 @@ data class RecordOptions(
                     coverStatusBar = obj.optBoolean("coverBar", false),
                     grayscale = obj.optBoolean("gray", false),
                     captions = obj.optBoolean("caps", false),
+                    burnCaptions = obj.optBoolean("burnCaps", false),
                     quietNotification = obj.optBoolean("quietNotif", false),
                     bookmarkMode = enumOr(obj.optString("marks"), BookmarkMode.CHAPTERS),
                 )

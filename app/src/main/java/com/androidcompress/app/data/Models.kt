@@ -102,6 +102,7 @@ data class EncodeSettings(
     val twoPass: Boolean = false,
     val grayscale: Boolean = false,
     val captions: Boolean = false,
+    val burnCaptions: Boolean = false,
 ) {
     companion object {
         fun forPreset(preset: Preset, engine: EncodeEngine = EncodeEngine.FFMPEG): EncodeSettings = when (preset) {
@@ -200,6 +201,9 @@ fun EncodeSettings.hasTargetSize(): Boolean =
     targetSizePreset != TargetSizePreset.OFF && (targetSizeBytes ?: 0L) > 0L
 
 fun EncodeSettings.wantsCaptions(): Boolean = captions && audio != AudioOption.MUTE
+
+fun EncodeSettings.wantsBurnCaptions(): Boolean =
+    wantsCaptions() && burnCaptions && output != OutputMode.AUDIO
 
 fun EncodeSettings.withTargetPreset(preset: TargetSizePreset): EncodeSettings = when (preset) {
     TargetSizePreset.OFF -> copy(targetSizePreset = TargetSizePreset.OFF, targetSizeBytes = null)

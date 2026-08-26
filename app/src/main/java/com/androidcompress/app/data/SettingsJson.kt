@@ -35,6 +35,7 @@ object SettingsJson {
         put("twoPass", settings.twoPass)
         put("grayscale", settings.grayscale)
         put("captions", settings.captions)
+        put("burnCaptions", settings.burnCaptions)
     }.toString()
 
     fun decode(raw: String?): EncodeSettings {
@@ -83,6 +84,7 @@ object SettingsJson {
                 twoPass = obj.optBoolean("twoPass", false),
                 grayscale = obj.optBoolean("grayscale", false),
                 captions = obj.optBoolean("captions", false),
+                burnCaptions = obj.optBoolean("burnCaptions", false),
             )
         }.onFailureLog(TAG, "decode settings")
             .getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }

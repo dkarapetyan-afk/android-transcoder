@@ -349,8 +349,29 @@ fun CompressScreen(
                     }
                     Switch(
                         checked = settings.captions,
-                        onCheckedChange = { on -> viewModel.update { it.copy(captions = on) } },
+                        onCheckedChange = { on ->
+                            viewModel.update { it.copy(captions = on, burnCaptions = it.burnCaptions && on) }
+                        },
                     )
+                }
+                if (settings.captions && !settings.audioOutput(sourceHasVideo)) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.compress_burn_captions))
+                            Text(
+                                stringResource(R.string.compress_burn_captions_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = settings.burnCaptions,
+                            onCheckedChange = { on -> viewModel.update { it.copy(burnCaptions = on) } },
+                        )
+                    }
                 }
             }
             TextButton(onClick = viewModel::toggleAdvanced) {

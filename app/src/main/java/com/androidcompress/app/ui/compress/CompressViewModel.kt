@@ -261,6 +261,7 @@ class CompressViewModel(
             twoPass = previous.twoPass,
             grayscale = previous.grayscale,
             captions = previous.captions,
+            burnCaptions = previous.burnCaptions,
             clipStartMs = previous.clipStartMs,
             clipEndMs = previous.clipEndMs,
             output = previous.output,

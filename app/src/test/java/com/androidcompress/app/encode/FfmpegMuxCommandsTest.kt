@@ -2,6 +2,7 @@ package com.androidcompress.app.encode
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -266,5 +267,67 @@ class FfmpegMuxCommandsTest {
         assertEquals("webvtt", webm[webm.indexOf("-c:s") + 1])
         assertFalse(webm.contains("+faststart"))
         assertEquals("0:v?", webm[webm.indexOf("-map") + 1])
+    }
+
+    @Test
+    fun burnCaptionsReencodesWithSubtitleFilterAndCopiesAudio() {
+        val vf = FfmpegMuxCommands.subtitleBurnFilter("/data/job.srt")
+        assertTrue(vf.startsWith("subtitles=filename="))
+        assertTrue(vf.contains("charenc=UTF-8"))
+        assertTrue(vf.contains("Alignment=2"))
+        val args = FfmpegMuxCommands.burnCaptions(
+            videoPath = "/v.mp4",
+            outputPath = "/out.mp4",
+            videoFilter = vf,
+            videoEncoder = "libopenh264",
+            videoBitrateKbps = 2500,
+        )
+        assertEquals(vf, args[args.indexOf("-vf") + 1])
+        assertEquals("libopenh264", args[args.indexOf("-c:v") + 1])
+        assertEquals("copy", args[args.indexOf("-c:a") + 1])
+        assertEquals("0:v:0", args[args.indexOf("-map") + 1])
+        assertTrue(args.contains("+faststart"))
+        assertEquals("/out.mp4", args.last())
+    }
+
+    @Test
+    fun burnCaptionsWebmSkipsFaststartAndTunesLibvpx() {
+        val args = FfmpegMuxCommands.burnCaptions(
+            videoPath = "/v.webm",
+            outputPath = "/out.webm",
+            videoFilter = "subtitles=file.srt",
+            videoEncoder = "libvpx-vp9",
+            videoBitrateKbps = 1800,
+            containerWebm = true,
+        )
+        assertEquals("libvpx-vp9", args[args.indexOf("-c:v") + 1])
+        assertEquals("good", args[args.indexOf("-deadline") + 1])
+        assertFalse(args.contains("+faststart"))
+        assertEquals("/out.webm", args.last())
+    }
+
+    @Test
+    fun escapeFilterPathQuotesAndEscapesSpecials() {
+        assertEquals("/data/job.srt", FfmpegMuxCommands.escapeFilterPath("/data/job.srt"))
+        assertEquals("/tmp/a\\:b.srt", FfmpegMuxCommands.escapeFilterPath("/tmp/a:b.srt"))
+        assertEquals("/tmp/it\\'s.srt", FfmpegMuxCommands.escapeFilterPath("/tmp/it's.srt"))
+    }
+
+    @Test
+    fun drawTextBurnFilterUsesCueTimes() {
+        val vf = FfmpegMuxCommands.drawTextBurnFilter(
+            listOf(
+                BurnCaptionCue(1.0, 2.5, "Hello there"),
+                BurnCaptionCue(3.0, 4.0, "It's: fine"),
+            ),
+            "/system/fonts/Roboto-Regular.ttf",
+        )
+        assertNotNull(vf)
+        assertTrue(vf!!.contains("enable='between(t,1.000,2.500)'"))
+        assertTrue(vf.contains("enable='between(t,3.000,4.000)'"))
+        assertTrue(vf.contains("text='Hello there'"))
+        assertTrue(vf.contains("It\\'s\\: fine"))
+        assertTrue(vf.startsWith("drawtext="))
+        assertTrue(vf.contains(",drawtext="))
     }
 }

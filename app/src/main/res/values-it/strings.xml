@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">Estrazione audio</string>
     <string name="captions_phase_transcribe">Trascrizione</string>
     <string name="captions_phase_mux">Mux dei sottotitoli</string>
+    <string name="captions_phase_burn">Incisione dei sottotitoli</string>
     <string name="action_stop">Stop</string>
     <string name="action_pause">Pausa</string>
     <string name="action_resume">Riprendi</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">Incide un’immagine in bianco e nero nella registrazione. Stesso aspetto della Scala di grigi in Comprimi. La codifica diretta lo scrive nel file galleria; altrimenti Comprimi parte con questa opzione.</string>
     <string name="record_captions">Sottotitoli</string>
     <string name="record_captions_hint">Dopo lo stop, trascrive il parlato sul telefono con Whisper tiny e fa il mux di una traccia sottotitoli. Scrive anche un .srt accanto al file. Saltato se non c’è audio. Il primo uso scarica il modello vocale (~100 MB, consigliato il Wi-Fi). Una notifica separata mostra l’avanzamento; Annulla lì salta i sottotitoli e salva comunque il video.</string>
+    <string name="record_burn_captions">Incidi i sottotitoli</string>
+    <string name="record_burn_captions_hint">Dopo la trascrizione, disegna ogni battuta sui fotogrammi al suo timestamp così il testo è sempre visibile. Ricodifica l’immagine; scrive comunque il .srt. Annulla sulla notifica salta questo e conserva il video.</string>
     <string name="record_quiet_notif">Notifica di registrazione silenziosa</string>
     <string name="record_quiet_notif_hint">Mantiene la notifica di registrazione obbligatoria silenziosa e poco evidente. Non può essere nascosta del tutto.</string>
     <string name="record_bookmarks">Segnalibri</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">Converte l’immagine in bianco e nero su FFmpeg e Dispositivo. I lavori solo audio lo saltano.</string>
     <string name="compress_captions">Sottotitoli</string>
     <string name="compress_captions_hint">Trascrive il parlato sul dispositivo con Whisper tiny (sherpa-onnx), fa il mux di una traccia sottotitoli e salva un .srt. I lavori muti lo saltano. Il primo uso scarica il modello vocale (~100 MB). Una notifica separata mostra l’avanzamento; Annulla lì salta i sottotitoli e conserva il video.</string>
+    <string name="compress_burn_captions">Incidi i sottotitoli</string>
+    <string name="compress_burn_captions_hint">Disegna ogni battuta trascritta sui fotogrammi al timestamp Whisper. Sempre visibile in qualsiasi lettore. Ricodifica l’immagine; salva comunque il .srt. I lavori solo audio lo saltano. Annulla sulla notifica salta l’incisione e conserva il video.</string>
     <string name="compress_two_pass">VBR a due passate</string>
     <string name="compress_two_pass_hint">Analizza il ritaglio, poi codifica. Più dettaglio a bitrate bassi; impiega circa il doppio. Funziona con VP8, VP9, AV1 software e MPEG-4. libopenh264 e gli encoder hardware restano a una passata.</string>
     <string name="compress_two_pass_skipped">L’encoder FFmpeg attuale non può fare due passate. Passa a VP9 o AV1 software, oppure disattiva l’hardware per AV1.</string>

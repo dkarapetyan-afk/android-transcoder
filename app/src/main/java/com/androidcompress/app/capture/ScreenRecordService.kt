@@ -31,6 +31,7 @@ import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.RecordAudioMode
+import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.encode.FfmpegMuxCommands
 import com.androidcompress.app.encode.RecordingCrop
@@ -678,9 +679,17 @@ class ScreenRecordService : Service() {
         }
         val settings = EncodeSettings(
             captions = true,
+            burnCaptions = options.burnCaptions,
             audio = AudioOption.AAC_128,
             output = OutputMode.VIDEO,
             container = if (options.usesWebm) ContainerFormat.WEBM else ContainerFormat.MP4,
+            codec = when (options.videoCodec) {
+                RecordVideoCodec.H264 -> VideoCodec.H264
+                RecordVideoCodec.HEVC -> VideoCodec.HEVC
+                RecordVideoCodec.AV1 -> VideoCodec.AV1
+            },
+            videoBitrateKbps = options.videoBitrateKbps.takeIf { it > 0 } ?: 4_000,
+            preferHardware = true,
         )
         val workDir = file.parentFile ?: return null
         captionSkip = false
@@ -693,6 +702,7 @@ class ScreenRecordService : Service() {
                 stem = "${file.nameWithoutExtension}-cap",
                 onProgress = { fraction, message -> notice.update(fraction, message) },
                 isCancelled = { captionSkip },
+                capabilities = container().encoderCapabilities(),
             )
             cap.srt?.let { srt ->
                 container().exporter.publishSidecar(
@@ -702,7 +712,7 @@ class ScreenRecordService : Service() {
                 )
                 srt.delete()
             }
-            cap.media to "captions cues=${cap.cueCount} muxed=${cap.muxed}"
+            cap.media to "captions cues=${cap.cueCount} muxed=${cap.muxed} burned=${cap.burned}"
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
             AppLog.e(TAG, "captions", t)

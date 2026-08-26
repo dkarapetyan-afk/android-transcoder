@@ -4,7 +4,7 @@ This document describes **what the app currently does**, as implemented in this 
 
 - **App name:** Recording Compressor
 - **Application ID:** `com.androidcompress.app` (debug: `com.androidcompress.app.debug`)
-- **Version:** 1.3.0 / versionCode 4
+- **Version:** 1.4.0 / versionCode 5
 - **License:** MIT for app source. Bundled FFmpeg remains LGPL-3.0.
 
 The app records the screen and compresses video/audio **on the device**. It does not upload recordings. Optional HTTPS is used for the Gemini extra-args helper and to download the Whisper tiny / Silero VAD models on first captions use. Audio is never uploaded.
@@ -141,7 +141,8 @@ UI (Compose screens)
 | `targetSizePreset` / `targetSizeBytes` | Fit-to-size |
 | `twoPass` | FFmpeg 2-pass VBR (ignored by Media3 and audio-only) |
 | `grayscale` | Black-and-white. FFmpeg `format=gray` (YUV imports and RGB stills). Combine jobs put it on `[0:v]…[v]` via `-filter_complex` so the soundtrack input cannot bypass it. Media3 `RgbFilter` (including still+audio). Ignored by audio-only. Also merged into extra `-vf` and command overrides. |
-| `captions` | Off by default. After a successful encode, extract 16 kHz mono PCM (MediaCodec first, FFmpeg fallback), run Silero VAD + Whisper tiny (sherpa-onnx) on-device, write SRT, mux `mov_text` (MP4) or `webvtt` (WebM), and publish an `.srt` sidecar. MUTE skips it. A captions failure leaves the video and does not fail the job. First use downloads ~100 MB of models over HTTPS. Direct-encode recordings run the same pass at stop. A separate Transcribing notification tracks download / extract / Whisper / mux with Cancel; that skip keeps the video. Encode Cancel still cancels the job. Media3 WebM Opus CodecPrivate is rewritten from Android’s `AOPUSHDR` blob to an RFC 7845 OpusHead so FFmpeg can mux subtitles; PCM extract still prefers MediaCodec. |
+| `captions` | Off by default. After a successful encode, extract 16 kHz mono PCM (MediaCodec first, FFmpeg fallback), run Silero VAD + Whisper tiny (sherpa-onnx) on-device, write SRT, mux `mov_text` (MP4) or `webvtt` (WebM), and publish an `.srt` sidecar. MUTE skips it. A captions failure leaves the video and does not fail the job. First use downloads ~100 MB of models over HTTPS. Direct-encode recordings run the same pass at stop. A separate Transcribing notification tracks download / extract / Whisper / mux / burn with Cancel; that skip keeps the video. Encode Cancel still cancels the job. Media3 WebM Opus CodecPrivate is rewritten from Android’s `AOPUSHDR` blob to an RFC 7845 OpusHead so FFmpeg can mux subtitles; PCM extract still prefers MediaCodec. |
+| `burnCaptions` | Off by default. Requires `captions` and a video output. After Whisper writes the SRT, FFmpeg re-encodes the picture with the `subtitles` filter (libass, `fontsdir=/system/fonts`) so each cue is painted on the frames at its SRT timestamp. Audio is stream-copied. Does not mux a subtitle track (that would double-show in players). Still publishes the `.srt` sidecar. If burn fails, falls back to `drawtext` timed with `enable=between(t,start,end)`, then to soft-subtitle mux. Encoder follows the job codec (`libopenh264` for H.264, never `h264_mediacodec`). Audio-only jobs ignore it. App Functions `burnCaptions=true` with no `captions` value also turns captions on. |
 
 **Preset table**
 
@@ -594,7 +595,7 @@ Inbound (manifest, `android:exported="true"`):
 
 | Action | What it does |
 |---|---|
-| `com.androidcompress.app.automation.COMPRESS` | Same as App Function `compressNow` (import + start). Does not block. Source: extra `uri` / `path` / `file`, `Intent` data, `EXTRA_STREAM`, or clip data. Settings extras match `JobSettingsUpdate` field names (`preset`, `engine`, `container`, `codec`, `output`, `clipStartMs`, `twoPass`, `grayscale`, `captions`, …). `deleteSourceAfter` defaults false. Optional `requestId`, `replyPackage`. Paths need Device library access. |
+| `com.androidcompress.app.automation.COMPRESS` | Same as App Function `compressNow` (import + start). Does not block. Source: extra `uri` / `path` / `file`, `Intent` data, `EXTRA_STREAM`, or clip data. Settings extras match `JobSettingsUpdate` field names (`preset`, `engine`, `container`, `codec`, `output`, `clipStartMs`, `twoPass`, `grayscale`, `captions`, `burnCaptions`, …). `deleteSourceAfter` defaults false. Optional `requestId`, `replyPackage`. Paths need Device library access. |
 | `com.androidcompress.app.automation.RECORD_STOP` | Stops the active screen recording (same as the notification Stop). Does not start capture. |
 | `com.androidcompress.app.automation.CANCEL_QUEUE` | Same as App Function `cancelQueue`. |
 

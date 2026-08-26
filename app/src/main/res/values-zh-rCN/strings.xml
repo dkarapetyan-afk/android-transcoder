@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">正在提取音频</string>
     <string name="captions_phase_transcribe">正在转写</string>
     <string name="captions_phase_mux">正在混入字幕</string>
+    <string name="captions_phase_burn">正在烧录字幕</string>
     <string name="action_stop">停止</string>
     <string name="action_pause">暂停</string>
     <string name="action_resume">继续</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">将黑白画面烧录进录像，观感与压缩中的灰度相同。直接编码会写入图库文件；否则压缩会默认打开此项。</string>
     <string name="record_captions">字幕</string>
     <string name="record_captions_hint">停止后，用 Whisper tiny 在手机上转写语音并混入字幕轨，还会在文件旁写入 .srt。没有音频时跳过。首次使用会下载语音模型（约 100 MB，建议 Wi-Fi）。另有通知显示进度；在那里取消会跳过字幕但仍保存视频。</string>
+    <string name="record_burn_captions">烧录字幕</string>
+    <string name="record_burn_captions_hint">转写后按时间戳把每条字幕画进画面，任何播放器都会显示。会重新编码画面，仍会写入 .srt。在转写通知上取消会跳过烧录并保留视频。</string>
     <string name="record_quiet_notif">安静的录制通知</string>
     <string name="record_quiet_notif_hint">将必需的录制通知保持为静音、低突出条目。无法完全隐藏。</string>
     <string name="record_bookmarks">书签</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">在 FFmpeg 和设备引擎上将画面转为黑白。仅音频任务会跳过。</string>
     <string name="compress_captions">字幕</string>
     <string name="compress_captions_hint">用 Whisper tiny（sherpa-onnx）在设备上转写语音，混入字幕轨，并保存 .srt。静音任务会跳过。首次使用会下载语音模型（约 100 MB）。另有通知显示进度；在那里取消会跳过字幕并保留视频。</string>
+    <string name="compress_burn_captions">烧录字幕</string>
+    <string name="compress_burn_captions_hint">按 Whisper 时间戳把每条转写字幕画进画面，任何播放器都会显示。会重新编码画面，仍会保存 .srt。仅音频任务会跳过。在转写通知上取消会跳过烧录并保留视频。</string>
     <string name="compress_two_pass">两遍 VBR</string>
     <string name="compress_two_pass_hint">先分析片段再编码。低码率细节更好，大约花费两倍时间。适用于 VP8、VP9、软件 AV1 和 MPEG-4。libopenh264 和硬件编码器仍为一遍。</string>
     <string name="compress_two_pass_skipped">当前 FFmpeg 编码器无法两遍。请改用 VP9 或软件 AV1，或关闭 AV1 硬件。</string>

@@ -54,6 +54,7 @@ object AutomationIntents {
     const val EXTRA_TWO_PASS = "twoPass"
     const val EXTRA_GRAYSCALE = "grayscale"
     const val EXTRA_CAPTIONS = "captions"
+    const val EXTRA_BURN_CAPTIONS = "burnCaptions"
 
     const val EXTRA_ACTION = "action"
     const val EXTRA_JOB_ID = "jobId"
@@ -150,6 +151,7 @@ object AutomationIntents {
             twoPass = extras.boolean(EXTRA_TWO_PASS),
             grayscale = extras.boolean(EXTRA_GRAYSCALE),
             captions = extras.boolean(EXTRA_CAPTIONS),
+            burnCaptions = extras.boolean(EXTRA_BURN_CAPTIONS),
         )
     }
 

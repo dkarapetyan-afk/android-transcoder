@@ -167,6 +167,7 @@ class JobSettingsCodecTest {
         assertFalse(snap.twoPass)
         assertFalse(snap.grayscale)
         assertFalse(snap.captions)
+        assertFalse(snap.burnCaptions)
     }
 
     @Test
@@ -208,6 +209,24 @@ class JobSettingsCodecTest {
             EncodeSettings.forPreset(Preset.BALANCED),
             JobSettingsCodec.patchFromUpdate(JobSettingsUpdate(captions = true)),
         )
+        assertTrue(fromUpdate.captions)
+    }
+
+    @Test
+    fun burnCaptionsPatchImpliesCaptions() {
+        val next = JobSettingsCodec.apply(
+            EncodeSettings.forPreset(Preset.BALANCED),
+            SettingsPatch(burnCaptions = true),
+        )
+        assertTrue(next.burnCaptions)
+        assertTrue(next.captions)
+        val snap = JobSettingsCodec.snapshot(next)
+        assertTrue(snap.burnCaptions)
+        val fromUpdate = JobSettingsCodec.apply(
+            EncodeSettings.forPreset(Preset.BALANCED),
+            JobSettingsCodec.patchFromUpdate(JobSettingsUpdate(burnCaptions = true)),
+        )
+        assertTrue(fromUpdate.burnCaptions)
         assertTrue(fromUpdate.captions)
     }
 

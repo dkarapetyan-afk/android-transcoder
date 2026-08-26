@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">ऑडियो निकाला जा रहा है</string>
     <string name="captions_phase_transcribe">ट्रांस्क्राइब हो रहा है</string>
     <string name="captions_phase_mux">कैप्शन मक्स हो रहे हैं</string>
+    <string name="captions_phase_burn">कैप्शन बर्न हो रहे हैं</string>
     <string name="action_stop">रोकें</string>
     <string name="action_pause">पॉज़</string>
     <string name="action_resume">फिर से चलाएँ</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">रिकॉर्डिंग में काला-सफेद चित्र जलाता है। कंप्रेस ग्रेस्केल जैसा दिखता है। डायरेक्ट एन्कोड गैलरी फ़ाइल में लिखता है; वरना कंप्रेस इसे चालू लेकर शुरू होता है।</string>
     <string name="record_captions">कैप्शन</string>
     <string name="record_captions_hint">रुकने के बाद फ़ोन पर Whisper tiny से बोली ट्रांस्क्राइब करता है और सबटाइटल ट्रैक मक्स करता है। फ़ाइल के पास .srt भी लिखता है। ऑडियो न हो तो छोड़ता है। पहली बार स्पीच मॉडल डाउनलोड होता है (~100 MB, Wi-Fi बेहतर)। अलग नोटिफ़िकेशन प्रगति दिखाता है; वहाँ रद्द करने से कैप्शन छूटते हैं और वीडियो फिर भी सहेजता है।</string>
+    <string name="record_burn_captions">कैप्शन बर्न करें</string>
+    <string name="record_burn_captions_hint">ट्रांस्क्राइब के बाद हर क्यू को उसके समय पर फ़्रेम पर लिखता है ताकि टेक्स्ट हमेशा दिखे। पिक्चर फिर से एनकोड होती है; .srt भी लिखता है। ट्रांस्क्राइब नोटिफ़िकेशन पर रद्द करने से बर्न छूटता है और वीडियो रहता है।</string>
     <string name="record_quiet_notif">शांत रिकॉर्डिंग नोटिफ़िकेशन</string>
     <string name="record_quiet_notif_hint">ज़रूरी रिकॉर्डिंग नोटिफ़िकेशन को मूक, कम प्रमुख रखता है। पूरी तरह छिपाया नहीं जा सकता।</string>
     <string name="record_bookmarks">बुकमार्क</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">FFmpeg और डिवाइस पर चित्र को काला-सफेद करता है। केवल-ऑडियो जॉब छोड़ते हैं।</string>
     <string name="compress_captions">कैप्शन</string>
     <string name="compress_captions_hint">डिवाइस पर Whisper tiny (sherpa-onnx) से बोली ट्रांस्क्राइब करता है, सबटाइटल ट्रैक मक्स करता है, और .srt सहेजता है। म्यूट जॉब छोड़ते हैं। पहली बार स्पीच मॉडल डाउनलोड होता है (~100 MB)। अलग नोटिफ़िकेशन प्रगति दिखाता है; वहाँ रद्द करने से कैप्शन छूटते हैं और वीडियो रहता है।</string>
+    <string name="compress_burn_captions">कैप्शन बर्न करें</string>
+    <string name="compress_burn_captions_hint">हर ट्रांस्क्राइब्ड क्यू को Whisper समय पर फ़्रेम पर लिखता है। किसी भी प्लेयर में हमेशा दिखेगा। पिक्चर फिर से एनकोड होती है; .srt भी सहेजता है। केवल-ऑडियो जॉब छोड़ते हैं। ट्रांस्क्राइब नोटिफ़िकेशन पर रद्द करने से बर्न छूटता है और वीडियो रहता है।</string>
     <string name="compress_two_pass">दो-पास VBR</string>
     <string name="compress_two_pass_hint">क्लिप का विश्लेषण करता है, फिर एन्कोड करता है। कम बिटरेट पर बेहतर विवरण; लगभग दोगुना समय। VP8, VP9, सॉफ़्टवेयर AV1 और MPEG-4 पर चलता है। libopenh264 और हार्डवेयर एन्कोडर एक पास रहते हैं।</string>
     <string name="compress_two_pass_skipped">मौजूदा FFmpeg एन्कोडर दो पास नहीं कर सकता। VP9 या सॉफ़्टवेयर AV1 पर जाएँ, या AV1 के लिए हार्डवेयर बंद करें।</string>

@@ -3,6 +3,8 @@ package com.androidcompress.app.asr
 import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.data.OutputMode
+import com.androidcompress.app.data.wantsBurnCaptions
 import com.androidcompress.app.data.wantsCaptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,5 +46,14 @@ class SrtWriterTest {
         assertTrue(on.wantsCaptions())
         assertFalse(on.copy(audio = AudioOption.MUTE).wantsCaptions())
         assertFalse(EncodeSettings.forPreset(Preset.BALANCED).wantsCaptions())
+    }
+
+    @Test
+    fun burnNeedsCaptionsAndVideo() {
+        val on = EncodeSettings.forPreset(Preset.BALANCED).copy(captions = true, burnCaptions = true)
+        assertTrue(on.wantsBurnCaptions())
+        assertFalse(on.copy(captions = false).wantsBurnCaptions())
+        assertFalse(on.copy(audio = AudioOption.MUTE).wantsBurnCaptions())
+        assertFalse(on.copy(output = OutputMode.AUDIO).wantsBurnCaptions())
     }
 }

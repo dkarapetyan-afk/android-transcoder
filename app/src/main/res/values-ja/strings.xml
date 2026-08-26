@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">音声を抽出中</string>
     <string name="captions_phase_transcribe">文字起こし中</string>
     <string name="captions_phase_mux">字幕を多重化中</string>
+    <string name="captions_phase_burn">字幕を焼き込み中</string>
     <string name="action_stop">停止</string>
     <string name="action_pause">一時停止</string>
     <string name="action_resume">再開</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">白黒の映像を録画に焼き込みます。圧縮のグレースケールと同じ見た目です。直接エンコードはギャラリーファイルに書き、それ以外は圧縮がオンで始まります。</string>
     <string name="record_captions">字幕</string>
     <string name="record_captions_hint">停止後、Whisper tiny で端末上の音声を文字起こしし、字幕トラックを多重化します。ファイルの横に .srt も書き出します。音声がない場合はスキップします。初回は音声モデルをダウンロードします（約 100 MB、Wi-Fi 推奨）。別の通知で進行状況を表示し、そこでキャンセルすると字幕だけ飛ばして動画は保存します。</string>
+    <string name="record_burn_captions">字幕を焼き込む</string>
+    <string name="record_burn_captions_hint">文字起こし後、各キューをその時刻のフレームに焼き込み、どのプレーヤーでも常に見えるようにします。映像を再エンコードし、.srt も書き出します。文字起こし中の通知でキャンセルすると焼き込みを飛ばして動画は残します。</string>
     <string name="record_quiet_notif">静かな録画通知</string>
     <string name="record_quiet_notif_hint">必須の録画通知を無音で目立たない項目にします。完全には隠せません。</string>
     <string name="record_bookmarks">ブックマーク</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">FFmpeg と端末の両方で映像を白黒にします。音声のみのジョブでは使いません。</string>
     <string name="compress_captions">字幕</string>
     <string name="compress_captions_hint">Whisper tiny（sherpa-onnx）で端末上の音声を文字起こしし、字幕トラックを多重化し、.srt を保存します。ミュートのジョブでは使いません。初回は音声モデルをダウンロードします（約 100 MB）。別の通知で進行状況を表示し、そこでキャンセルすると字幕だけ飛ばして動画は残します。</string>
+    <string name="compress_burn_captions">字幕を焼き込む</string>
+    <string name="compress_burn_captions_hint">書き起こした各キューを Whisper の時刻でフレームに焼き込みます。どのプレーヤーでも常に表示されます。映像を再エンコードし、.srt も保存します。音声のみのジョブでは使いません。文字起こし中の通知でキャンセルすると焼き込みを飛ばして動画は残します。</string>
     <string name="compress_two_pass">2 パス VBR</string>
     <string name="compress_two_pass_hint">クリップを分析してからエンコードします。低ビットレートで細部が良く、約 2 倍の時間がかかります。VP8、VP9、ソフトウェア AV1、MPEG-4 で動作します。libopenh264 とハードウェアエンコーダーは 1 パスのままです。</string>
     <string name="compress_two_pass_skipped">現在の FFmpeg エンコーダーは 2 パスできません。VP9 かソフトウェア AV1 に切り替えるか、AV1 のハードウェアをオフにしてください。</string>

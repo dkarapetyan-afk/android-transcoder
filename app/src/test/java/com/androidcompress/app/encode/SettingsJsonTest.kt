@@ -55,6 +55,7 @@ class SettingsJsonTest {
             twoPass = true,
             grayscale = true,
             captions = true,
+            burnCaptions = true,
         )
         val decoded = SettingsJson.decode(SettingsJson.encode(original))
         assertEquals(original, decoded)
@@ -90,6 +91,7 @@ class SettingsJsonTest {
         assertFalse(decoded.twoPass)
         assertFalse(decoded.grayscale)
         assertFalse(decoded.captions)
+        assertFalse(decoded.burnCaptions)
     }
 
     @Test

@@ -645,8 +645,20 @@ fun RecordScreen(
                 hint = stringResource(R.string.record_captions_hint),
                 checked = options.captions,
                 enabled = controlsEnabled,
-                onChecked = { viewModel.update { o -> o.copy(captions = it) } },
+                onChecked = { on ->
+                    viewModel.update { o -> o.copy(captions = on, burnCaptions = o.burnCaptions && on) }
+                },
             )
+            if (options.captions) {
+                SwitchRow(
+                    title = stringResource(R.string.record_burn_captions),
+                    hint = stringResource(R.string.record_burn_captions_hint),
+                    checked = options.burnCaptions,
+                    enabled = controlsEnabled,
+                    onChecked = { viewModel.update { o -> o.copy(burnCaptions = it) } },
+                    modifier = Modifier.padding(start = 16.dp),
+                )
+            }
             SwitchRow(
                 title = stringResource(R.string.record_quiet_notif),
                 hint = stringResource(R.string.record_quiet_notif_hint),
@@ -786,8 +798,9 @@ private fun SwitchRow(
     checked: Boolean,
     enabled: Boolean,
     onChecked: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title)
             Text(

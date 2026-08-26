@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">E dey commot audio</string>
     <string name="captions_phase_transcribe">E dey transcribe</string>
     <string name="captions_phase_mux">E dey mux captions</string>
+    <string name="captions_phase_burn">E dey burn captions</string>
     <string name="action_stop">Stop</string>
     <string name="action_pause">Pause</string>
     <string name="action_resume">Continue</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">E dey burn black-and-white picture enter di recording. Same look as Compress grayscale. Direct encode go write am for gallery file; if not, Compress go start with dis on.</string>
     <string name="record_captions">Captions</string>
     <string name="record_captions_hint">After stop, e go transcribe speech for di phone with Whisper tiny and mux subtitle track. E also dey write .srt beside di file. E go skip if audio no dey. First use go download di speech model (~100 MB, Wi-Fi better). Separate notification dey show progress; Cancel there go skip captions and still save di video.</string>
+    <string name="record_burn_captions">Burn captions</string>
+    <string name="record_burn_captions_hint">After transcribe, e go paint each cue for di frames for that time so di text go always show. E go encode di picture again; e still dey write .srt. Cancel for Transcribing notification go skip this and still keep di video.</string>
     <string name="record_quiet_notif">Quiet recording notification</string>
     <string name="record_quiet_notif_hint">E go keep di required recording notification as silent, low-prominence entry. E no fit hide completely.</string>
     <string name="record_bookmarks">Bookmarks</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">E dey convert di picture to black and white for FFmpeg and Phone. Audio-only jobs dey skip am.</string>
     <string name="compress_captions">Captions</string>
     <string name="compress_captions_hint">E dey transcribe speech for di phone with Whisper tiny (sherpa-onnx), mux subtitle track, and save .srt sidecar. Mute jobs dey skip am. First use go download di speech model (~100 MB). Separate notification dey show progress; Cancel there go skip captions and still keep di video.</string>
+    <string name="compress_burn_captions">Burn captions</string>
+    <string name="compress_burn_captions_hint">E dey paint each transcribed cue for di frames for Whisper time. E go always show for any player. E go encode di picture again; e still dey save .srt. Audio-only jobs dey skip am. Cancel for Transcribing notification go skip burn and keep di video.</string>
     <string name="compress_two_pass">Two-pass VBR</string>
     <string name="compress_two_pass_hint">E go analyse di clip, then encode. Better detail for low bitrates; e take about twice as long. E dey work with VP8, VP9, software AV1, and MPEG-4. libopenh264 and hardware encoders remain one pass.</string>
     <string name="compress_two_pass_skipped">Di current FFmpeg encoder no fit do two passes. Switch to VP9 or software AV1, or turn hardware off for AV1.</string>

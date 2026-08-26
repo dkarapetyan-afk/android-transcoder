@@ -39,6 +39,7 @@ object RecordingSession {
                     EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine).copy(
                         grayscale = options.grayscale,
                         captions = options.captions,
+                        burnCaptions = options.burnCaptions,
                     ),
                 ),
                 error = null,

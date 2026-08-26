@@ -30,6 +30,7 @@
     <string name="captions_phase_extract">Extracting audio</string>
     <string name="captions_phase_transcribe">Transcribing</string>
     <string name="captions_phase_mux">Muxing captions</string>
+    <string name="captions_phase_burn">Burning captions</string>
     <string name="action_stop">Stop</string>
     <string name="action_pause">Pause</string>
     <string name="action_resume">Resume</string>
@@ -225,6 +226,8 @@
     <string name="record_grayscale_hint">Burns a black-and-white picture into the recording. Same look as Compress grayscale. Direct encode writes it in the gallery file; otherwise Compress starts with this on.</string>
     <string name="record_captions">Captions</string>
     <string name="record_captions_hint">After stop, transcribes speech on the phone with Whisper tiny and muxes a subtitle track. Also writes an .srt next to the file. Skipped when there is no audio. First use downloads the speech model (~100 MB, Wi-Fi recommended). A separate notification shows progress; Cancel there skips captions and still saves the video.</string>
+    <string name="record_burn_captions">Burn captions</string>
+    <string name="record_burn_captions_hint">After transcribing, paints each cue onto the frames at its timestamp so the text is always visible. Re-encodes the picture; still writes the .srt. Cancel on the Transcribing notification skips this and keeps the video.</string>
     <string name="record_quiet_notif">Quiet recording notification</string>
     <string name="record_quiet_notif_hint">Keeps the required recording notification as a silent, low-prominence entry. It cannot be hidden completely.</string>
     <string name="record_bookmarks">Bookmarks</string>
@@ -289,6 +292,8 @@
     <string name="compress_grayscale_hint">Converts the picture to black and white on FFmpeg and Device. Audio-only jobs skip it.</string>
     <string name="compress_captions">Captions</string>
     <string name="compress_captions_hint">Transcribes speech on the device with Whisper tiny (sherpa-onnx), muxes a subtitle track, and saves an .srt sidecar. Muted jobs skip it. First use downloads the speech model (~100 MB). A separate notification shows progress; Cancel there skips captions and still keeps the video.</string>
+    <string name="compress_burn_captions">Burn captions</string>
+    <string name="compress_burn_captions_hint">Paints each transcribed cue onto the frames at its Whisper timestamp. Always visible in any player. Re-encodes the picture; still saves the .srt. Audio-only jobs skip it. Cancel on the Transcribing notification skips burn and keeps the video.</string>
     <string name="compress_two_pass">Two-pass VBR</string>
     <string name="compress_two_pass_hint">Analyzes the clip, then encodes. Better detail at low bitrates; takes about twice as long. Works with VP8, VP9, software AV1, and MPEG-4. libopenh264 and hardware encoders stay one pass.</string>
     <string name="compress_two_pass_skipped">The current FFmpeg encoder cannot do two passes. Switch to VP9 or software AV1, or turn hardware off for AV1.</string>

@@ -47,6 +47,7 @@ class RecordOptionsTest {
             coverStatusBar = true,
             grayscale = true,
             captions = true,
+            burnCaptions = true,
             quietNotification = true,
             bookmarkMode = BookmarkMode.SPLIT,
         )
@@ -75,6 +76,7 @@ class RecordOptionsTest {
         assertTrue(restored.coverStatusBar)
         assertTrue(restored.grayscale)
         assertTrue(restored.captions)
+        assertTrue(restored.burnCaptions)
         assertEquals(BookmarkMode.SPLIT, restored.bookmarkMode)
         val region = restored.region
         assertEquals(0.1f, region?.left ?: -1f, 0.001f)
@@ -97,6 +99,7 @@ class RecordOptionsTest {
         assertFalse(options.directEncode)
         assertFalse(options.grayscale)
         assertFalse(options.captions)
+        assertFalse(options.burnCaptions)
     }
 
     @Test

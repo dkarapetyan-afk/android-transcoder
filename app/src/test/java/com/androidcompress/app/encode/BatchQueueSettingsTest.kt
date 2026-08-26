@@ -46,6 +46,7 @@ class BatchQueueSettingsTest {
             twoPass = true,
             grayscale = true,
             captions = true,
+            burnCaptions = true,
             targetSizePreset = TargetSizePreset.DISCORD,
             targetSizeBytes = 10L shl 20,
         )
@@ -64,6 +65,7 @@ class BatchQueueSettingsTest {
         assertTrue(next.twoPass)
         assertTrue(next.grayscale)
         assertTrue(next.captions)
+        assertTrue(next.burnCaptions)
         assertEquals(TargetSizePreset.OFF, next.targetSizePreset)
         assertEquals(null, next.targetSizeBytes)
     }

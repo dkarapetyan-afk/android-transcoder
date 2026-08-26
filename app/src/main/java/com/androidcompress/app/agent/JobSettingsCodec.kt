@@ -53,6 +53,7 @@ data class SettingsPatch(
     val twoPass: Boolean? = null,
     val grayscale: Boolean? = null,
     val captions: Boolean? = null,
+    val burnCaptions: Boolean? = null,
 )
 
 object JobSettingsCodec {
@@ -144,6 +145,12 @@ object JobSettingsCodec {
         if (patch.twoPass != null) next = next.copy(twoPass = patch.twoPass)
         if (patch.grayscale != null) next = next.copy(grayscale = patch.grayscale)
         if (patch.captions != null) next = next.copy(captions = patch.captions)
+        if (patch.burnCaptions != null) {
+            next = next.copy(
+                burnCaptions = patch.burnCaptions,
+                captions = if (patch.burnCaptions && patch.captions == null) true else next.captions,
+            )
+        }
         return next
     }
 
@@ -174,6 +181,7 @@ object JobSettingsCodec {
         twoPass = settings.twoPass,
         grayscale = settings.grayscale,
         captions = settings.captions,
+        burnCaptions = settings.burnCaptions,
     )
 
     fun parsePreset(raw: String?): Preset? = parseEnum(raw)
@@ -232,6 +240,7 @@ object JobSettingsCodec {
         twoPass = update.twoPass,
         grayscale = update.grayscale,
         captions = update.captions,
+        burnCaptions = update.burnCaptions,
     )
 
     fun canEdit(status: JobStatus): Boolean = when (status) {

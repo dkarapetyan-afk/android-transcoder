@@ -1,16 +1,25 @@
 package com.androidcompress.app.asr
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import com.androidcompress.app.R
-import com.androidcompress.app.data.EncodeSettings
-import com.androidcompress.app.data.OutputMode
-import com.androidcompress.app.data.usesWebm
-import com.androidcompress.app.data.wantsCaptions
 import com.androidcompress.app.data.EncodeResult
+import com.androidcompress.app.data.EncodeSettings
+import com.androidcompress.app.data.EncodeStats
+import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.data.OutputMode
+import com.androidcompress.app.data.VideoCodec
+import com.androidcompress.app.data.effectiveVideoCodec
+import com.androidcompress.app.data.usesWebm
+import com.androidcompress.app.data.wantsBurnCaptions
+import com.androidcompress.app.data.wantsCaptions
+import com.androidcompress.app.encode.BurnCaptionCue
+import com.androidcompress.app.encode.FfmpegCommandBuilder
 import com.androidcompress.app.encode.FfmpegGateway
 import com.androidcompress.app.encode.FfmpegMuxCommands
 import com.androidcompress.app.encode.OpusCodecPrivate
 import com.androidcompress.app.encode.quoteArgs
+import com.androidcompress.app.util.AppLog
 import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +36,7 @@ data class CaptionOutcome(
     val muxed: Boolean,
     val cueCount: Int,
     val log: String,
+    val burned: Boolean = false,
 )
 
 class CaptionPass(
@@ -43,6 +53,7 @@ class CaptionPass(
         stem: String,
         onProgress: (Float, String) -> Unit,
         isCancelled: () -> Boolean,
+        capabilities: EncoderCapabilities? = null,
     ): CaptionOutcome = withContext(Dispatchers.IO) {
         val log = StringBuilder()
         if (!settings.wantsCaptions()) {
@@ -75,9 +86,15 @@ class CaptionPass(
                 return@withContext CaptionOutcome(media, null, false, 0, log.toString())
             }
             onProgress(0.28f, phase(R.string.captions_phase_transcribe))
+            val transcribeEnd = if (settings.wantsBurnCaptions()) 0.58f else 0.90f
             val cues = captioner.transcribe(
                 pcm = pcm,
-                onProgress = { onProgress(0.28f + 0.62f * it.coerceIn(0f, 1f), phase(R.string.captions_phase_transcribe)) },
+                onProgress = {
+                    onProgress(
+                        0.28f + (transcribeEnd - 0.28f) * it.coerceIn(0f, 1f),
+                        phase(R.string.captions_phase_transcribe),
+                    )
+                },
                 isCancelled = isCancelled,
             )
             log.appendLine("cues=${cues.size}")
@@ -91,13 +108,39 @@ class CaptionPass(
                 onProgress(1f, phase(R.string.captions_phase_transcribe))
                 return@withContext CaptionOutcome(media, srt, false, cues.size, log.toString())
             }
-            onProgress(0.92f, phase(R.string.captions_phase_mux))
             if (settings.usesWebm()) {
                 val repaired = runCatchingLog(TAG, "repair opus header") {
                     OpusCodecPrivate.repairWebmFile(media)
                 }.getOrDefault(false)
                 if (repaired) log.appendLine("opus CodecPrivate rewritten for FFmpeg")
             }
+            if (settings.wantsBurnCaptions()) {
+                val burned = burnIn(
+                    media = media,
+                    srt = srt,
+                    cues = cues,
+                    settings = settings,
+                    workDir = workDir,
+                    stem = stem,
+                    log = log,
+                    onProgress = onProgress,
+                    isCancelled = isCancelled,
+                    capabilities = capabilities,
+                )
+                if (burned != null) {
+                    onProgress(1f, phase(R.string.captions_phase_burn))
+                    return@withContext CaptionOutcome(
+                        media = burned,
+                        srt = srt,
+                        muxed = false,
+                        cueCount = cues.size,
+                        log = log.toString(),
+                        burned = true,
+                    )
+                }
+                log.appendLine("burn failed; muxing subtitles")
+            }
+            onProgress(0.92f, phase(R.string.captions_phase_mux))
             val muxArgs = FfmpegMuxCommands.applySubtitles(
                 videoPath = media.absolutePath,
                 srtPath = srt.absolutePath,
@@ -121,6 +164,146 @@ class CaptionPass(
             pcm.delete()
             if (muxed.exists() && muxed != media) muxed.delete()
         }
+    }
+
+    private suspend fun burnIn(
+        media: File,
+        srt: File,
+        cues: List<CaptionCue>,
+        settings: EncodeSettings,
+        workDir: File,
+        stem: String,
+        log: StringBuilder,
+        onProgress: (Float, String) -> Unit,
+        isCancelled: () -> Boolean,
+        capabilities: EncoderCapabilities?,
+    ): File? {
+        val burned = File(workDir, "$stem-burn.${media.extension.ifBlank { "mp4" }}")
+        burned.delete()
+        val durationMs = mediaDurationMs(media).coerceAtLeast(
+            ((cues.maxOfOrNull { it.endSec } ?: 1.0) * 1000.0).toLong().coerceAtLeast(1_000L),
+        )
+        val kbps = settings.videoBitrateKbps.coerceIn(400, 20_000)
+        val encoders = burnEncoderCandidates(settings, capabilities ?: EncoderCapabilities())
+        val filters = buildList {
+            add(FfmpegMuxCommands.subtitleBurnFilter(srt.absolutePath))
+            val font = systemFontFile()
+            if (font != null) {
+                val draw = FfmpegMuxCommands.drawTextBurnFilter(
+                    cues.map { BurnCaptionCue(it.startSec, it.endSec, it.text) },
+                    font,
+                )
+                if (draw != null) add(draw)
+            }
+        }
+        var keep: File? = null
+        try {
+            filters.forEachIndexed { filterIndex, filter ->
+                val label = if (filterIndex == 0) "subtitles" else "drawtext"
+                val tryEncoders = if (filterIndex == 0) encoders else encoders.take(1)
+                for (encoder in tryEncoders) {
+                    checkCancel(isCancelled)
+                    burned.delete()
+                    val args = FfmpegMuxCommands.burnCaptions(
+                        videoPath = media.absolutePath,
+                        outputPath = burned.absolutePath,
+                        videoFilter = filter,
+                        videoEncoder = encoder,
+                        videoBitrateKbps = kbps,
+                        containerWebm = settings.usesWebm(),
+                    )
+                    log.appendLine("burn $label $encoder: ${quoteArgs(args)}")
+                    onProgress(0.58f, phase(R.string.captions_phase_burn))
+                    val result = runFfmpeg(
+                        args,
+                        log,
+                        isCancelled,
+                        maxLogLines = 48,
+                        onStats = { stats ->
+                            val frac = (stats.timeMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                            onProgress(0.58f + 0.40f * frac, phase(R.string.captions_phase_burn))
+                        },
+                    )
+                    if (result.cancelled || isCancelled()) error("cancelled")
+                    if (result.success && burned.isFile && burned.length() > 1024) {
+                        media.delete()
+                        val finalFile = if (burned.renameTo(media)) media else burned
+                        keep = finalFile
+                        log.appendLine("burned captions into ${finalFile.name} encoder=$encoder via=$label")
+                        return finalFile
+                    }
+                    log.appendLine("burn $label $encoder failed: ${result.error ?: "unknown"}")
+                    burned.delete()
+                }
+            }
+            return null
+        } finally {
+            if (burned.exists() && burned != media && burned != keep) burned.delete()
+        }
+    }
+
+    private fun checkCancel(isCancelled: () -> Boolean) {
+        if (isCancelled()) error("cancelled")
+    }
+
+    private fun burnEncoderCandidates(
+        settings: EncodeSettings,
+        caps: EncoderCapabilities,
+    ): List<String> {
+        val primary = FfmpegCommandBuilder.selectVideoEncoder(settings, caps)
+        val extras = when (settings.effectiveVideoCodec()) {
+            VideoCodec.H264 -> listOf("libopenh264", "mpeg4")
+            VideoCodec.HEVC -> listOf("hevc_mediacodec", "libopenh264", "mpeg4")
+            VideoCodec.VP8 -> listOf("libvpx")
+            VideoCodec.VP9 -> listOf("libvpx-vp9", "libvpx")
+            VideoCodec.AV1 -> if (settings.usesWebm()) {
+                listOf("av1_mediacodec", "libaom-av1", "libvpx-vp9")
+            } else {
+                listOf("av1_mediacodec", "libaom-av1", "libopenh264")
+            }
+        }
+        return (listOf(primary) + extras)
+            .filter { encoder ->
+                encoder != "h264_mediacodec" &&
+                    encoder != "vp8_mediacodec" &&
+                    encoder != "vp9_mediacodec"
+            }
+            .distinct()
+    }
+
+    private fun mediaDurationMs(file: File): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "media duration", t)
+            0L
+        } finally {
+            runCatchingLog(TAG, "release retriever") { retriever.release() }
+        }
+    }
+
+    private fun systemFontFile(): String? {
+        val dir = File(FfmpegMuxCommands.ANDROID_FONTS_DIR)
+        if (!dir.isDirectory) return null
+        val names = listOf(
+            "Roboto-Regular.ttf",
+            "Roboto.ttf",
+            "NotoSans-Regular.ttf",
+            "NotoSansCJK-Regular.ttc",
+            "DroidSans.ttf",
+            "NotoNaskhArabic-Regular.ttf",
+            "NotoSerif-Regular.ttf",
+        )
+        names.forEach { name ->
+            val file = File(dir, name)
+            if (file.isFile) return file.absolutePath
+        }
+        return dir.listFiles()?.firstOrNull { file ->
+            val ext = file.extension.lowercase()
+            file.isFile && (ext == "ttf" || ext == "otf" || ext == "ttc")
+        }?.absolutePath
     }
 
     private fun pcmReady(pcm: File): Boolean =
@@ -168,6 +351,7 @@ class CaptionPass(
         log: StringBuilder,
         isCancelled: () -> Boolean,
         maxLogLines: Int = Int.MAX_VALUE,
+        onStats: (EncodeStats) -> Unit = {},
     ): EncodeResult {
         if (isCancelled()) error("cancelled")
         var kept = 0
@@ -184,7 +368,7 @@ class CaptionPass(
                     }
                 }
             },
-            onStats = {},
+            onStats = onStats,
         )
         return try {
             coroutineScope {
