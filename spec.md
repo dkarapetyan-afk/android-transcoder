@@ -4,7 +4,7 @@ This document describes **what the app currently does**, as implemented in this 
 
 - **App name:** Recording Compressor
 - **Application ID:** `com.androidcompress.app` (debug: `com.androidcompress.app.debug`)
-- **Version:** 1.2.0 / versionCode 3
+- **Version:** 1.3.0 / versionCode 4
 - **License:** MIT for app source. Bundled FFmpeg remains LGPL-3.0.
 
 The app records the screen and compresses video/audio **on the device**. It does not upload recordings. Optional HTTPS is used for the Gemini extra-args helper and to download the Whisper tiny / Silero VAD models on first captions use. Audio is never uploaded.
@@ -15,7 +15,7 @@ The app records the screen and compresses video/audio **on the device**. It does
 
 | Item | Value |
 |---|---|
-| Language / UI | Kotlin, Jetpack Compose, Material 3 |
+| Language / UI | Kotlin, Jetpack Compose, Material 3. UI strings: English (default), Arabic, Spanish, French, Hindi, Italian, Japanese, Simplified Chinese, Nigerian Pidgin (`pcm`). Android 13+ per-app language via `localeConfig`. RTL for Arabic. |
 | minSdk | 26 |
 | compileSdk / targetSdk | 37 |
 | ABI | `arm64-v8a` only |

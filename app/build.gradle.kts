@@ -49,8 +49,8 @@ android {
         applicationId = "com.androidcompress.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
         ndk {
             // ffmpeg-kit-full 8.1.7 and the sherpa-onnx AAR we ship are arm64-v8a in the APK.
             abiFilters += "arm64-v8a"

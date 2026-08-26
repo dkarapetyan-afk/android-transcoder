@@ -26,6 +26,10 @@
     <string name="notif_captions">Transcribing</string>
     <string name="notif_captions_percent">%1$d%%</string>
     <string name="notif_captions_text">%1$d%% · %2$s</string>
+    <string name="captions_phase_download">Downloading speech model</string>
+    <string name="captions_phase_extract">Extracting audio</string>
+    <string name="captions_phase_transcribe">Transcribing</string>
+    <string name="captions_phase_mux">Muxing captions</string>
     <string name="action_stop">Stop</string>
     <string name="action_pause">Pause</string>
     <string name="action_resume">Resume</string>

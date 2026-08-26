@@ -48,7 +48,7 @@ class AppContainer(context: Context) {
     val ffmpeg: FfmpegGateway = FfmpegKitGateway()
     val media3 = Media3Transcoder(appContext)
     val whisperModels = WhisperModelStore(appContext)
-    val captions = CaptionPass(ffmpeg, whisperModels, SherpaWhisperCaptioner(whisperModels))
+    val captions = CaptionPass(appContext, ffmpeg, whisperModels, SherpaWhisperCaptioner(whisperModels))
     val encodeProgress = EncodeProgressStore()
     val jobLogs = JobLogStore(appContext)
     val recording = RecordingStore()

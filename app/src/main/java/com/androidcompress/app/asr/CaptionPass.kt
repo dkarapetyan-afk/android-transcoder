@@ -1,5 +1,7 @@
 package com.androidcompress.app.asr
 
+import android.content.Context
+import com.androidcompress.app.R
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.usesWebm
@@ -28,10 +30,12 @@ data class CaptionOutcome(
 )
 
 class CaptionPass(
+    private val context: Context,
     private val ffmpeg: FfmpegGateway,
     private val models: WhisperModelStore,
     private val captioner: WhisperCaptioner,
 ) {
+    private fun phase(id: Int): String = context.getString(id)
     suspend fun apply(
         media: File,
         settings: EncodeSettings,
@@ -51,9 +55,9 @@ class CaptionPass(
             if (isCancelled()) error("cancelled")
         }
         checkCancel()
-        onProgress(0.02f, "Downloading speech model")
+        onProgress(0.02f, phase(R.string.captions_phase_download))
         models.ensureReady(
-            onProgress = { onProgress(0.02f + 0.18f * it.coerceIn(0f, 1f), "Downloading speech model") },
+            onProgress = { onProgress(0.02f + 0.18f * it.coerceIn(0f, 1f), phase(R.string.captions_phase_download)) },
             isCancelled = isCancelled,
         )
         log.appendLine("whisper tiny model ready")
@@ -66,14 +70,14 @@ class CaptionPass(
         srt.delete()
         muxed.delete()
         try {
-            onProgress(0.22f, "Extracting audio")
+            onProgress(0.22f, phase(R.string.captions_phase_extract))
             if (!extractPcm(media, pcm, log, onProgress, isCancelled)) {
                 return@withContext CaptionOutcome(media, null, false, 0, log.toString())
             }
-            onProgress(0.28f, "Transcribing")
+            onProgress(0.28f, phase(R.string.captions_phase_transcribe))
             val cues = captioner.transcribe(
                 pcm = pcm,
-                onProgress = { onProgress(0.28f + 0.62f * it.coerceIn(0f, 1f), "Transcribing") },
+                onProgress = { onProgress(0.28f + 0.62f * it.coerceIn(0f, 1f), phase(R.string.captions_phase_transcribe)) },
                 isCancelled = isCancelled,
             )
             log.appendLine("cues=${cues.size}")
@@ -84,10 +88,10 @@ class CaptionPass(
             srt.writeText(SrtWriter.render(cues), Charsets.UTF_8)
             val audioOnly = settings.output == OutputMode.AUDIO
             if (audioOnly) {
-                onProgress(1f, "Transcribing")
+                onProgress(1f, phase(R.string.captions_phase_transcribe))
                 return@withContext CaptionOutcome(media, srt, false, cues.size, log.toString())
             }
-            onProgress(0.92f, "Muxing captions")
+            onProgress(0.92f, phase(R.string.captions_phase_mux))
             if (settings.usesWebm()) {
                 val repaired = runCatchingLog(TAG, "repair opus header") {
                     OpusCodecPrivate.repairWebmFile(media)
@@ -106,12 +110,12 @@ class CaptionPass(
             if (mux.success && muxed.isFile && muxed.length() > 1024) {
                 media.delete()
                 val finalFile = if (muxed.renameTo(media)) media else muxed
-                onProgress(1f, "Muxing captions")
+                onProgress(1f, phase(R.string.captions_phase_mux))
                 log.appendLine("muxed subtitles into ${finalFile.name}")
                 return@withContext CaptionOutcome(finalFile, srt, true, cues.size, log.toString())
             }
             log.appendLine("subtitle mux failed: ${mux.error ?: "unknown"}")
-            onProgress(1f, "Transcribing")
+            onProgress(1f, phase(R.string.captions_phase_transcribe))
             CaptionOutcome(media, srt, false, cues.size, log.toString())
         } finally {
             pcm.delete()
@@ -135,7 +139,7 @@ class CaptionPass(
                 input = media,
                 output = pcm,
                 isCancelled = isCancelled,
-                onProgress = { onProgress(0.22f + 0.06f * it.coerceIn(0f, 1f), "Extracting audio") },
+                onProgress = { onProgress(0.22f + 0.06f * it.coerceIn(0f, 1f), phase(R.string.captions_phase_extract)) },
             )
         }
         if (decoded.isSuccess && pcmReady(pcm)) {
