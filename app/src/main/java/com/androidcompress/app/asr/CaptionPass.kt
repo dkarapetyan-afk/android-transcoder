@@ -9,6 +9,7 @@ import com.androidcompress.app.encode.FfmpegGateway
 import com.androidcompress.app.encode.FfmpegMuxCommands
 import com.androidcompress.app.encode.OpusCodecPrivate
 import com.androidcompress.app.encode.quoteArgs
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -88,7 +89,9 @@ class CaptionPass(
             }
             onProgress(0.92f, "Muxing captions")
             if (settings.usesWebm()) {
-                val repaired = runCatching { OpusCodecPrivate.repairWebmFile(media) }.getOrDefault(false)
+                val repaired = runCatchingLog(TAG, "repair opus header") {
+                    OpusCodecPrivate.repairWebmFile(media)
+                }.getOrDefault(false)
                 if (repaired) log.appendLine("opus CodecPrivate rewritten for FFmpeg")
             }
             val muxArgs = FfmpegMuxCommands.applySubtitles(
@@ -127,7 +130,7 @@ class CaptionPass(
         isCancelled: () -> Boolean,
     ): Boolean {
         pcm.delete()
-        val decoded = runCatching {
+        val decoded = runCatchingLog(TAG, "mediacodec pcm") {
             MediaCodecPcmExtractor.extractS16leMono16k(
                 input = media,
                 output = pcm,
@@ -218,5 +221,9 @@ class CaptionPass(
             text.startsWith("If you want to help, upload a sample") -> false
             else -> true
         }
+    }
+
+    private companion object {
+        const val TAG = "CaptionPass"
     }
 }

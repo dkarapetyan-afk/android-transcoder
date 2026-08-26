@@ -10,6 +10,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.projection.MediaProjection
 import androidx.annotation.RequiresApi
 import com.androidcompress.app.media.WavWriter
+import com.androidcompress.app.util.runCatchingLog
 import java.io.File
 
 class PcmWavCapture(
@@ -37,7 +38,7 @@ class PcmWavCapture(
                     if (read > 0 && !paused) writer.write(buf, read)
                 }
             } finally {
-                runCatching { writer.close() }
+                runCatchingLog(TAG, "close wav") { writer.close() }
             }
         }.also {
             it.name = "pcm-wav"
@@ -56,14 +57,15 @@ class PcmWavCapture(
     fun stop() {
         running = false
         paused = false
-        runCatching { recorder.stop() }
-        runCatching { echoCanceler?.release() }
-        runCatching { recorder.release() }
+        runCatchingLog(TAG, "stop audio record") { recorder.stop() }
+        runCatchingLog(TAG, "release echo canceler") { echoCanceler?.release() }
+        runCatchingLog(TAG, "release audio record") { recorder.release() }
         thread?.join(1_000)
         thread = null
     }
 
     companion object {
+        private const val TAG = "PcmWavCapture"
         const val SAMPLE_RATE = 44_100
 
         @RequiresApi(29)
@@ -128,7 +130,7 @@ class PcmWavCapture(
                 .setAudioFormat(format)
                 .setBufferSizeInBytes(minBuf * 2)
                 .build()
-            val aec = runCatching {
+            val aec = runCatchingLog(TAG, "echo canceler") {
                 if (AcousticEchoCanceler.isAvailable()) {
                     AcousticEchoCanceler.create(recorder.audioSessionId)?.also { it.enabled = true }
                 } else {

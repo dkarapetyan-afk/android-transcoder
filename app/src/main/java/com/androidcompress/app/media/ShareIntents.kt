@@ -3,6 +3,7 @@ package com.androidcompress.app.media
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.IntentCompat
+import com.androidcompress.app.util.runCatchingLog
 
 data class ShareRequest(
     val uris: List<Uri>,
@@ -11,6 +12,7 @@ data class ShareRequest(
 )
 
 object ShareIntents {
+    private const val TAG = "ShareIntents"
     fun isIncomingAction(action: String?): Boolean = when (action) {
         Intent.ACTION_SEND,
         Intent.ACTION_SEND_MULTIPLE,
@@ -63,7 +65,8 @@ object ShareIntents {
             clipUris = clipUriStrings(intent),
         )
         return strings.mapNotNull { raw ->
-            runCatching { Uri.parse(raw) }.getOrNull()?.takeIf { !it.scheme.isNullOrBlank() }
+            runCatchingLog(TAG, "parse share uri") { Uri.parse(raw) }.getOrNull()
+                ?.takeIf { !it.scheme.isNullOrBlank() }
         }
     }
 

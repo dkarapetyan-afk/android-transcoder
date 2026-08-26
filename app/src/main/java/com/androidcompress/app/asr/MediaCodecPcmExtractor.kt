@@ -6,6 +6,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import java.io.BufferedOutputStream
 import java.io.File
+import com.androidcompress.app.util.runCatchingLog
 import java.nio.ByteOrder
 
 /**
@@ -14,6 +15,7 @@ import java.nio.ByteOrder
  * WebM files still carry Android's `AOPUSHDR` Opus CodecPrivate).
  */
 object MediaCodecPcmExtractor {
+    private const val TAG = "PcmExtractor"
     private const val TIMEOUT_US = 10_000L
 
     fun extractS16leMono16k(
@@ -128,8 +130,8 @@ object MediaCodecPcmExtractor {
             }
             onProgress(1f)
         } finally {
-            if (started) runCatching { codec?.stop() }
-            runCatching { codec?.release() }
+            if (started) runCatchingLog(TAG, "stop codec") { codec?.stop() }
+            runCatchingLog(TAG, "release codec") { codec?.release() }
             extractor.release()
             if (!output.isFile || output.length() < WhisperModels.SAMPLE_RATE) {
                 output.delete()

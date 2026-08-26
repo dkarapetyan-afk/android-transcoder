@@ -1,6 +1,7 @@
 package com.androidcompress.app.encode
 
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.util.onFailureLog
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -293,6 +294,6 @@ object HardwareProfileJson {
                 cancelled = obj.optBoolean("cancelled"),
                 results = results,
             )
-        }.getOrNull()
+        }.onFailureLog("HardwareProfile", "decode report").getOrNull()
     }
 }

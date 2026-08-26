@@ -3,6 +3,7 @@ package com.androidcompress.app.media
 import android.content.Context
 import android.net.Uri
 import com.androidcompress.app.R
+import com.androidcompress.app.util.runCatchingLog
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,6 +25,9 @@ object SourceDeletePolicy {
 }
 
 class SourceFileDeleter(private val context: Context) {
+    private companion object {
+        const val TAG = "SourceDeleter"
+    }
 
     suspend fun deleteSources(uris: List<String>, outputUri: String?): DeleteSourceResult {
         val targets = uris.filter { it.isNotBlank() }
@@ -44,7 +48,7 @@ class SourceFileDeleter(private val context: Context) {
         if (SourceDeletePolicy.shouldSkip(sourceUri, outputUri)) {
             return@withContext DeleteSourceResult(false, context.getString(R.string.error_delete_output))
         }
-        val uri = runCatching { Uri.parse(sourceUri) }.getOrNull()
+        val uri = runCatchingLog(TAG, "parse source uri") { Uri.parse(sourceUri) }.getOrNull()
             ?: return@withContext DeleteSourceResult(false, context.getString(R.string.error_invalid_source))
         when (uri.scheme) {
             null, "file" -> {
@@ -58,8 +62,12 @@ class SourceFileDeleter(private val context: Context) {
                 }
             }
             else -> {
-                val deleted = runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false) ||
-                    runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }.getOrDefault(false)
+                val deleted = runCatchingLog(TAG, "content delete") {
+                    context.contentResolver.delete(uri, null, null) > 0
+                }.getOrDefault(false) ||
+                    runCatchingLog(TAG, "document delete") {
+                        DocumentsContract.deleteDocument(context.contentResolver, uri)
+                    }.getOrDefault(false)
                 if (deleted) {
                     DeleteSourceResult(true)
                 } else {

@@ -7,6 +7,7 @@ import com.androidcompress.app.encode.HardwareCodecProfiler
 import com.androidcompress.app.encode.HardwareProfileJson
 import com.androidcompress.app.encode.HardwareProfileReport
 import com.androidcompress.app.encode.HardwareProgress
+import com.androidcompress.app.util.onFailureLog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,7 +53,8 @@ class HardwareTestViewModel(private val container: AppContainer) : ViewModel() {
                     onProgress = { step -> _ui.update { it.copy(progress = step) } },
                     cancelled = cancelled,
                 )
-            }.onFailure { error ->
+            }.onFailureLog("HwTest", "hardware profile")
+                .onFailure { error ->
                 _ui.update {
                     it.copy(running = false, error = error.message, progress = null)
                 }

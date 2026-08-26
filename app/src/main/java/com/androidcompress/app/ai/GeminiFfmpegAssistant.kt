@@ -3,6 +3,8 @@ package com.androidcompress.app.ai
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.encode.ExtraArgsSanitizer
+import com.androidcompress.app.util.AppLog
+import com.androidcompress.app.util.runCatchingLog
 import com.androidcompress.app.util.formatDuration
 import com.androidcompress.app.util.formatResolution
 import kotlinx.coroutines.Dispatchers
@@ -42,12 +44,13 @@ class GeminiFfmpegAssistant(
                 val response = try {
                     post(url, apiKey.trim(), payload)
                 } catch (error: Exception) {
+                    AppLog.e(TAG, "gemini $model", error)
                     lastError = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
                     if (!shouldTryNextModel(code = null, lastError)) error(lastError)
                     continue
                 }
                 if (response.code in 200..299) {
-                    val parsed = runCatching { acceptReply(response.body) }
+                    val parsed = runCatchingLog(TAG, "parse gemini reply") { acceptReply(response.body) }
                     if (parsed.isSuccess) return@withContext parsed.getOrThrow()
                     lastError = parsed.exceptionOrNull()?.message ?: "Invalid Gemini reply"
                     continue
@@ -60,6 +63,7 @@ class GeminiFfmpegAssistant(
     }
 
     companion object {
+        private const val TAG = "GeminiFfmpeg"
         private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
         internal val MODELS = listOf(
             "gemini-3.7-flash",
@@ -113,7 +117,7 @@ class GeminiFfmpegAssistant(
         }
 
         internal fun parseError(body: String, code: Int): String {
-            val message = runCatching {
+            val message = runCatchingLog(TAG, "parse gemini error") {
                 JSONObject(body).optJSONObject("error")?.optString("message")
             }.getOrNull()?.takeIf { it.isNotBlank() }
             return message ?: "Gemini HTTP $code"
@@ -153,11 +157,13 @@ class GeminiFfmpegAssistant(
         }
 
         private fun extractJsonObject(text: String): JSONObject? {
-            runCatching { return JSONObject(text) }
+            runCatchingLog(TAG, "gemini json") { return JSONObject(text) }
             val start = text.indexOf('{')
             val end = text.lastIndexOf('}')
             if (start >= 0 && end > start) {
-                return runCatching { JSONObject(text.substring(start, end + 1)) }.getOrNull()
+                return runCatchingLog(TAG, "gemini json slice") {
+                    JSONObject(text.substring(start, end + 1))
+                }.getOrNull()
             }
             return null
         }

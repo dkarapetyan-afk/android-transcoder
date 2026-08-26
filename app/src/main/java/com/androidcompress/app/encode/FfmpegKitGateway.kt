@@ -3,6 +3,7 @@ package com.androidcompress.app.encode
 import com.androidcompress.app.data.EncodeResult
 import com.androidcompress.app.data.EncodeStats
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.util.runCatchingLog
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import kotlinx.coroutines.CancellationException
@@ -21,7 +22,7 @@ class FfmpegKitGateway : FfmpegGateway {
                     val session = FFmpegKit.executeAsync("-hide_banner -encoders") { done ->
                         if (cont.isActive) cont.resume(done.output.orEmpty())
                     }
-                    cont.invokeOnCancellation { runCatching { FFmpegKit.cancel(session.sessionId) } }
+                    cont.invokeOnCancellation { runCatchingLog(TAG, "cancel detect") { FFmpegKit.cancel(session.sessionId) } }
                 }
             }
         } catch (e: TimeoutCancellationException) {
@@ -58,12 +59,12 @@ class FfmpegKitGateway : FfmpegGateway {
                 try {
                     deferred.await()
                 } catch (e: CancellationException) {
-                    runCatching { FFmpegKit.cancel(session.sessionId) }
+                    runCatchingLog(TAG, "cancel encode") { FFmpegKit.cancel(session.sessionId) }
                     throw e
                 }
 
             override fun cancel() {
-                runCatching { FFmpegKit.cancel(session.sessionId) }
+                runCatchingLog(TAG, "cancel encode") { FFmpegKit.cancel(session.sessionId) }
             }
         }
     }
@@ -117,4 +118,5 @@ private fun com.arthenica.ffmpegkit.Session.toResult(): EncodeResult {
     )
 }
 
+private const val TAG = "FfmpegKit"
 private const val DETECT_TIMEOUT_MS = 30_000L

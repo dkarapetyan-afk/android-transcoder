@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.androidcompress.app.encode.EncodeStallTimeout
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -32,21 +33,22 @@ class PreferencesRepository(private val context: Context) {
 
     val settings: Flow<UserSettings> = context.dataStore.data.map { prefs ->
         UserSettings(
-            defaultPreset = prefs[defaultPreset]?.let { runCatching { Preset.valueOf(it) }.getOrNull() }
-                ?: Preset.BALANCED,
+            defaultPreset = prefs[defaultPreset]?.let {
+                runCatchingLog(TAG, "unknown preset $it") { Preset.valueOf(it) }.getOrNull()
+            } ?: Preset.BALANCED,
             rememberAdvanced = prefs[rememberAdvanced] ?: false,
             lastSettingsJson = prefs[lastSettings],
             lastRecordAudioMode = prefs[lastAudioMode]?.let {
-                runCatching { RecordAudioMode.valueOf(it) }.getOrNull()
+                runCatchingLog(TAG, "unknown record audio $it") { RecordAudioMode.valueOf(it) }.getOrNull()
             } ?: RecordAudioMode.NONE,
             lastRecordResolution = prefs[lastRecordRes]?.let {
-                runCatching { RecordResolution.valueOf(it) }.getOrNull()
+                runCatchingLog(TAG, "unknown record resolution $it") { RecordResolution.valueOf(it) }.getOrNull()
             } ?: RecordResolution.P1080,
             autoCompressAfterRecord = prefs[autoCompress] ?: false,
             encoderCapsJson = prefs[encoderCaps],
             deleteOriginalAfterEncode = prefs[deleteOriginal] ?: false,
             defaultEngine = prefs[defaultEngine]?.let {
-                runCatching { EncodeEngine.valueOf(it) }.getOrNull()
+                runCatchingLog(TAG, "unknown engine $it") { EncodeEngine.valueOf(it) }.getOrNull()
             } ?: EncodeEngine.FFMPEG,
             geminiApiKey = prefs[geminiApiKey].orEmpty(),
             stallTimeoutSec = prefs[stallTimeoutSec] ?: EncodeStallTimeout.DEFAULT_SEC,
@@ -115,6 +117,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setRecordOptionsJson(json: String) {
         context.dataStore.edit { it[lastRecordOptions] = json }
+    }
+
+    private companion object {
+        const val TAG = "PrefsRepo"
     }
 }
 

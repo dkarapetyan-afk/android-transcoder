@@ -3,8 +3,11 @@ package com.androidcompress.app.encode
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
+import com.androidcompress.app.util.AppLog
+import com.androidcompress.app.util.runCatchingLog
 
 object HardwareCodecProbe {
+    private const val TAG = "HwCodecProbe"
     fun advertised(mime: String): HardwareAdvertisedCaps? {
         return try {
             val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
@@ -12,11 +15,14 @@ object HardwareCodecProbe {
             for (info in list.codecInfos) {
                 if (!isHardwareEncoder(info)) continue
                 if (!info.supportedTypes.any { it.equals(mime, ignoreCase = true) }) continue
-                val codecCaps = runCatching { info.getCapabilitiesForType(mime) }.getOrNull() ?: continue
+                val codecCaps = runCatchingLog(TAG, "caps for $mime") {
+                    info.getCapabilitiesForType(mime)
+                }.getOrNull() ?: continue
                 val video = codecCaps.videoCapabilities ?: continue
                 val width = video.supportedWidths.upper
-                val height = runCatching { video.getSupportedHeightsFor(width).upper }
-                    .getOrElse { video.supportedHeights.upper }
+                val height = runCatchingLog(TAG, "height for $mime") {
+                    video.getSupportedHeightsFor(width).upper
+                }.getOrElse { video.supportedHeights.upper }
                 val tenBit = codecCaps.profileLevels.any { HardwareProfiles.isTenBit(mime, it.profile) } ||
                     codecCaps.colorFormats.any { HardwareProfiles.isTenBitColor(it) }
                 val hdr = codecCaps.profileLevels.any { HardwareProfiles.isHdr(mime, it.profile) }
@@ -30,7 +36,8 @@ object HardwareCodecProbe {
                 best = merge(best, next)
             }
             best
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "advertised $mime", t)
             null
         }
     }

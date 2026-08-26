@@ -1,5 +1,8 @@
 package com.androidcompress.app.capture
 
+import com.androidcompress.app.util.onFailureLog
+import com.androidcompress.app.util.runCatchingLog
+
 import android.media.MediaRecorder
 import android.os.Build
 import com.androidcompress.app.data.RecordAudioMode
@@ -108,7 +111,7 @@ data class RecordRegion(
                     right = obj.getDouble("r").toFloat(),
                     bottom = obj.getDouble("b").toFloat(),
                 ).sanitized()
-            }.getOrNull()
+            }.onFailureLog("RecordRegion", "fromJson").getOrNull()
         }
     }
 }
@@ -256,13 +259,17 @@ data class RecordOptions(
                     quietNotification = obj.optBoolean("quietNotif", false),
                     bookmarkMode = enumOr(obj.optString("marks"), BookmarkMode.CHAPTERS),
                 )
-            }.getOrElse { RecordOptions() }
+            }.onFailureLog(TAG, "fromJson").getOrElse { RecordOptions() }
         }
 
         private inline fun <reified T : Enum<T>> enumOr(raw: String?, fallback: T): T {
             if (raw.isNullOrBlank()) return fallback
-            return runCatching { java.lang.Enum.valueOf(T::class.java, raw) }.getOrDefault(fallback)
+            return runCatchingLog(TAG, "unknown ${T::class.java.simpleName} $raw") {
+                java.lang.Enum.valueOf(T::class.java, raw)
+            }.getOrDefault(fallback)
         }
+
+        private const val TAG = "RecordOptions"
     }
 }
 

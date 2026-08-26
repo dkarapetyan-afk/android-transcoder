@@ -8,9 +8,11 @@ import android.media.MediaMuxer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import java.io.File
+import com.androidcompress.app.util.runCatchingLog
 import java.nio.ByteBuffer
 
 object MediaTrackMux {
+    private const val TAG = "MediaTrackMux"
     private const val BUFFER_BYTES = 2 * 1024 * 1024
 
     fun audioTrackCount(context: Context, uri: Uri): Int {
@@ -64,7 +66,7 @@ object MediaTrackMux {
                 error("Audio track ${audioOrdinal + 1} was empty")
             }
         } finally {
-            runCatching { muxer?.release() }
+            runCatchingLog(TAG, "release muxer") { muxer?.release() }
             extractor.release()
             pfd?.close()
         }
@@ -147,8 +149,8 @@ object MediaTrackMux {
             writer.stop()
             if (!out.exists() || out.length() < 1024) error("Muxed output was empty")
         } finally {
-            runCatching { muxer?.release() }
-            extractors.forEach { runCatching { it.release() } }
+            runCatchingLog(TAG, "release muxer") { muxer?.release() }
+            extractors.forEach { runCatchingLog(TAG, "release extractor") { it.release() } }
         }
     }
 

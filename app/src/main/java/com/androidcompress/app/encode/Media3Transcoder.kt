@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
+import com.androidcompress.app.util.AppLog
+import com.androidcompress.app.util.runCatchingLog
 import androidx.media3.common.ColorInfo
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
@@ -90,6 +92,7 @@ class Media3Transcoder(context: Context) {
             } catch (_: CancellationException) {
                 cancelledResult()
             } catch (t: Throwable) {
+                AppLog.e(TAG, "media3 encode", t)
                 EncodeResult(
                     success = false,
                     cancelled = cancelled.get(),
@@ -110,7 +113,7 @@ class Media3Transcoder(context: Context) {
                 cancelled.set(true)
                 work.cancel()
                 mainHandler.post {
-                    runCatching { transformerRef.get()?.cancel() }
+                    runCatchingLog(TAG, "cancel transformer") { transformerRef.get()?.cancel() }
                     deferred.complete(cancelledResult())
                 }
             }
@@ -129,7 +132,8 @@ class Media3Transcoder(context: Context) {
     ): EncodeResult {
         if (cancelled.get()) return cancelledResult()
         val audioCount = withContext(Dispatchers.IO) {
-            runCatching { MediaTrackMux.audioTrackCount(appContext, input) }.getOrDefault(0)
+            runCatchingLog(TAG, "audio track count") { MediaTrackMux.audioTrackCount(appContext, input) }
+                .getOrDefault(0)
         }
         if (!Media3AudioTracks.shouldPreserveAll(spec, audioCount)) {
             return encodeDirect(
@@ -272,7 +276,7 @@ class Media3Transcoder(context: Context) {
                 logs = "${spec.encoderLabel}\npreserved $audioCount audio tracks",
             )
         } finally {
-            temps.forEach { runCatching { it.delete() } }
+            temps.forEach { runCatchingLog(TAG, "delete temp") { it.delete() } }
         }
     }
 
@@ -348,6 +352,7 @@ class Media3Transcoder(context: Context) {
                     },
                 )
             } catch (t: Throwable) {
+                AppLog.e(TAG, "start transformer", t)
                 complete(
                     EncodeResult(
                         success = false,
@@ -365,7 +370,7 @@ class Media3Transcoder(context: Context) {
             mainHandler.post(start)
         }
         cont.invokeOnCancellation {
-            mainHandler.post { runCatching { transformerRef.get()?.cancel() } }
+            mainHandler.post { runCatchingLog(TAG, "cancel transformer") { transformerRef.get()?.cancel() } }
         }
     }
 
@@ -409,7 +414,8 @@ class Media3Transcoder(context: Context) {
                 val modified = builder.build()
                 return try {
                     primary.createForVideoEncoding(modified, logSessionId)
-                } catch (_: Exception) {
+                } catch (t: Exception) {
+                    AppLog.e(TAG, "primary video encoder", t)
                     fallback.createForVideoEncoding(modified, logSessionId)
                 }
             }
@@ -626,7 +632,8 @@ class Media3Transcoder(context: Context) {
                 }
             }
             false
-        } catch (_: Exception) {
+        } catch (t: Exception) {
+            AppLog.e(TAG, "mediatek detect", t)
             false
         }
     }
@@ -641,10 +648,11 @@ class Media3Transcoder(context: Context) {
             retriever.setDataSource(appContext, uri)
             val transfer = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COLOR_TRANSFER)
             transfer == "6" || transfer == "7"
-        } catch (_: Exception) {
+        } catch (t: Exception) {
+            AppLog.e(TAG, "hdr probe", t)
             false
         } finally {
-            runCatching { retriever.release() }
+            runCatchingLog(TAG, "release retriever") { retriever.release() }
         }
     }
 
@@ -664,4 +672,8 @@ class Media3Transcoder(context: Context) {
         error = null,
         logs = "",
     )
+
+    private companion object {
+        const val TAG = "Media3Transcoder"
+    }
 }

@@ -27,6 +27,7 @@ import com.androidcompress.app.media.LatestShortcutOpener
 import com.androidcompress.app.media.MediaProbe
 import com.androidcompress.app.media.MediaStoreExporter
 import com.androidcompress.app.media.SourceFileDeleter
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -58,13 +59,13 @@ class AppContainer(context: Context) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        appScope.launch { runCatching { history.prune() } }
+        appScope.launch { runCatchingLog(TAG, "prune history") { history.prune() } }
         refreshShortcuts()
     }
 
     fun refreshShortcuts() {
         appScope.launch {
-            val latest = runCatching { shortcutOpener.latestLabel() }.getOrNull()
+            val latest = runCatchingLog(TAG, "latest shortcut label") { shortcutOpener.latestLabel() }.getOrNull()
             AppShortcuts.publishDynamic(appContext, latest?.first, latest?.second)
         }
     }
@@ -87,7 +88,8 @@ class AppContainer(context: Context) {
             caps?.let { return it }
             val cached = SettingsJson.decodeCaps(prefs.current().encoderCapsJson)
             if (cached != null) {
-                val device = runCatching { MediaCodecEncoderCaps.detect() }.getOrElse { EncoderCapabilities() }
+                val device = runCatchingLog(TAG, "detect device encoders") { MediaCodecEncoderCaps.detect() }
+                    .getOrElse { EncoderCapabilities() }
                 val merged = cached.copy(
                     hasH264MediaCodec = cached.hasH264MediaCodec || device.hasH264MediaCodec,
                     hasHevcMediaCodec = cached.hasHevcMediaCodec || device.hasHevcMediaCodec,
@@ -98,9 +100,11 @@ class AppContainer(context: Context) {
                 caps = merged
                 return merged
             }
-            val detected = runCatching { ffmpeg.detectEncoders() }.getOrElse { EncoderCapabilities() }
+            val detected = runCatchingLog(TAG, "detect ffmpeg encoders") { ffmpeg.detectEncoders() }
+                .getOrElse { EncoderCapabilities() }
             prefs.setEncoderCapsJson(SettingsJson.encodeCaps(detected))
-            val device = runCatching { MediaCodecEncoderCaps.detect() }.getOrElse { EncoderCapabilities() }
+            val device = runCatchingLog(TAG, "detect device encoders") { MediaCodecEncoderCaps.detect() }
+                .getOrElse { EncoderCapabilities() }
             val merged = detected.copy(
                 hasH264MediaCodec = detected.hasH264MediaCodec || device.hasH264MediaCodec,
                 hasHevcMediaCodec = detected.hasHevcMediaCodec || device.hasHevcMediaCodec,
@@ -111,5 +115,9 @@ class AppContainer(context: Context) {
             caps = merged
             merged
         }
+    }
+
+    private companion object {
+        const val TAG = "AppContainer"
     }
 }

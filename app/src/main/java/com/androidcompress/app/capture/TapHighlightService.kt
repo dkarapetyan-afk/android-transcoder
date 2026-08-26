@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import com.androidcompress.app.util.runCatchingLog
 import kotlin.math.hypot
 /**
  * Draws tap ripples, a laser pointer, and optional ink while a recording is
@@ -30,7 +31,7 @@ class TapHighlightService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
-        val recording = runCatching { applicationContext.containerRecording() }.getOrNull()
+        val recording = runCatchingLog(TAG, "recording store") { applicationContext.containerRecording() }.getOrNull()
         val active = recording?.state?.value?.active == true
         if (active && pendingActive) {
             setSession(true, pendingTaps, pendingLaser, pendingDraw)
@@ -119,12 +120,12 @@ class TapHighlightService : AccessibilityService() {
             title = "RecordingCompressorTaps"
         }
         overlay = view
-        runCatching { wm.addView(view, params) }
+        runCatchingLog(TAG, "add overlay") { wm.addView(view, params) }
     }
 
     private fun removeOverlay() {
         overlay?.let { view ->
-            runCatching { getSystemService(WindowManager::class.java).removeView(view) }
+            runCatchingLog(TAG, "remove overlay") { getSystemService(WindowManager::class.java).removeView(view) }
         }
         overlay = null
     }
@@ -254,6 +255,7 @@ class TapHighlightService : AccessibilityService() {
     }
 
     companion object {
+        private const val TAG = "TapHighlight"
         @Volatile
         private var instance: TapHighlightService? = null
 

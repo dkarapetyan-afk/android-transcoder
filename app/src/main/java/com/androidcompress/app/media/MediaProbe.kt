@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.OpenableColumns
 import com.androidcompress.app.R
 import com.androidcompress.app.data.SourceVideo
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -55,14 +56,14 @@ class MediaProbe(private val context: Context) {
                 hasVideo = hasVideo,
             )
         } finally {
-            runCatching { retriever.release() }
+            runCatchingLog(TAG, "release retriever") { retriever.release() }
         }
     }
 
     private fun probeStillImage(uri: Uri, nameAndSize: Pair<String, Long>): SourceVideo {
         var width = 0
         var height = 0
-        runCatching {
+        runCatchingLog(TAG, "probe still image") {
             val retriever = MediaMetadataRetriever()
             try {
                 openRetriever(retriever, uri)
@@ -122,7 +123,7 @@ class MediaProbe(private val context: Context) {
     }
 
     private fun applyExifOrientation(uri: Uri, width: Int, height: Int): Pair<Int, Int> {
-        val orientation = runCatching {
+        val orientation = runCatchingLog(TAG, "exif orientation") {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
             }
@@ -169,5 +170,9 @@ class MediaProbe(private val context: Context) {
             size = uri.path?.let { java.io.File(it).length() } ?: 0L
         }
         return name to size
+    }
+
+    private companion object {
+        const val TAG = "MediaProbe"
     }
 }

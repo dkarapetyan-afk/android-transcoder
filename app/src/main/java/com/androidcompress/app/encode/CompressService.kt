@@ -28,7 +28,9 @@ import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.data.wantsCaptions
 import com.androidcompress.app.media.CombinePairing
 import com.androidcompress.app.media.InputResolver
+import com.androidcompress.app.util.AppLog
 import com.androidcompress.app.util.Notifications
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -132,9 +134,9 @@ class CompressService : Service() {
         if (job == null) return
         val settings = SettingsJson.decode(job.settingsJson)
         val sourceUri = Uri.parse(job.sourceUri)
-        val probed = runCatching { app.probe.probe(sourceUri) }.getOrNull()
+        val probed = runCatchingLog(TAG, "probe source") { app.probe.probe(sourceUri) }.getOrNull()
         val audioProbed = job.audioUri.takeIf { it.isNotBlank() }?.let { uri ->
-            runCatching { app.probe.probe(Uri.parse(uri)) }.getOrNull()
+            runCatchingLog(TAG, "probe audio") { app.probe.probe(Uri.parse(uri)) }.getOrNull()
         }
         val stillImage = job.stillImage || probed?.stillImage == true
         val source = SourceVideo(
@@ -244,6 +246,7 @@ class CompressService : Service() {
                         } catch (err: CancellationException) {
                             throw err
                         } catch (err: Throwable) {
+                            AppLog.e(TAG, "captions", err)
                             if (jobCancel || cancelAll) {
                                 output.delete()
                                 log.appendLine("captions cancelled")
@@ -305,10 +308,11 @@ class CompressService : Service() {
                 }
             }
         } catch (t: Throwable) {
+            AppLog.e(TAG, "encode job", t)
             output.delete()
             log.appendLine("exception: ${t.message}")
             log.appendLine(t.stackTraceToString())
-            runCatching { app.jobLogs.write(jobId, log.toString()) }
+            runCatchingLog(TAG, "write job log") { app.jobLogs.write(jobId, log.toString()) }
             app.jobs.updateStatus(
                 jobId,
                 JobStatus.FAILED,
@@ -317,8 +321,10 @@ class CompressService : Service() {
             )
             app.encodeProgress.update(null)
         } finally {
-            runCatching { if (app.jobLogs.read(jobId) == null) app.jobLogs.write(jobId, log.toString()) }
-            runCatching { app.history.prune() }
+            runCatchingLog(TAG, "write job log") {
+                if (app.jobLogs.read(jobId) == null) app.jobLogs.write(jobId, log.toString())
+            }
+            runCatchingLog(TAG, "prune history") { app.history.prune() }
             currentJobId = null
             app.inputs.deleteImportCopy(jobId)
         }
@@ -688,7 +694,7 @@ class CompressService : Service() {
     }
 
     private fun releaseWakeLock() {
-        runCatching { wakeLock?.release() }
+        runCatchingLog(TAG, "release wake lock") { wakeLock?.release() }
         wakeLock = null
     }
 
@@ -713,6 +719,7 @@ class CompressService : Service() {
     }
 
     companion object {
+        private const val TAG = "CompressService"
         const val ACTION_START = "com.androidcompress.app.ENCODE_START"
         const val ACTION_ENQUEUE = "com.androidcompress.app.ENCODE_ENQUEUE"
         const val ACTION_CANCEL = "com.androidcompress.app.ENCODE_CANCEL"

@@ -8,6 +8,8 @@ import com.androidcompress.app.capture.ScreenRecordService
 import com.androidcompress.app.container
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.JobStatus
+import com.androidcompress.app.util.AppLog
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +25,7 @@ class AutomationCoordinator(private val context: Context) {
             try {
                 handle(intent)
             } catch (t: Throwable) {
+                AppLog.e(TAG, "automation dispatch", t)
                 send(
                     AutomationIntents.completionFailed(
                         intent.action.orEmpty(),
@@ -125,6 +128,7 @@ class AutomationCoordinator(private val context: Context) {
                     .first { AutomationIntents.isWatchFinished(it, action, autoCompressAfterRecord) }
                 send(completionMessage(action, requestId, job), replyPackage)
             } catch (t: Throwable) {
+                AppLog.e(TAG, "automation watch", t)
                 send(
                     AutomationIntents.completionFailed(
                         action,
@@ -171,7 +175,7 @@ class AutomationCoordinator(private val context: Context) {
         if (replyPackage.isNotBlank()) {
             intent.setPackage(replyPackage)
             if (completion.outputUri.isNotBlank()) {
-                runCatching {
+                runCatchingLog(TAG, "grant output uri") {
                     val uri = Uri.parse(completion.outputUri)
                     if (uri.scheme == "content") {
                         context.grantUriPermission(
@@ -196,6 +200,10 @@ class AutomationCoordinator(private val context: Context) {
         }
         return stream?.toString()?.takeIf { it.isNotBlank() }
             ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri?.toString()
+    }
+
+    private companion object {
+        const val TAG = "Automation"
     }
 }
 

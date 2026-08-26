@@ -9,6 +9,7 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import com.androidcompress.app.R
 import com.androidcompress.app.container
+import com.androidcompress.app.util.runCatchingLog
 
 class RecordTileService : TileService() {
 
@@ -54,7 +55,7 @@ class RecordTileService : TileService() {
 
     companion object {
         fun requestListening(context: Context) {
-            runCatching {
+            runCatchingLog("RecordTile", "request listening") {
                 requestListeningState(
                     context.applicationContext,
                     ComponentName(context.applicationContext, RecordTileService::class.java),

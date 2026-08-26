@@ -1,6 +1,7 @@
 package com.androidcompress.app.asr
 
 import android.content.Context
+import com.androidcompress.app.util.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -120,9 +121,14 @@ class WhisperModelStore(context: Context) {
                 part.delete()
                 dest.delete()
                 if (isCancelled() || t.message == "cancelled") throw t
+                AppLog.e(TAG, "download ${file.name} from $url", t)
                 lastError = t as? Exception ?: RuntimeException(t)
             }
         }
         throw lastError ?: IllegalStateException("Could not download ${file.name}")
+    }
+
+    private companion object {
+        const val TAG = "WhisperModels"
     }
 }

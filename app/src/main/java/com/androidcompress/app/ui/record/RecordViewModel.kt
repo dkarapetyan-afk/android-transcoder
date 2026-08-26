@@ -18,6 +18,7 @@ import com.androidcompress.app.data.EncoderCapabilities
 import com.androidcompress.app.data.RecordAudioMode
 import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.di.AppContainer
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,7 +56,8 @@ class RecordViewModel(private val container: AppContainer) : ViewModel() {
                     parsed
                 }
             }
-            val caps = runCatching { container.encoderCapabilities() }.getOrElse { EncoderCapabilities() }
+            val caps = runCatchingLog("RecordVM", "encoder caps") { container.encoderCapabilities() }
+                .getOrElse { EncoderCapabilities() }
             val cameras = container.appContext.getSystemService(CameraManager::class.java)
             _ui.value = _ui.value.copy(
                 options = options,

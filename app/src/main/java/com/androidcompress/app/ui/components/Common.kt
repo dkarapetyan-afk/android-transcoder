@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import com.androidcompress.app.util.runCatchingLog
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -65,7 +66,7 @@ fun VideoThumbnail(uri: Uri?, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val bitmap by produceState<Bitmap?>(initialValue = null, uri) {
         value = if (uri == null) null else withContext(Dispatchers.IO) {
-            runCatching {
+            runCatchingLog("VideoThumb", "video frame") {
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(context, uri)
@@ -73,7 +74,7 @@ fun VideoThumbnail(uri: Uri?, modifier: Modifier = Modifier) {
                 } finally {
                     retriever.release()
                 }
-            }.getOrNull() ?: runCatching {
+            }.getOrNull() ?: runCatchingLog("VideoThumb", "image thumb") {
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeStream(input, null, bounds)

@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import com.androidcompress.app.R
+import com.androidcompress.app.util.onFailureLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -116,6 +117,10 @@ class MediaStoreExporter(private val context: Context) {
                 MediaScannerConnection.scanFile(context, arrayOf(dest.absolutePath), arrayOf(mime), null)
                 Uri.fromFile(dest)
             }
-        }.getOrNull()
+        }.onFailureLog(TAG, "publish sidecar").getOrNull()
+    }
+
+    private companion object {
+        const val TAG = "MediaStoreExport"
     }
 }

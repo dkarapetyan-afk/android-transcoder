@@ -35,7 +35,9 @@ import com.androidcompress.app.data.RecordResolution
 import com.androidcompress.app.encode.FfmpegMuxCommands
 import com.androidcompress.app.encode.RecordingCrop
 import com.androidcompress.app.encode.quoteArgs
+import com.androidcompress.app.util.AppLog
 import com.androidcompress.app.util.Notifications
+import com.androidcompress.app.util.runCatchingLog
 import com.androidcompress.app.util.even
 import com.androidcompress.app.util.formatDuration
 import kotlinx.coroutines.CancellationException
@@ -247,7 +249,7 @@ class ScreenRecordService : Service() {
             recorder = rec
             var displaySurface = rec.surface
             if (pipeCrop != null) {
-                val pipeResult = runCatching {
+                val pipeResult = runCatchingLog(TAG, "crop display pipe") {
                     CropDisplayPipe.start(
                         rec.surface,
                         full.first,
@@ -267,8 +269,8 @@ class ScreenRecordService : Service() {
                     liveGray = options.grayscale
                     if (liveCrop != null) encodeSize = encW to encH
                 } else {
-                    runCatching { rec.reset() }
-                    runCatching { rec.release() }
+                    runCatchingLog(TAG, "reset recorder") { rec.reset() }
+                    runCatchingLog(TAG, "release recorder") { rec.release() }
                     val fullRec = prepareRecorder(file, full.first, full.second, options)
                     recorder = fullRec
                     displaySurface = fullRec.surface
@@ -367,6 +369,7 @@ class ScreenRecordService : Service() {
                 }
             }
         } catch (t: Throwable) {
+            AppLog.e(TAG, "start capture", t)
             container().recording.fail(t.message ?: getString(R.string.error_start_recorder))
             abortDraft(id)
             teardown()
@@ -386,8 +389,9 @@ class ScreenRecordService : Service() {
             if (options.facecamHideOnPause) overlays?.setFacecamVisible(false)
             startAsForeground(container().recording.state.value.elapsedMs(), paused = true)
             RecordTileService.requestListening(this)
-        } catch (_: Throwable) {
-            runCatching { recorder?.resume() }
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "pause recording", t)
+            runCatchingLog(TAG, "resume after pause fail") { recorder?.resume() }
             mixer?.resume()
             cropPipe?.setPaused(false)
             paused = false
@@ -406,8 +410,8 @@ class ScreenRecordService : Service() {
             if (options.facecam) overlays?.setFacecamVisible(true)
             startAsForeground(container().recording.state.value.elapsedMs(), paused = false)
             RecordTileService.requestListening(this)
-        } catch (_: Throwable) {
-            // Leave the session paused if the encoder cannot resume.
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "resume recording", t)
         }
     }
 
@@ -508,7 +512,7 @@ class ScreenRecordService : Service() {
                 )
             }
             val softwareGray = options.grayscale && !didLiveGray
-            val caps = runCatching { container().encoderCapabilities() }.getOrNull()
+            val caps = runCatchingLog(TAG, "encoder caps") { container().encoderCapabilities() }.getOrNull()
             val cropEncoder = when {
                 options.usesWebm && caps?.hasLibvpxVp9 == true -> "libvpx-vp9"
                 options.usesWebm -> "libvpx"
@@ -555,7 +559,7 @@ class ScreenRecordService : Service() {
             val splitFiles = splitIfNeeded(finalFile, bookmarks)
 
             val uri = Uri.fromFile(finalFile)
-            val probed = runCatching { container().probe.probe(uri) }.getOrNull()
+            val probed = runCatchingLog(TAG, "probe recording") { container().probe.probe(uri) }.getOrNull()
             writeRecordLog(
                 id = id,
                 liveApplied = didLiveCrop,
@@ -575,7 +579,7 @@ class ScreenRecordService : Service() {
             var outputBytes: Long? = null
             var status = JobStatus.READY
             if (direct) {
-                val published = runCatching {
+                val published = runCatchingLog(TAG, "publish recording") {
                     container().exporter.publish(
                         finalFile,
                         directDisplayName(),
@@ -587,7 +591,7 @@ class ScreenRecordService : Service() {
                     outputUri = published.toString()
                     outputBytes = probed?.bytes ?: finalFile.length()
                     status = JobStatus.SUCCEEDED
-                    runCatching { finalFile.delete() }
+                    runCatchingLog(TAG, "delete cache file") { finalFile.delete() }
                 }
             }
             if (existing != null) {
@@ -615,6 +619,7 @@ class ScreenRecordService : Service() {
         } catch (t: CancellationException) {
             throw t
         } catch (t: Throwable) {
+            AppLog.e(TAG, "finish recording", t)
             if (id != null) {
                 writeRecordLog(
                     id = id,
@@ -636,7 +641,9 @@ class ScreenRecordService : Service() {
 
     private suspend fun applyChaptersIfNeeded(file: File, bookmarks: List<Long>): File {
         if (options.bookmarkMode != BookmarkMode.CHAPTERS) return file
-        val duration = runCatching { container().probe.probe(Uri.fromFile(file)).durationMs }.getOrNull()
+        val duration = runCatchingLog(TAG, "probe duration") {
+            container().probe.probe(Uri.fromFile(file)).durationMs
+        }.getOrNull()
             ?: container().recording.state.value.elapsedMs()
         val meta = RecordBookmarks.ffmetadata(bookmarks, duration) ?: return file
         val metaFile = File(file.parentFile, "${file.nameWithoutExtension}.ffmeta")
@@ -655,7 +662,8 @@ class ScreenRecordService : Service() {
                 file.delete()
                 resultFile = if (out.renameTo(file)) file else out
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "apply chapters", t)
             resultFile = file
         } finally {
             metaFile.delete()
@@ -697,6 +705,7 @@ class ScreenRecordService : Service() {
             cap.media to "captions cues=${cap.cueCount} muxed=${cap.muxed}"
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
+            AppLog.e(TAG, "captions", t)
             if (captionSkip || t.message == "cancelled") {
                 file to "captions cancelled"
             } else {
@@ -722,7 +731,9 @@ class ScreenRecordService : Service() {
         bookmarks: List<Long>,
     ): List<Pair<RecordSegment, File>> {
         if (options.bookmarkMode != BookmarkMode.SPLIT) return emptyList()
-        val duration = runCatching { container().probe.probe(Uri.fromFile(file)).durationMs }.getOrNull()
+        val duration = runCatchingLog(TAG, "probe duration") {
+            container().probe.probe(Uri.fromFile(file)).durationMs
+        }.getOrNull()
             ?: container().recording.state.value.elapsedMs()
         val segments = RecordBookmarks.segments(bookmarks, duration)
         if (segments.isEmpty()) return emptyList()
@@ -738,7 +749,7 @@ class ScreenRecordService : Service() {
                 startMs = seg.startMs,
                 endMs = seg.endMs,
             )
-            val result = runCatching {
+            val result = runCatchingLog(TAG, "split segment") {
                 container().ffmpeg.encode(args, onLog = {}, onStats = {}).await()
             }.getOrNull()
             if (result?.success == true && dest.exists() && dest.length() > 512) {
@@ -758,13 +769,13 @@ class ScreenRecordService : Service() {
         if (parts.isEmpty()) return
         for ((seg, file) in parts) {
             val partId = java.util.UUID.randomUUID().toString()
-            val probed = runCatching { container().probe.probe(Uri.fromFile(file)) }.getOrNull()
+            val probed = runCatchingLog(TAG, "probe split") { container().probe.probe(Uri.fromFile(file)) }.getOrNull()
             var outputUri: String? = null
             var outputBytes: Long? = null
             var status = JobStatus.READY
             var sourceUri = Uri.fromFile(file).toString()
             if (directSuccess && options.directEncode) {
-                val published = runCatching {
+                val published = runCatchingLog(TAG, "publish split") {
                     container().exporter.publish(
                         file,
                         "${directDisplayName().substringBeforeLast('.') } ${seg.index}-${seg.total}.${options.outputExtension}",
@@ -777,7 +788,7 @@ class ScreenRecordService : Service() {
                     outputBytes = probed?.bytes ?: file.length()
                     status = JobStatus.SUCCEEDED
                     sourceUri = outputUri
-                    runCatching { file.delete() }
+                    runCatchingLog(TAG, "delete split cache") { file.delete() }
                 }
             }
             container().jobs.upsert(
@@ -834,8 +845,8 @@ class ScreenRecordService : Service() {
                     return rec
                 } catch (t: Throwable) {
                     last = t
-                    runCatching { rec.reset() }
-                    runCatching { rec.release() }
+                    runCatchingLog(TAG, "reset recorder") { rec.reset() }
+                    runCatchingLog(TAG, "release recorder") { rec.release() }
                 }
             }
         }
@@ -1008,7 +1019,7 @@ class ScreenRecordService : Service() {
             )
             extra?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
         }
-        runCatching { container().jobLogs.write(id, text) }
+        runCatchingLog(TAG, "write record log") { container().jobLogs.write(id, text) }
     }
 
     /**
@@ -1026,9 +1037,9 @@ class ScreenRecordService : Service() {
         liveCropped = false
         liveCovered = false
         liveGray = false
-        runCatching { recorder?.stop() }
-        runCatching { recorder?.reset() }
-        runCatching { recorder?.release() }
+        runCatchingLog(TAG, "stop recorder") { recorder?.stop() }
+        runCatchingLog(TAG, "reset recorder") { recorder?.reset() }
+        runCatchingLog(TAG, "release recorder") { recorder?.release() }
         recorder = null
     }
 
@@ -1044,8 +1055,8 @@ class ScreenRecordService : Service() {
         liveCropped = false
         liveCovered = false
         liveGray = false
-        runCatching { recorder?.reset() }
-        runCatching { recorder?.release() }
+        runCatchingLog(TAG, "reset recorder") { recorder?.reset() }
+        runCatchingLog(TAG, "release recorder") { recorder?.release() }
         recorder = null
         mediaProjection?.unregisterCallback(projectionCallback)
         mediaProjection?.stop()
@@ -1053,7 +1064,7 @@ class ScreenRecordService : Service() {
     }
 
     private fun abortDraft(id: String) {
-        scope.launch { runCatching { container().jobs.delete(id) } }
+        scope.launch { runCatchingLog(TAG, "delete draft job") { container().jobs.delete(id) } }
     }
 
     private fun hasCameraPermission(): Boolean =
@@ -1062,7 +1073,7 @@ class ScreenRecordService : Service() {
 
     private fun availableBytes(): Long {
         val dir = outputFile?.parentFile ?: cacheDir
-        return runCatching { dir.usableSpace }.getOrDefault(Long.MAX_VALUE)
+        return runCatchingLog(TAG, "usable space") { dir.usableSpace }.getOrDefault(Long.MAX_VALUE)
     }
 
     private fun directDisplayName(): String {
@@ -1079,6 +1090,7 @@ class ScreenRecordService : Service() {
     }
 
     companion object {
+        private const val TAG = "ScreenRecord"
         const val ACTION_START = "com.androidcompress.app.RECORD_START"
         const val ACTION_STOP = "com.androidcompress.app.RECORD_STOP"
         const val ACTION_PAUSE = "com.androidcompress.app.RECORD_PAUSE"

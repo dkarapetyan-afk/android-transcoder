@@ -1,5 +1,7 @@
 package com.androidcompress.app.data
 
+import com.androidcompress.app.util.onFailureLog
+import com.androidcompress.app.util.runCatchingLog
 import org.json.JSONObject
 
 object SettingsJson {
@@ -82,7 +84,8 @@ object SettingsJson {
                 grayscale = obj.optBoolean("grayscale", false),
                 captions = obj.optBoolean("captions", false),
             )
-        }.getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }
+        }.onFailureLog(TAG, "decode settings")
+            .getOrElse { EncodeSettings.forPreset(Preset.BALANCED) }
     }
 
     fun encodeCaps(caps: EncoderCapabilities): String = JSONObject().apply {
@@ -121,11 +124,15 @@ object SettingsJson {
                 hasLibSvtAv1 = obj.optBoolean("libSvtAv1"),
                 hasLibOpus = obj.optBoolean("libopus"),
             )
-        }.getOrNull()
+        }.onFailureLog(TAG, "decode encoder caps").getOrNull()
     }
 
     private inline fun <reified T : Enum<T>> enumOr(raw: String?, fallback: T): T {
         if (raw.isNullOrBlank()) return fallback
-        return runCatching { java.lang.Enum.valueOf(T::class.java, raw) }.getOrDefault(fallback)
+        return runCatchingLog(TAG, "unknown ${T::class.java.simpleName} $raw") {
+            java.lang.Enum.valueOf(T::class.java, raw)
+        }.getOrDefault(fallback)
     }
+
+    private const val TAG = "SettingsJson"
 }

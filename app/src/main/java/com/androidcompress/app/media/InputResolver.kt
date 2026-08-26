@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.androidcompress.app.R
+import com.androidcompress.app.util.onFailureLog
+import com.androidcompress.app.util.runCatchingLog
 import com.arthenica.ffmpegkit.FFmpegKitConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,8 +16,10 @@ class InputResolver(private val context: Context) {
     fun takePersistableAccess(uri: Uri) {
         val resolver = context.contentResolver
         val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching { resolver.takePersistableUriPermission(uri, readWrite) }
-            .recoverCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        runCatchingLog(TAG, "persistable read/write") {
+            resolver.takePersistableUriPermission(uri, readWrite)
+        }.recoverCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            .onFailureLog(TAG, "persistable read")
     }
 
     fun hasPersistableRead(uri: Uri): Boolean =
@@ -30,7 +34,9 @@ class InputResolver(private val context: Context) {
         when (uri.scheme) {
             "file" -> uri.path ?: error("Missing file path")
             else -> {
-                val saf = runCatching { FFmpegKitConfig.getSafParameterForRead(context, uri) }.getOrNull()
+                val saf = runCatchingLog(TAG, "ffmpeg saf") {
+                    FFmpegKitConfig.getSafParameterForRead(context, uri)
+                }.getOrNull()
                 if (!saf.isNullOrBlank()) return@withContext saf
                 copyToCache(uri, jobId, role).absolutePath
             }
@@ -148,6 +154,7 @@ class InputResolver(private val context: Context) {
     }
 
     companion object {
+        private const val TAG = "InputResolver"
         const val COPY_BUFFER_BYTES = 64 * 1024
         const val STORAGE_OVERHEAD_BYTES = 50_000_000L
         private val CACHE_DIRS = listOf("imports", "encode", "record")

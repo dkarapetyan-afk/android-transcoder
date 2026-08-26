@@ -1,6 +1,7 @@
 package com.androidcompress.app.encode
 
 import com.androidcompress.app.util.parseDurationMs
+import com.androidcompress.app.util.runCatchingLog
 import java.io.File
 
 /**
@@ -9,6 +10,7 @@ import java.io.File
  * so the log callback often never fires until the pass ends.
  */
 object FfmpegEncodeProgress {
+    private const val TAG = "FfmpegProgress"
     private val FRAME = Regex("""frame=\s*(\d+)""")
     private val TIME = Regex("""time=(-?\d+:\d{2}:\d{2}(?:\.\d+)?)""")
 
@@ -59,7 +61,7 @@ object FfmpegEncodeProgress {
         if (!file.exists()) return ""
         val length = file.length()
         if (length <= 0L) return ""
-        return runCatching {
+        return runCatchingLog(TAG, "read progress dump") {
             file.inputStream().use { input ->
                 val skip = (length - maxBytes).coerceAtLeast(0L)
                 if (skip > 0L) input.skip(skip)

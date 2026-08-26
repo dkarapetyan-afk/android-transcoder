@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.androidcompress.app.container
+import com.androidcompress.app.util.AppLog
 
 /**
  * Exported entry for Tasker / MacroDroid / `am broadcast`.
@@ -21,7 +22,8 @@ class AutomationReceiver : BroadcastReceiver() {
         val pending = goAsync()
         try {
             context.container().automation.dispatch(intent) { pending.finish() }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            AppLog.e("AutomationRx", "dispatch", t)
             pending.finish()
         }
     }

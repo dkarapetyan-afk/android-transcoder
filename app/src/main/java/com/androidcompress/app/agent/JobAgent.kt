@@ -29,6 +29,8 @@ import com.androidcompress.app.media.DeviceMediaQueries
 import com.androidcompress.app.media.DeviceMediaStore
 import com.androidcompress.app.media.InputResolver
 import com.androidcompress.app.media.MediaLibraryAccess
+import com.androidcompress.app.util.AppLog
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.delay
 import java.io.File
 import java.util.UUID
@@ -545,7 +547,7 @@ class JobAgent(
         val jobs = ArrayList<JobDetail>()
         val errors = ArrayList<String>()
         for (raw in paths) {
-            runCatching { importDeviceMedia(raw) }
+            runCatchingLog(TAG, "import device media") { importDeviceMedia(raw) }
                 .onSuccess { jobs.addAll(it.jobs) }
                 .onFailure { errors.add("${raw.take(80)}: ${it.message ?: "Unable to import"}") }
         }
@@ -574,7 +576,7 @@ class JobAgent(
         val job = requireJob(jobId)
         JobSettingsCodec.requireCloneable(job)
         val newId = UUID.randomUUID().toString()
-        runCatching { container.inputs.copyJobCache(job.id, newId) }
+        runCatchingLog(TAG, "copy job cache") { container.inputs.copyJobCache(job.id, newId) }
             .getOrElse { error("Could not copy the source for a second job.") }
         val sourceUri = InputResolver.remapCachedUri(job.sourceUri, job.id, newId)
         val audioUri = if (job.audioUri.isBlank()) {
@@ -607,7 +609,7 @@ class JobAgent(
             settingsJson = SettingsJson.encode(settings),
         )
         container.jobs.upsert(clone)
-        runCatching { container.history.prune() }
+        runCatchingLog(TAG, "prune history") { container.history.prune() }
         return getJob(newId)
     }
 
@@ -685,11 +687,11 @@ class JobAgent(
 
     suspend fun getSourceInfo(jobId: String): SourceInfo {
         val job = requireJob(jobId)
-        val probed = runCatching { container.probe.probe(Uri.parse(job.sourceUri)) }.getOrNull()
+        val probed = runCatchingLog(TAG, "probe source") { container.probe.probe(Uri.parse(job.sourceUri)) }.getOrNull()
         val audioProbed = if (job.audioUri.isBlank()) {
             null
         } else {
-            runCatching { container.probe.probe(Uri.parse(job.audioUri)) }.getOrNull()
+            runCatchingLog(TAG, "probe audio") { container.probe.probe(Uri.parse(job.audioUri)) }.getOrNull()
         }
         return SourceInfo(
             jobId = job.id,
@@ -773,7 +775,8 @@ class JobAgent(
     private fun startUserActivity(intent: Intent, fallback: String) {
         try {
             context.startActivity(intent)
-        } catch (_: Exception) {
+        } catch (t: Exception) {
+            AppLog.e(TAG, "start activity", t)
             error(fallback)
         }
     }
@@ -797,9 +800,11 @@ class JobAgent(
     private fun startEncodeService(jobId: String): String = try {
         CompressService.enqueue(context, jobId)
         "The encode service was started."
-    } catch (_: IllegalStateException) {
+    } catch (t: IllegalStateException) {
+        AppLog.e(TAG, "start encode service", t)
         "The job is queued. Open the app if encoding does not begin."
-    } catch (_: Exception) {
+    } catch (t: Exception) {
+        AppLog.e(TAG, "start encode service", t)
         "The job is queued. Open the app if encoding does not begin."
     }
 
@@ -838,5 +843,9 @@ class JobAgent(
             queuePosition = position,
             queueSize = size,
         )
+    }
+
+    private companion object {
+        const val TAG = "JobAgent"
     }
 }

@@ -11,6 +11,7 @@ import com.androidcompress.app.di.AppContainer
 import com.androidcompress.app.encode.BatchQueueSettings
 import com.androidcompress.app.encode.BatchRecipe
 import com.androidcompress.app.encode.CompressService
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -31,7 +32,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         onError: (String) -> Unit,
     ) {
         viewModelScope.launch {
-            runCatching { container.importer.import(uri) }
+            runCatchingLog(TAG, "import") { container.importer.import(uri) }
                 .onSuccess(onReady)
                 .onFailure { onError(it.message ?: container.appContext.getString(R.string.error_read_file)) }
         }
@@ -46,7 +47,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         if (uris.isEmpty()) return
         viewModelScope.launch {
             val ctx = container.appContext
-            val batch = runCatching { container.importer.importCombinePicks(uris, mimeOf) }
+            val batch = runCatchingLog(TAG, "import combine") { container.importer.importCombinePicks(uris, mimeOf) }
                 .getOrElse {
                     onMessage(it.message ?: ctx.getString(R.string.error_combine))
                     return@launch
@@ -101,5 +102,9 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             }
             onDone(container.history.clearHistory().message(container.appContext))
         }
+    }
+
+    private companion object {
+        const val TAG = "HomeViewModel"
     }
 }

@@ -36,9 +36,12 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.androidcompress.app.R
+import com.androidcompress.app.util.runCatchingLog
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
+
+private const val TAG = "RecordOverlays"
 
 fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
 
@@ -76,12 +79,12 @@ class RecordOverlayHost(private val context: Context) {
             onCancel()
         })
         regionView = view
-        runCatching { wm.addView(view, overlayParams()) }
+        runCatchingLog(TAG, "overlay") { wm.addView(view, overlayParams()) }
             .onFailure { onConfirm(RecordRegion.FULL, 0, 0) }
     }
 
     fun hideRegion() {
-        regionView?.let { runCatching { wm.removeView(it) } }
+        regionView?.let { runCatchingLog(TAG, "overlay") { wm.removeView(it) } }
         regionView = null
     }
 
@@ -101,14 +104,14 @@ class RecordOverlayHost(private val context: Context) {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             )
-            runCatching { wm.addView(tv, params) }
+            runCatchingLog(TAG, "overlay") { wm.addView(tv, params) }
         }
         countdownView?.text = if (seconds > 0) seconds.toString() else ""
         countdownView?.visibility = if (seconds > 0) View.VISIBLE else View.GONE
     }
 
     fun hideCountdown() {
-        countdownView?.let { runCatching { wm.removeView(it) } }
+        countdownView?.let { runCatchingLog(TAG, "overlay") { wm.removeView(it) } }
         countdownView = null
     }
 
@@ -164,7 +167,7 @@ class RecordOverlayHost(private val context: Context) {
         enableDrag(bar, params)
         bubbleView = bar
         bubbleParams = params
-        runCatching { wm.addView(bar, params) }
+        runCatchingLog(TAG, "overlay") { wm.addView(bar, params) }
     }
 
     fun updateBubble(paused: Boolean) {
@@ -175,7 +178,7 @@ class RecordOverlayHost(private val context: Context) {
     }
 
     fun hideBubble() {
-        bubbleView?.let { runCatching { wm.removeView(it) } }
+        bubbleView?.let { runCatchingLog(TAG, "overlay") { wm.removeView(it) } }
         bubbleView = null
         bubbleParams = null
     }
@@ -228,7 +231,7 @@ class RecordOverlayHost(private val context: Context) {
                     if (dragging) {
                         params.x = startX + dx.toInt()
                         params.y = startY + dy.toInt()
-                        runCatching { wm.updateViewLayout(v, params) }
+                        runCatchingLog(TAG, "overlay") { wm.updateViewLayout(v, params) }
                         true
                     } else {
                         false
@@ -491,14 +494,14 @@ private class FacecamOverlay(
                 MotionEvent.ACTION_MOVE -> {
                     params.x = startX + (event.rawX - downX).toInt()
                     params.y = startY + (event.rawY - downY).toInt()
-                    runCatching { wm.updateViewLayout(v, params) }
+                    runCatchingLog(TAG, "overlay") { wm.updateViewLayout(v, params) }
                     true
                 }
                 else -> false
             }
         }
         host = frame
-        runCatching { wm.addView(frame, params) }.onFailure { return }
+        runCatchingLog(TAG, "overlay") { wm.addView(frame, params) }.onFailure { return }
         texture.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
                 openCamera(surface, width, height)
@@ -545,7 +548,7 @@ private class FacecamOverlay(
                 val callback = object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(s: CameraCaptureSession) {
                         session = s
-                        runCatching { s.setRepeatingRequest(request.build(), null, handler) }
+                        runCatchingLog(TAG, "overlay") { s.setRepeatingRequest(request.build(), null, handler) }
                     }
 
                     override fun onConfigureFailed(s: CameraCaptureSession) = Unit
@@ -557,10 +560,10 @@ private class FacecamOverlay(
                         java.util.concurrent.Executor { handler.post(it) },
                         callback,
                     )
-                    runCatching { device.createCaptureSession(config) }
+                    runCatchingLog(TAG, "overlay") { device.createCaptureSession(config) }
                 } else {
                     @Suppress("DEPRECATION")
-                    runCatching { device.createCaptureSession(listOf(surface), callback, handler) }
+                    runCatchingLog(TAG, "overlay") { device.createCaptureSession(listOf(surface), callback, handler) }
                 }
             }
 
@@ -582,9 +585,9 @@ private class FacecamOverlay(
     }
 
     private fun closeCamera() {
-        runCatching { session?.close() }
+        runCatchingLog(TAG, "overlay") { session?.close() }
         session = null
-        runCatching { camera?.close() }
+        runCatchingLog(TAG, "overlay") { camera?.close() }
         camera = null
         thread?.quitSafely()
         thread = null
@@ -596,7 +599,7 @@ private class FacecamOverlay(
 
     fun dismiss() {
         closeCamera()
-        host?.let { runCatching { wm.removeView(it) } }
+        host?.let { runCatchingLog(TAG, "overlay") { wm.removeView(it) } }
         host = null
     }
 }

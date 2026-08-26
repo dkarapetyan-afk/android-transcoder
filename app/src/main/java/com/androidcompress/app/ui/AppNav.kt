@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import com.androidcompress.app.util.AppLog
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -163,6 +164,7 @@ fun CompressApp(
                         )
                     }
                 } catch (error: Throwable) {
+                    AppLog.e("AppNav", "open latest", error)
                     snackbar.showSnackbar(error.message ?: errorReadFile)
                 } finally {
                     importing = false

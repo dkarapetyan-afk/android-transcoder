@@ -9,8 +9,10 @@ import androidx.core.graphics.drawable.IconCompat
 import com.androidcompress.app.MainActivity
 import com.androidcompress.app.R
 import com.androidcompress.app.agent.AgentLaunch
+import com.androidcompress.app.util.runCatchingLog
 
 object AppShortcuts {
+    private const val TAG = "AppShortcuts"
     const val ACTION_RECORD = "com.androidcompress.app.action.SHORTCUT_RECORD"
     const val ACTION_COMPRESS_LATEST = "com.androidcompress.app.action.SHORTCUT_COMPRESS_LATEST"
     const val ACTION_EXTRACT_AUDIO = "com.androidcompress.app.action.SHORTCUT_EXTRACT_AUDIO"
@@ -78,14 +80,16 @@ object AppShortcuts {
                     .build(),
             )
         }
-        runCatching { ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts) }
+        runCatchingLog(TAG, "set shortcuts") { ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts) }
     }
 
     fun reportUsed(context: Context, destination: String) {
         val id = shortcutIdFor(destination) ?: return
-        runCatching { ShortcutManagerCompat.reportShortcutUsed(context, id) }
+        runCatchingLog(TAG, "report shortcut") { ShortcutManagerCompat.reportShortcutUsed(context, id) }
         if (destination == AgentLaunch.OPEN_COMPRESS_LATEST) {
-            runCatching { ShortcutManagerCompat.reportShortcutUsed(context, ID_DYNAMIC_LATEST) }
+            runCatchingLog(TAG, "report latest shortcut") {
+                ShortcutManagerCompat.reportShortcutUsed(context, ID_DYNAMIC_LATEST)
+            }
         }
     }
 }

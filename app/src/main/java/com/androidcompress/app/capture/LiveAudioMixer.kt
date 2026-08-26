@@ -16,6 +16,7 @@ import android.media.projection.MediaProjection
 import android.os.Build
 import androidx.annotation.RequiresApi
 import com.androidcompress.app.media.WavWriter
+import com.androidcompress.app.util.runCatchingLog
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -104,9 +105,9 @@ class LiveAudioMixer(
                     }
                 }
             } finally {
-                runCatching { mixWriter?.close() }
-                runCatching { micWriter?.close() }
-                runCatching { intWriter?.close() }
+                runCatchingLog(TAG, "close mix wav") { mixWriter?.close() }
+                runCatchingLog(TAG, "close mic wav") { micWriter?.close() }
+                runCatchingLog(TAG, "close internal wav") { intWriter?.close() }
             }
         }.also {
             it.name = if (isolateTracks) "live-audio-tracks" else "live-audio-mix"
@@ -131,7 +132,7 @@ class LiveAudioMixer(
         thread?.join(1_000)
         thread = null
         if (startedSco) {
-            runCatching {
+            runCatchingLog(TAG, "stop bluetooth sco") {
                 @Suppress("DEPRECATION")
                 audioManager?.isBluetoothScoOn = false
                 @Suppress("DEPRECATION")
@@ -156,13 +157,14 @@ class LiveAudioMixer(
         }
 
         fun stop() {
-            runCatching { recorder.stop() }
-            effects.forEach { runCatching { it.release() } }
-            runCatching { recorder.release() }
+            runCatchingLog(TAG, "stop audio record") { recorder.stop() }
+            effects.forEach { runCatchingLog(TAG, "release audio effect") { it.release() } }
+            runCatchingLog(TAG, "release audio record") { recorder.release() }
         }
     }
 
     companion object {
+        private const val TAG = "LiveAudioMixer"
         const val SAMPLE_RATE = 44_100
 
         @SuppressLint("MissingPermission")
@@ -387,7 +389,7 @@ class LiveAudioMixer(
         private fun attachEffects(sessionId: Int, echo: Boolean, ns: Boolean): List<AudioEffect> {
             val effects = mutableListOf<AudioEffect>()
             if (echo) {
-                runCatching {
+                runCatchingLog(TAG, "echo canceler") {
                     if (AcousticEchoCanceler.isAvailable()) {
                         AcousticEchoCanceler.create(sessionId)?.also {
                             it.enabled = true
@@ -397,7 +399,7 @@ class LiveAudioMixer(
                 }
             }
             if (ns) {
-                runCatching {
+                runCatchingLog(TAG, "noise suppressor") {
                     if (NoiseSuppressor.isAvailable()) {
                         NoiseSuppressor.create(sessionId)?.also {
                             it.enabled = true
@@ -427,7 +429,7 @@ class LiveAudioMixer(
         @Suppress("DEPRECATION")
         private fun startSco(audioManager: AudioManager?): Boolean {
             if (audioManager == null) return false
-            return runCatching {
+            return runCatchingLog(TAG, "start bluetooth sco") {
                 audioManager.startBluetoothSco()
                 audioManager.isBluetoothScoOn = true
                 true

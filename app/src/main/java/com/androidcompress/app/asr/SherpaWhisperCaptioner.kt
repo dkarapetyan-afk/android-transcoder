@@ -8,6 +8,7 @@ import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
@@ -19,6 +20,9 @@ import java.nio.ByteOrder
 class SherpaWhisperCaptioner(
     private val models: WhisperModelStore,
 ) : WhisperCaptioner {
+    private companion object {
+        const val TAG = "SherpaWhisper"
+    }
 
     @Volatile private var recognizer: OfflineRecognizer? = null
 
@@ -76,7 +80,7 @@ class SherpaWhisperCaptioner(
             drainVad(asr, vad, sampleRate, cues)
             onProgress(1f)
         } finally {
-            runCatching { vad.release() }
+            runCatchingLog(TAG, "release vad") { vad.release() }
         }
         cues
     }

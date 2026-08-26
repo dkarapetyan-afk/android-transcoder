@@ -3,8 +3,10 @@ package com.androidcompress.app.encode
 import android.media.MediaCodecList
 import android.media.MediaFormat
 import com.androidcompress.app.data.EncoderCapabilities
+import com.androidcompress.app.util.AppLog
 
 object MediaCodecEncoderCaps {
+    private const val TAG = "MediaCodecCaps"
     fun detect(): EncoderCapabilities {
         return try {
             val list = MediaCodecList(MediaCodecList.REGULAR_CODECS)
@@ -30,7 +32,8 @@ object MediaCodecEncoderCaps {
                 hasVp9MediaCodec = vp9,
                 hasAv1MediaCodec = av1,
             )
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "detect", t)
             EncoderCapabilities()
         }
     }

@@ -9,6 +9,7 @@ import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.JobType
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.di.AppContainer
+import com.androidcompress.app.util.runCatchingLog
 import java.util.UUID
 
 object RecordingSession {
@@ -45,7 +46,7 @@ object RecordingSession {
                 finishedAt = null,
             ),
         )
-        runCatching { container.history.prune() }
+        runCatchingLog("RecordingSession", "prune history") { container.history.prune() }
         ScreenRecordService.start(context, id, resultCode, data, options)
     }
 }

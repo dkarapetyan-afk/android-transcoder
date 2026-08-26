@@ -8,6 +8,7 @@ import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.JobRepository
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.util.runCatchingLog
 
 data class ShortcutOpenResult(
     val jobId: String? = null,
@@ -48,7 +49,7 @@ class LatestShortcutOpener(
                 message = context.getString(R.string.shortcut_need_library),
             )
         }
-        val row = runCatching {
+        val row = runCatchingLog(TAG, "list latest video") {
             DeviceMediaStore.list(context, kind = "VIDEO", query = null, limit = 1).firstOrNull()
         }.getOrNull()
         if (row == null) {
@@ -64,14 +65,14 @@ class LatestShortcutOpener(
         val job = LatestVideo.fromJobs(jobs.listAll())
         if (job != null) return job.displayName to job.sourceUri
         if (!MediaLibraryAccess.hasVideo(context)) return null
-        val row = runCatching {
+        val row = runCatchingLog(TAG, "latest label") {
             DeviceMediaStore.list(context, kind = "VIDEO", query = null, limit = 1).firstOrNull()
         }.getOrNull() ?: return null
         return row.displayName to row.contentUri.toString()
     }
 
     private suspend fun importUri(uri: Uri, audioOnly: Boolean): ShortcutOpenResult {
-        val id = runCatching { importer.import(uri) }.getOrElse { error ->
+        val id = runCatchingLog(TAG, "import latest") { importer.import(uri) }.getOrElse { error ->
             return ShortcutOpenResult(
                 message = error.message ?: context.getString(R.string.error_read_file),
             )
@@ -89,5 +90,9 @@ class LatestShortcutOpener(
             audio = if (settings.audio == AudioOption.MUTE) AudioOption.AAC_128 else settings.audio,
         )
         jobs.upsert(job.copy(settingsJson = SettingsJson.encode(next)))
+    }
+
+    private companion object {
+        const val TAG = "LatestShortcut"
     }
 }

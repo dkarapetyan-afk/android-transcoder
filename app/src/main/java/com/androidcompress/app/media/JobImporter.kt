@@ -13,6 +13,7 @@ import com.androidcompress.app.data.JobType
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.PreferencesRepository
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.util.runCatchingLog
 import java.util.UUID
 
 class JobImporter(
@@ -29,7 +30,7 @@ class JobImporter(
         val ids = ArrayList<String>(uris.size)
         val errors = ArrayList<String>()
         for (uri in uris) {
-            runCatching { import(uri) }
+            runCatchingLog(TAG, "import") { import(uri) }
                 .onSuccess(ids::add)
                 .onFailure { errors.add(it.message ?: context.getString(R.string.error_read_file)) }
         }
@@ -40,11 +41,11 @@ class JobImporter(
         val id = UUID.randomUUID().toString()
         inputs.takePersistableAccess(uri)
         val canKeepUri = inputs.canKeepWithoutCopy(uri)
-        val originalName = runCatching { probe.displayName(uri) }.getOrNull()
+        val originalName = runCatchingLog(TAG, "display name") { probe.displayName(uri) }.getOrNull()
         val stored = if (canKeepUri) {
             uri
         } else {
-            val hintedBytes = runCatching { probe.sizeBytes(uri) }.getOrDefault(0L)
+            val hintedBytes = runCatchingLog(TAG, "size bytes") { probe.sizeBytes(uri) }.getOrDefault(0L)
             if (hintedBytes > 0 && !inputs.hasSpaceFor(InputResolver.bytesNeededForCopy(hintedBytes))) {
                 error(context.getString(R.string.error_not_enough_storage_import))
             }
@@ -87,7 +88,7 @@ class JobImporter(
                 finishedAt = null,
             ),
         )
-        runCatching { history.prune() }
+        runCatchingLog(TAG, "prune history") { history.prune() }
         return id
     }
 
@@ -111,14 +112,14 @@ class JobImporter(
 
     private fun planCombine(uris: List<Uri>, mimeOf: (Uri) -> String?): CombinePlan =
         CombinePairing.plan(uris, mimeOf) { uri ->
-            runCatching { probe.displayName(uri) }.getOrNull()
+            runCatchingLog(TAG, "display name") { probe.displayName(uri) }.getOrNull()
         }
 
     private suspend fun importPairs(pairs: List<CombinePair>): Batch {
         val ids = ArrayList<String>(pairs.size)
         val errors = ArrayList<String>()
         for (pair in pairs) {
-            runCatching { importCombine(pair.visual, pair.audio) }
+            runCatchingLog(TAG, "import combine") { importCombine(pair.visual, pair.audio) }
                 .onSuccess(ids::add)
                 .onFailure { errors.add(it.message ?: context.getString(R.string.error_combine)) }
         }
@@ -160,9 +161,9 @@ class JobImporter(
             inputs.deleteImportCopy(id)
             error(context.getString(R.string.error_combine_no_duration))
         }
-        val visualName = runCatching { probe.displayName(visualUri) }.getOrNull()
+        val visualName = runCatchingLog(TAG, "visual name") { probe.displayName(visualUri) }.getOrNull()
             ?.takeIf { it.isNotBlank() } ?: visual.displayName
-        val audioName = runCatching { probe.displayName(audioUri) }.getOrNull()
+        val audioName = runCatchingLog(TAG, "audio name") { probe.displayName(audioUri) }.getOrNull()
             ?.takeIf { it.isNotBlank() } ?: audio.displayName
         val currentPrefs = prefs.current()
         val settings = EncodeSettings.forPreset(currentPrefs.defaultPreset, currentPrefs.defaultEngine).let { base ->
@@ -192,7 +193,7 @@ class JobImporter(
                 stillImage = stillImage,
             ),
         )
-        runCatching { history.prune() }
+        runCatchingLog(TAG, "prune history") { history.prune() }
         return id
     }
 
@@ -202,11 +203,15 @@ class JobImporter(
         return if (canKeepUri) {
             uri
         } else {
-            val hintedBytes = runCatching { probe.sizeBytes(uri) }.getOrDefault(0L)
+            val hintedBytes = runCatchingLog(TAG, "size bytes") { probe.sizeBytes(uri) }.getOrDefault(0L)
             if (hintedBytes > 0 && !inputs.hasSpaceFor(InputResolver.bytesNeededForCopy(hintedBytes))) {
                 error(context.getString(R.string.error_not_enough_storage_import))
             }
             Uri.fromFile(inputs.copyToCache(uri, jobId, role))
         }
+    }
+
+    private companion object {
+        const val TAG = "JobImporter"
     }
 }

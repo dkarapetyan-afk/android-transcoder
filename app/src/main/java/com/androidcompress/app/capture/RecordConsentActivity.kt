@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.androidcompress.app.container
+import com.androidcompress.app.util.runCatchingLog
 import kotlinx.coroutines.launch
 
 /**
@@ -31,7 +32,7 @@ class RecordConsentActivity : ComponentActivity() {
             return@registerForActivityResult
         }
         lifecycleScope.launch {
-            runCatching {
+            runCatchingLog("RecordConsent", "start after consent") {
                 RecordingSession.startAfterConsent(
                     context = this@RecordConsentActivity,
                     container = container(),

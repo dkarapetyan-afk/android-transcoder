@@ -14,6 +14,8 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.view.Surface
 import com.androidcompress.app.encode.RecordingCrop
+import com.androidcompress.app.util.AppLog
+import com.androidcompress.app.util.runCatchingLog
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -83,7 +85,7 @@ class CropDisplayPipe private constructor(
                 done.countDown()
             }
         }
-        runCatching { done.await(1, TimeUnit.SECONDS) }
+        runCatchingLog(TAG, "await gl release") { done.await(1, TimeUnit.SECONDS) }
         thread.quitSafely()
     }
 
@@ -100,7 +102,7 @@ class CropDisplayPipe private constructor(
     private fun drain() {
         if (released.get()) return
         while (pendingFrame.compareAndSet(true, false)) {
-            runCatching { drawFrame() }
+            runCatchingLog(TAG, "drawFrame") { drawFrame() }
             if (released.get()) return
         }
     }
@@ -109,7 +111,8 @@ class CropDisplayPipe private constructor(
         if (released.get()) return
         try {
             surfaceTexture.updateTexImage()
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            AppLog.e(TAG, "updateTexImage", t)
             return
         }
         if (paused.get()) return
@@ -138,7 +141,7 @@ class CropDisplayPipe private constructor(
             GLES20.glDisable(GLES20.GL_SCISSOR_TEST)
         }
         val pts = presentationTimeNs()
-        runCatching {
+        runCatchingLog(TAG, "eglPresentationTime") {
             EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, pts)
         }
         EGL14.eglSwapBuffers(eglDisplay, eglSurface)
@@ -152,6 +155,7 @@ class CropDisplayPipe private constructor(
     }
 
     companion object {
+        private const val TAG = "CropDisplayPipe"
         private const val EGL_RECORDABLE_ANDROID = 0x3142
         private val VERTICES = java.nio.ByteBuffer.allocateDirect(8 * 4)
             .order(java.nio.ByteOrder.nativeOrder())
