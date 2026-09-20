@@ -12,11 +12,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -36,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,6 +60,8 @@ import com.androidcompress.app.data.H264Profile
 import com.androidcompress.app.data.HdrMode
 import com.androidcompress.app.data.KeyframeInterval
 import com.androidcompress.app.data.Preset
+import com.androidcompress.app.data.SettingsProfile
+import com.androidcompress.app.data.SettingsProfiles
 import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.hasTargetSize
@@ -186,6 +195,13 @@ fun CompressScreen(
                     )
                 }
             }
+            SavedProfilesSection(
+                profiles = ui.profiles,
+                activeProfileId = ui.activeProfileId,
+                onLoad = viewModel::loadProfile,
+                onSave = viewModel::saveProfile,
+                onDelete = viewModel::deleteProfile,
+            )
             Text(stringResource(R.string.compress_fit_to_size), style = MaterialTheme.typography.titleMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TargetSizePreset.entries.forEach { preset ->
@@ -892,6 +908,156 @@ private fun ClipControls(
             }) { Text(stringResource(R.string.compress_use_whole_video)) }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SavedProfilesSection(
+    profiles: List<SettingsProfile>,
+    activeProfileId: String?,
+    onLoad: (String) -> Unit,
+    onSave: (String, (String?) -> Unit) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    val active = profiles.firstOrNull { it.id == activeProfileId }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    var saveOpen by rememberSaveable { mutableStateOf(false) }
+    var deleteOpen by rememberSaveable { mutableStateOf(false) }
+    Text(stringResource(R.string.compress_profiles), style = MaterialTheme.typography.titleMedium)
+    Text(
+        stringResource(R.string.compress_profiles_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    ExposedDropdownMenuBox(
+        expanded = expanded && profiles.isNotEmpty(),
+        onExpandedChange = { if (profiles.isNotEmpty()) expanded = it },
+    ) {
+        OutlinedTextField(
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(
+                    type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                    enabled = profiles.isNotEmpty(),
+                ),
+            readOnly = true,
+            value = active?.name ?: stringResource(R.string.compress_profiles_placeholder),
+            onValueChange = {},
+            enabled = profiles.isNotEmpty(),
+            label = { Text(stringResource(R.string.compress_profiles_label)) },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded && profiles.isNotEmpty())
+            },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            singleLine = true,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded && profiles.isNotEmpty(),
+            onDismissRequest = { expanded = false },
+        ) {
+            profiles.forEach { profile ->
+                DropdownMenuItem(
+                    text = { Text(profile.name) },
+                    onClick = {
+                        onLoad(profile.id)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = { saveOpen = true }) {
+            Text(stringResource(R.string.compress_profiles_save))
+        }
+        if (active != null) {
+            TextButton(onClick = { deleteOpen = true }) {
+                Text(stringResource(R.string.compress_profiles_delete))
+            }
+        }
+    }
+    if (saveOpen) {
+        SaveProfileDialog(
+            initialName = active?.name.orEmpty(),
+            profiles = profiles,
+            onDismiss = { saveOpen = false },
+            onSave = onSave,
+        )
+    }
+    if (deleteOpen && active != null) {
+        AlertDialog(
+            onDismissRequest = { deleteOpen = false },
+            title = { Text(stringResource(R.string.compress_profiles_delete_title)) },
+            text = { Text(stringResource(R.string.compress_profiles_delete_body, active.name)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(active.id)
+                    deleteOpen = false
+                }) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteOpen = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun SaveProfileDialog(
+    initialName: String,
+    profiles: List<SettingsProfile>,
+    onDismiss: () -> Unit,
+    onSave: (String, (String?) -> Unit) -> Unit,
+) {
+    var name by rememberSaveable { mutableStateOf(initialName) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    val clash = SettingsProfiles.findByName(profiles, name) != null
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.compress_profiles_save_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { value ->
+                    name = value.take(SettingsProfiles.NAME_MAX)
+                    error = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = error != null,
+                label = { Text(stringResource(R.string.compress_profiles_name)) },
+                supportingText = {
+                    Text(
+                        error
+                            ?: if (clash) {
+                                stringResource(R.string.compress_profiles_replace)
+                            } else {
+                                ""
+                            },
+                    )
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = { onSave(name) { fail -> if (fail == null) onDismiss() else error = fail } },
+                ),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name) { fail -> if (fail == null) onDismiss() else error = fail } },
+            ) { Text(stringResource(R.string.action_save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 private fun jobIdOr(job: com.androidcompress.app.data.CompressJob?) = job?.id.orEmpty()

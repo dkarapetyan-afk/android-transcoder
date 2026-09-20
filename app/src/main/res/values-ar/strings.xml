@@ -36,6 +36,8 @@
     <string name="action_resume">استئناف</string>
     <string name="action_cancel">إلغاء</string>
     <string name="action_clear">مسح</string>
+    <string name="action_save">حفظ</string>
+    <string name="action_delete">حذف</string>
     <string name="app_functions_description">اضغط التسجيلات المستوردة على هذا الجهاز، وخصّص إعدادات الترميز، وابدأ قائمة الانتظار أو انتظرها، وشارك النتيجة، وتابع التقدم.</string>
 
     <string name="cd_back">رجوع</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (تقدير)</string>
     <string name="compress_encoder">المرمّز</string>
     <string name="compress_preset">الإعداد المسبق</string>
+    <string name="compress_profiles">التشكيلات المحفوظة</string>
+    <string name="compress_profiles_hint">احفظ الخيارات أدناه لتحميلها لاحقًا دون إعادة اختيارها.</string>
+    <string name="compress_profiles_label">التشكيلة</string>
+    <string name="compress_profiles_placeholder">اختر تشكيلة</string>
+    <string name="compress_profiles_save">حفظ التشكيلة</string>
+    <string name="compress_profiles_delete">حذف التشكيلة</string>
+    <string name="compress_profiles_save_title">حفظ التشكيلة</string>
+    <string name="compress_profiles_name">اسم التشكيلة</string>
+    <string name="compress_profiles_replace">توجد تشكيلة بهذا الاسم وستُستبدل.</string>
+    <string name="compress_profiles_empty_name">أدخل اسمًا.</string>
+    <string name="compress_profiles_limit">يمكنك حفظ 40 تشكيلة كحد أقصى. احذف واحدة أولًا.</string>
+    <string name="compress_profiles_delete_title">هل تريد حذف هذه التشكيلة؟</string>
+    <string name="compress_profiles_delete_body">يزيل «%1$s» من التشكيلات المحفوظة. تبقى خيارات الترميز الحالية.</string>
     <string name="compress_fit_to_size">الملاءمة مع الحجم</string>
     <string name="compress_fit_discord">Discord ‏10 ميغابايت</string>
     <string name="compress_fit_whatsapp">WhatsApp ‏16 ميغابايت</string>

@@ -103,6 +103,37 @@ class BatchQueueSettingsTest {
         assertEquals(ContainerFormat.WEBM, next.container)
     }
 
+    @Test
+    fun namedProfileReplacesOptionsAndKeepsClip() {
+        val current = EncodeSettings.forPreset(Preset.HIGHER).copy(
+            clipStartMs = 500,
+            clipEndMs = 4_000,
+            grayscale = false,
+        )
+        val profile = EncodeSettings.forPreset(Preset.SMALLER).copy(
+            engine = EncodeEngine.MEDIA3,
+            grayscale = true,
+            captions = true,
+            container = ContainerFormat.WEBM,
+            targetSizePreset = TargetSizePreset.WHATSAPP,
+            targetSizeBytes = TargetSizePreset.WHATSAPP.bytes,
+        )
+        val updated = BatchQueueSettings.apply(
+            job("q", JobStatus.QUEUED, settingsJson = SettingsJson.encode(current)),
+            profile,
+        )
+        val next = SettingsJson.decode(updated.settingsJson)
+        assertEquals(Preset.SMALLER, next.preset)
+        assertEquals(EncodeEngine.MEDIA3, next.engine)
+        assertEquals(ContainerFormat.WEBM, next.container)
+        assertEquals(VideoCodec.VP9, next.codec)
+        assertTrue(next.grayscale)
+        assertTrue(next.captions)
+        assertEquals(TargetSizePreset.WHATSAPP, next.targetSizePreset)
+        assertEquals(500L, next.clipStartMs)
+        assertEquals(4_000L, next.clipEndMs)
+    }
+
     private fun job(
         id: String,
         status: JobStatus,

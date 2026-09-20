@@ -30,6 +30,7 @@ class PreferencesRepository(private val context: Context) {
     private val lastRecordOptions = stringPreferencesKey("last_record_options")
     private val stallTimeoutSec = intPreferencesKey("stall_timeout_sec")
     private val twoPassStallTimeoutSec = intPreferencesKey("two_pass_stall_timeout_sec")
+    private val settingsProfiles = stringPreferencesKey("settings_profiles")
 
     val settings: Flow<UserSettings> = context.dataStore.data.map { prefs ->
         UserSettings(
@@ -117,6 +118,32 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setRecordOptionsJson(json: String) {
         context.dataStore.edit { it[lastRecordOptions] = json }
+    }
+
+    val profiles: Flow<List<SettingsProfile>> = context.dataStore.data.map {
+        SettingsProfiles.decode(it[settingsProfiles])
+    }
+
+    suspend fun currentProfiles(): List<SettingsProfile> = profiles.first()
+
+    suspend fun saveProfile(name: String, settings: EncodeSettings): SettingsProfiles.SaveResult {
+        var result: SettingsProfiles.SaveResult = SettingsProfiles.SaveResult.EmptyName
+        context.dataStore.edit { prefs ->
+            val current = SettingsProfiles.decode(prefs[settingsProfiles])
+            val saved = SettingsProfiles.save(current, name, settings)
+            result = saved
+            if (saved is SettingsProfiles.SaveResult.Saved) {
+                prefs[settingsProfiles] = SettingsProfiles.encode(saved.profiles)
+            }
+        }
+        return result
+    }
+
+    suspend fun deleteProfile(id: String) {
+        context.dataStore.edit { prefs ->
+            val current = SettingsProfiles.decode(prefs[settingsProfiles])
+            prefs[settingsProfiles] = SettingsProfiles.encode(SettingsProfiles.delete(current, id))
+        }
     }
 
     private companion object {

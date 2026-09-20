@@ -36,6 +36,8 @@
     <string name="action_resume">Reanudar</string>
     <string name="action_cancel">Cancelar</string>
     <string name="action_clear">Borrar</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_delete">Eliminar</string>
     <string name="app_functions_description">Comprime grabaciones importadas en este dispositivo, personaliza la codificación, inicia o espera la cola, comparte el resultado y consulta el progreso.</string>
 
     <string name="cd_back">Atrás</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (estimación)</string>
     <string name="compress_encoder">Codificador</string>
     <string name="compress_preset">Preajuste</string>
+    <string name="compress_profiles">Perfiles guardados</string>
+    <string name="compress_profiles_hint">Guarda las opciones de abajo para volver a usarlas después, sin volver a elegirlas.</string>
+    <string name="compress_profiles_label">Perfil</string>
+    <string name="compress_profiles_placeholder">Seleccionar un perfil</string>
+    <string name="compress_profiles_save">Guardar perfil</string>
+    <string name="compress_profiles_delete">Eliminar perfil</string>
+    <string name="compress_profiles_save_title">Guardar perfil</string>
+    <string name="compress_profiles_name">Nombre del perfil</string>
+    <string name="compress_profiles_replace">Ya existe un perfil con este nombre y se reemplazará.</string>
+    <string name="compress_profiles_empty_name">Escribe un nombre.</string>
+    <string name="compress_profiles_limit">Puedes guardar 40 perfiles como máximo. Borra uno primero.</string>
+    <string name="compress_profiles_delete_title">¿Eliminar este perfil?</string>
+    <string name="compress_profiles_delete_body">Quita “%1$s” de los perfiles guardados. Las opciones de codificación actuales no cambian.</string>
     <string name="compress_fit_to_size">Ajustar al tamaño</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>

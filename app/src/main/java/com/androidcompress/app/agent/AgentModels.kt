@@ -56,6 +56,15 @@ data class PresetInfo(
     val settings: JobSettingsSnapshot,
 )
 
+/** One named encode profile saved by the user. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class SettingsProfileInfo(
+    /** Profile name as shown in the Compress dropdown. */
+    val name: String,
+    /** Encode settings this profile applies. Clip start/end is not stored. */
+    val settings: JobSettingsSnapshot,
+)
+
 /** Settings currently stored on a job or preset. */
 @AppFunctionSerializable(isDescribedByKDoc = true)
 data class JobSettingsSnapshot(

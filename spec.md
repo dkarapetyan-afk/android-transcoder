@@ -20,11 +20,11 @@ The app records the screen and compresses video/audio **on the device**. It does
 | compileSdk / targetSdk | 37 |
 | ABI | `arm64-v8a` only |
 | JDK | 17 |
-| AGP | 9.3.1 |
-| Kotlin | 2.4.10 |
-| KSP | 2.3.11 |
-| Compose BOM | 2026.08.00 |
-| Room | 2.8.4 |
+| AGP | 9.4.0 |
+| Kotlin | 2.4.20 |
+| KSP | 2.3.12 |
+| Compose BOM | 2026.09.00 |
+| Room | 2.8.5 |
 | DataStore | 1.2.1 |
 | Media3 | 1.11.0 (transformer, effect, common, muxer) |
 | FFmpeg | `dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.7` (FFmpeg 8.1.x, 16 KB pages, LGPL) |
@@ -154,6 +154,10 @@ UI (Compose screens)
 
 All presets start as H.264 + hardware-preferred + FFmpeg unless the Settings default engine is Media3.
 
+**Saved profiles**
+
+Named copies of the current Compress options (engine, container, codec, fit-to-size, advanced, extra args, captions, burn-in, grayscale, two-pass, etc.). Stored in DataStore (`settings_profiles`). Clip start/end is per-job and is **not** stored. Loading a profile keeps the current clip window. Combine jobs stay `VIDEO`; audio-only jobs stay `AUDIO` (MUTE becomes AAC 128). Same name overwrites (case-insensitive). At most 40. Compress shows a dropdown of saved names plus Save / Delete. App Functions: `listSettingsProfiles`, `saveSettingsProfile`, `applySettingsProfile`, `deleteSettingsProfile`.
+
 **Container / codec**
 
 - MP4: H.264, HEVC, AV1. Audio-only → `.m4a` AAC.
@@ -176,7 +180,7 @@ Routes: `home`, `record`, `compress/{jobId}`, `progress/{jobId}`, `result/{jobId
 |---|---|
 | **Home** | Record; pick one video/audio; multi-pick combine; Recent list; batch recipe chips when ≥1 READY/QUEUED job; Last log; Library; Settings; About; Clear all (confirm) |
 | **Record** | Capture options, live timer, pause/resume, bookmarks, stop |
-| **Compress** | Presets, fit-to-size, engine, output, container, clip, advanced, Start |
+| **Compress** | Presets, saved-profile dropdown, fit-to-size, engine, output, container, clip, advanced, Start |
 | **Progress** | Current + queued jobs, pass label, cancel this / cancel all, batch chips for **queued** jobs only |
 | **Result** | Open, Share, Delete original, View log; sizes + bytes saved. Recordings write a job log (region crop pixels, live vs software crop). |
 | **Library** | Full job list, open by status, discard one, clear all |
@@ -533,6 +537,10 @@ Functions return metadata. Share/open use the system sheet/viewer. Gemini-as-cal
 |---|---|
 | `describeCapabilities` | Summary, workflow, enum lists, restrictions, library note |
 | `listPresets` | SMALLER / BALANCED / HIGHER snapshots |
+| `listSettingsProfiles` | Named user profiles (no clip window) |
+| `saveSettingsProfile` | Snapshot a job’s settings under a name; overwrite by name; max 40 |
+| `applySettingsProfile` | Load a named profile onto a job; keeps clip; not while queued/running/recording |
+| `deleteSettingsProfile` | Remove a named profile; jobs unchanged |
 | `listJobs` | Status filter, limit 1–40 (default 20); no URIs |
 | `getJob` | Full settings snapshot |
 | `getQueue` | Running first, then FIFO queued, READY count |

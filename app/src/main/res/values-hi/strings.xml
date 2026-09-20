@@ -36,6 +36,8 @@
     <string name="action_resume">फिर से चलाएँ</string>
     <string name="action_cancel">रद्द करें</string>
     <string name="action_clear">साफ़ करें</string>
+    <string name="action_save">सहेजें</string>
+    <string name="action_delete">हटाएँ</string>
     <string name="app_functions_description">इस डिवाइस पर इंपोर्ट की गई रिकॉर्डिंग कंप्रेस करें, एन्कोड सेटिंग बदलें, क्यू शुरू करें या उसका इंतज़ार करें, नतीजा शेयर करें और प्रगति देखें।</string>
 
     <string name="cd_back">वापस</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (अनुमान)</string>
     <string name="compress_encoder">एन्कोडर</string>
     <string name="compress_preset">प्रीसेट</string>
+    <string name="compress_profiles">सहेजी प्रोफ़ाइल</string>
+    <string name="compress_profiles_hint">नीचे के विकल्प सहेजें और बाद में लोड करें, दोबारा चुनने की ज़रूरत नहीं।</string>
+    <string name="compress_profiles_label">प्रोफ़ाइल</string>
+    <string name="compress_profiles_placeholder">प्रोफ़ाइल चुनें</string>
+    <string name="compress_profiles_save">प्रोफ़ाइल सहेजें</string>
+    <string name="compress_profiles_delete">प्रोफ़ाइल हटाएँ</string>
+    <string name="compress_profiles_save_title">प्रोफ़ाइल सहेजें</string>
+    <string name="compress_profiles_name">प्रोफ़ाइल नाम</string>
+    <string name="compress_profiles_replace">इस नाम की प्रोफ़ाइल पहले से है और बदल दी जाएगी।</string>
+    <string name="compress_profiles_empty_name">नाम लिखें।</string>
+    <string name="compress_profiles_limit">ज़्यादा से ज़्यादा 40 प्रोफ़ाइल सहेज सकते हैं। पहले एक हटाएँ।</string>
+    <string name="compress_profiles_delete_title">यह प्रोफ़ाइल हटाएँ?</string>
+    <string name="compress_profiles_delete_body">सहेजी प्रोफ़ाइल से “%1$s” हटेगी। अभी के एन्कोड विकल्प वैसे ही रहेंगे।</string>
     <string name="compress_fit_to_size">आकार के अनुसार</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>

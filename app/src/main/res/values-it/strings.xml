@@ -36,6 +36,8 @@
     <string name="action_resume">Riprendi</string>
     <string name="action_cancel">Annulla</string>
     <string name="action_clear">Cancella</string>
+    <string name="action_save">Salva</string>
+    <string name="action_delete">Elimina</string>
     <string name="app_functions_description">Comprimi registrazioni importate su questo dispositivo, personalizza la codifica, avvia o attendi la coda, condividi il risultato e controlla l’avanzamento.</string>
 
     <string name="cd_back">Indietro</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (stima)</string>
     <string name="compress_encoder">Encoder</string>
     <string name="compress_preset">Preimpostazione</string>
+    <string name="compress_profiles">Profili salvati</string>
+    <string name="compress_profiles_hint">Salva le opzioni qui sotto per riutilizzarle in seguito, senza riselezionarle.</string>
+    <string name="compress_profiles_label">Profilo</string>
+    <string name="compress_profiles_placeholder">Seleziona un profilo</string>
+    <string name="compress_profiles_save">Salva profilo</string>
+    <string name="compress_profiles_delete">Elimina profilo</string>
+    <string name="compress_profiles_save_title">Salva profilo</string>
+    <string name="compress_profiles_name">Nome del profilo</string>
+    <string name="compress_profiles_replace">Esiste già un profilo con questo nome e verrà sostituito.</string>
+    <string name="compress_profiles_empty_name">Inserisci un nome.</string>
+    <string name="compress_profiles_limit">Puoi salvare al massimo 40 profili. Eliminane uno prima.</string>
+    <string name="compress_profiles_delete_title">Eliminare questo profilo?</string>
+    <string name="compress_profiles_delete_body">Rimuove “%1$s” dai profili salvati. Le opzioni di codifica attuali restano.</string>
     <string name="compress_fit_to_size">Adatta alle dimensioni</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>

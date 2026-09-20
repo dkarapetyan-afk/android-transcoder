@@ -36,6 +36,8 @@
     <string name="action_resume">再開</string>
     <string name="action_cancel">キャンセル</string>
     <string name="action_clear">消去</string>
+    <string name="action_save">保存</string>
+    <string name="action_delete">削除</string>
     <string name="app_functions_description">この端末上で取り込んだ録画を圧縮し、エンコード設定を変え、キューを開始または待機し、結果を共有し、進行状況を確認します。</string>
 
     <string name="cd_back">戻る</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s（推定）</string>
     <string name="compress_encoder">エンコーダー</string>
     <string name="compress_preset">プリセット</string>
+    <string name="compress_profiles">保存したプロファイル</string>
+    <string name="compress_profiles_hint">下の設定を保存して、あとから読み込めます。毎回選び直す必要はありません。</string>
+    <string name="compress_profiles_label">プロファイル</string>
+    <string name="compress_profiles_placeholder">プロファイルを選択</string>
+    <string name="compress_profiles_save">プロファイルを保存</string>
+    <string name="compress_profiles_delete">プロファイルを削除</string>
+    <string name="compress_profiles_save_title">プロファイルを保存</string>
+    <string name="compress_profiles_name">プロファイル名</string>
+    <string name="compress_profiles_replace">同じ名前のプロファイルがあり、上書きされます。</string>
+    <string name="compress_profiles_empty_name">名前を入力してください。</string>
+    <string name="compress_profiles_limit">保存できるプロファイルは最大 40 個です。先に 1 つ削除してください。</string>
+    <string name="compress_profiles_delete_title">このプロファイルを削除しますか？</string>
+    <string name="compress_profiles_delete_body">保存したプロファイルから「%1$s」を削除します。現在のエンコード設定はそのままです。</string>
     <string name="compress_fit_to_size">サイズに合わせる</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>

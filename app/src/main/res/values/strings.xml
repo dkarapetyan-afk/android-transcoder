@@ -36,6 +36,8 @@
     <string name="action_resume">Resume</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_clear">Clear</string>
+    <string name="action_save">Save</string>
+    <string name="action_delete">Delete</string>
     <string name="app_functions_description">Compress imported recordings on this device, customize encode settings, start or wait for the queue, share the result, and check progress.</string>
 
     <string name="cd_back">Back</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (estimate)</string>
     <string name="compress_encoder">Encoder</string>
     <string name="compress_preset">Preset</string>
+    <string name="compress_profiles">Saved profiles</string>
+    <string name="compress_profiles_hint">Save the options below and load them later so you do not have to pick them again.</string>
+    <string name="compress_profiles_label">Profile</string>
+    <string name="compress_profiles_placeholder">Select a profile</string>
+    <string name="compress_profiles_save">Save profile</string>
+    <string name="compress_profiles_delete">Delete profile</string>
+    <string name="compress_profiles_save_title">Save profile</string>
+    <string name="compress_profiles_name">Profile name</string>
+    <string name="compress_profiles_replace">A profile with this name already exists and will be replaced.</string>
+    <string name="compress_profiles_empty_name">Enter a name.</string>
+    <string name="compress_profiles_limit">You can save at most 40 profiles. Delete one first.</string>
+    <string name="compress_profiles_delete_title">Delete this profile?</string>
+    <string name="compress_profiles_delete_body">Removes “%1$s” from saved profiles. Current encode options stay.</string>
     <string name="compress_fit_to_size">Fit to size</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>

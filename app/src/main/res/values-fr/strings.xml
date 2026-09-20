@@ -36,6 +36,8 @@
     <string name="action_resume">Reprendre</string>
     <string name="action_cancel">Annuler</string>
     <string name="action_clear">Effacer</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_delete">Supprimer</string>
     <string name="app_functions_description">Compressez des enregistrements importés sur cet appareil, personnalisez l’encodage, lancez ou attendez la file, partagez le résultat et suivez la progression.</string>
 
     <string name="cd_back">Retour</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (estimation)</string>
     <string name="compress_encoder">Encodeur</string>
     <string name="compress_preset">Préréglage</string>
+    <string name="compress_profiles">Profils enregistrés</string>
+    <string name="compress_profiles_hint">Enregistrez les options ci-dessous pour les réutiliser plus tard, sans tout resélectionner.</string>
+    <string name="compress_profiles_label">Profil</string>
+    <string name="compress_profiles_placeholder">Choisir un profil</string>
+    <string name="compress_profiles_save">Enregistrer le profil</string>
+    <string name="compress_profiles_delete">Supprimer le profil</string>
+    <string name="compress_profiles_save_title">Enregistrer le profil</string>
+    <string name="compress_profiles_name">Nom du profil</string>
+    <string name="compress_profiles_replace">Un profil portant ce nom existe déjà et sera remplacé.</string>
+    <string name="compress_profiles_empty_name">Saisissez un nom.</string>
+    <string name="compress_profiles_limit">Vous pouvez enregistrer 40 profils au maximum. Supprimez-en un d’abord.</string>
+    <string name="compress_profiles_delete_title">Supprimer ce profil ?</string>
+    <string name="compress_profiles_delete_body">Retire « %1$s » des profils enregistrés. Les options d’encodage actuelles restent.</string>
     <string name="compress_fit_to_size">Ajuster à la taille</string>
     <string name="compress_fit_discord">Discord 10 Mo</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 Mo</string>

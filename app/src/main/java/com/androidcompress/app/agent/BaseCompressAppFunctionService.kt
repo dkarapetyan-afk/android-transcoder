@@ -104,6 +104,48 @@ abstract class BaseCompressAppFunctionService : AppFunctionService() {
     ): JobDetail = io { agent.applyPreset(jobId, preset, engine) }
 
     /**
+     * List named encode profiles the user saved on the Compress screen.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun listSettingsProfiles(): List<SettingsProfileInfo> =
+        io { agent.listSettingsProfiles() }
+
+    /**
+     * Save the job's current encode options as a named profile. The same name
+     * overwrites. Clip start/end is not stored. At most 40 profiles.
+     *
+     * @param name Profile name shown in the Compress dropdown.
+     * @param jobId Job whose current settings to snapshot.
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun saveSettingsProfile(
+        name: String,
+        jobId: String,
+    ): List<SettingsProfileInfo> = io { agent.saveSettingsProfile(name, jobId) }
+
+    /**
+     * Apply a saved named profile to a job. Clip start/end on the job is kept.
+     * The job must not be queued, running, or recording.
+     *
+     * @param jobId Job to change.
+     * @param name Saved profile name (case-insensitive).
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun applySettingsProfile(
+        jobId: String,
+        name: String,
+    ): JobDetail = io { agent.applySettingsProfile(jobId, name) }
+
+    /**
+     * Delete a saved named profile. Jobs are not changed.
+     *
+     * @param name Saved profile name (case-insensitive).
+     */
+    @AppFunction(isDescribedByKDoc = true)
+    suspend fun deleteSettingsProfile(name: String): List<SettingsProfileInfo> =
+        io { agent.deleteSettingsProfile(name) }
+
+    /**
      * Fully customize one job. Null fields stay unchanged. Setting preset first
      * resets to that preset, then the other fields overlay it. Cannot edit a
      * queued, running, or recording job.

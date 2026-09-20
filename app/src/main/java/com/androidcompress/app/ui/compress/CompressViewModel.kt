@@ -15,13 +15,17 @@ import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.data.SettingsProfile
+import com.androidcompress.app.data.SettingsProfiles
 import com.androidcompress.app.data.SourceVideo
 import com.androidcompress.app.data.TargetSizePreset
 import com.androidcompress.app.data.VideoCodec
 import com.androidcompress.app.data.audioOutput
+import com.androidcompress.app.data.constrainedTo
 import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.data.usesWebm
 import com.androidcompress.app.data.withContainer
+import com.androidcompress.app.data.withProfile
 import com.androidcompress.app.data.withTargetPreset
 import com.androidcompress.app.util.parseMegabytesToBytes
 import com.androidcompress.app.di.AppContainer
@@ -57,6 +61,8 @@ data class CompressUiState(
     val plannedVideoBitrateKbps: Int = 0,
     val plannedAudioBitrateKbps: Int = 0,
     val twoPassActive: Boolean = false,
+    val profiles: List<SettingsProfile> = emptyList(),
+    val activeProfileId: String? = null,
 )
 
 class CompressViewModel(
@@ -87,7 +93,8 @@ class CompressViewModel(
             AiSlice(err, prompt, busy, message)
         },
         container.prefs.settings.map { it.geminiApiKey.isNotBlank() },
-    ) { left, right, ai, hasKey ->
+        container.prefs.profiles,
+    ) { left, right, ai, hasKey, profiles ->
         val (job, active, enc) = left
         val (cap, open, deleteSource) = right
         val realSource = job.toSource()
@@ -150,6 +157,8 @@ class CompressViewModel(
                 ?: media3Spec?.audioBitrateBps?.div(1000)
                 ?: 0,
             twoPassActive = plan?.firstPassArgs != null,
+            profiles = profiles,
+            activeProfileId = SettingsProfiles.matching(profiles, enc, job)?.id,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CompressUiState())
 
@@ -162,17 +171,7 @@ class CompressViewModel(
                 job != null -> SettingsJson.decode(job.settingsJson)
                 else -> EncodeSettings.forPreset(prefs.defaultPreset, prefs.defaultEngine)
             }
-            settings.value = when {
-                job != null && job.isCombine -> loaded.copy(
-                    output = OutputMode.VIDEO,
-                    audio = if (loaded.audio == AudioOption.MUTE) AudioOption.AAC_128 else loaded.audio,
-                )
-                job != null && job.width <= 0 && job.height <= 0 -> loaded.copy(
-                    output = OutputMode.AUDIO,
-                    audio = if (loaded.audio == AudioOption.MUTE) AudioOption.AAC_128 else loaded.audio,
-                )
-                else -> loaded
-            }
+            settings.value = if (job != null) loaded.constrainedTo(job) else loaded
             deleteSourceAfter.value = job?.deleteSourceAfter ?: prefs.deleteOriginalAfterEncode
             caps.value = container.encoderCapabilities()
         }
@@ -244,6 +243,31 @@ class CompressViewModel(
                 bitrateMode = BitrateMode.CBR,
             )
         }
+    }
+
+    fun loadProfile(id: String) {
+        val profile = ui.value.profiles.firstOrNull { it.id == id } ?: return
+        val job = ui.value.job
+        update { current ->
+            val next = current.withProfile(profile.settings)
+            if (job != null) next.constrainedTo(job) else next
+        }
+    }
+
+    fun saveProfile(name: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            when (val result = container.prefs.saveProfile(name, settings.value)) {
+                is SettingsProfiles.SaveResult.Saved -> onResult(null)
+                SettingsProfiles.SaveResult.EmptyName ->
+                    onResult(container.appContext.getString(R.string.compress_profiles_empty_name))
+                SettingsProfiles.SaveResult.LimitReached ->
+                    onResult(container.appContext.getString(R.string.compress_profiles_limit))
+            }
+        }
+    }
+
+    fun deleteProfile(id: String) {
+        viewModelScope.launch { container.prefs.deleteProfile(id) }
     }
 
     fun applyPreset(preset: Preset) {

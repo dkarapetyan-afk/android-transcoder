@@ -36,6 +36,8 @@
     <string name="action_resume">Continue</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_clear">Clear</string>
+    <string name="action_save">Save</string>
+    <string name="action_delete">Delete</string>
     <string name="app_functions_description">Compress recordings wey you import for dis phone, change encode settings, start or wait for di queue, share di result, and check progress.</string>
 
     <string name="cd_back">Back</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s (estimate)</string>
     <string name="compress_encoder">Encoder</string>
     <string name="compress_preset">Preset</string>
+    <string name="compress_profiles">Profiles wey you save</string>
+    <string name="compress_profiles_hint">Save di options for down so you fit load dem later. You no go select everything again.</string>
+    <string name="compress_profiles_label">Profile</string>
+    <string name="compress_profiles_placeholder">Choose profile</string>
+    <string name="compress_profiles_save">Save profile</string>
+    <string name="compress_profiles_delete">Delete profile</string>
+    <string name="compress_profiles_save_title">Save profile</string>
+    <string name="compress_profiles_name">Profile name</string>
+    <string name="compress_profiles_replace">Profile wey get dis name already dey, e go replace am.</string>
+    <string name="compress_profiles_empty_name">Write name.</string>
+    <string name="compress_profiles_limit">You fit save 40 profiles only. Delete one first.</string>
+    <string name="compress_profiles_delete_title">You wan delete dis profile?</string>
+    <string name="compress_profiles_delete_body">E go remove “%1$s” from saved profiles. Di encode options wey dey now go still dey.</string>
     <string name="compress_fit_to_size">Make e fit size</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>

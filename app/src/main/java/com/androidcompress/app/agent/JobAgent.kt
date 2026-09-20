@@ -12,6 +12,9 @@ import com.androidcompress.app.data.JobStatus
 import com.androidcompress.app.data.JobType
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
+import com.androidcompress.app.data.SettingsProfiles
+import com.androidcompress.app.data.constrainedTo
+import com.androidcompress.app.data.withProfile
 import com.androidcompress.app.data.audioOutput
 import com.androidcompress.app.data.effectiveAudio
 import com.androidcompress.app.data.galleryFolder
@@ -48,6 +51,7 @@ class JobAgent(
             "2) For one file, call compressNow(uriOrPath, settings, wait=true). " +
             "3) For several files, listDeviceMedia with relativePath or date filters, then importDeviceMediaBatch. " +
             "applyToQueue(preset, container) sets the same encode options on every waiting job (e.g. SMALLER + WEBM). " +
+            "Named profiles: listSettingsProfiles, applySettingsProfile(jobId, name), saveSettingsProfile(name, jobId). " +
             "4) Use cloneJob for a second encode of the same source, or retryJob after a failure. " +
             "5) waitForJob or waitForQueue (max 180s; call again if timedOut). " +
             "6) shareOutput or openOutput when done. discardJob removes history only.",
@@ -193,6 +197,44 @@ class JobAgent(
             ?: SettingsJson.decode(job.settingsJson).engine
         return saveSettings(job, EncodeSettings.forPreset(preset, engine))
     }
+
+    suspend fun listSettingsProfiles(): List<SettingsProfileInfo> =
+        container.prefs.currentProfiles().map { profile ->
+            SettingsProfileInfo(
+                name = profile.name,
+                settings = JobSettingsCodec.snapshot(profile.settings),
+            )
+        }
+
+    suspend fun saveSettingsProfile(name: String, jobId: String): List<SettingsProfileInfo> {
+        val job = requireJob(jobId)
+        val settings = SettingsJson.decode(job.settingsJson)
+        when (val result = container.prefs.saveProfile(name, settings)) {
+            is SettingsProfiles.SaveResult.Saved -> Unit
+            SettingsProfiles.SaveResult.EmptyName -> error("Profile name is required.")
+            SettingsProfiles.SaveResult.LimitReached ->
+                error("At most 40 saved profiles. Delete one first.")
+        }
+        return listSettingsProfiles()
+    }
+
+    suspend fun applySettingsProfile(jobId: String, name: String): JobDetail {
+        val job = requireJob(jobId)
+        JobSettingsCodec.requireEditable(job)
+        val profile = requireProfile(name)
+        val current = SettingsJson.decode(job.settingsJson)
+        return saveSettings(job, current.withProfile(profile.settings).constrainedTo(job))
+    }
+
+    suspend fun deleteSettingsProfile(name: String): List<SettingsProfileInfo> {
+        val profile = requireProfile(name)
+        container.prefs.deleteProfile(profile.id)
+        return listSettingsProfiles()
+    }
+
+    private suspend fun requireProfile(name: String) =
+        SettingsProfiles.findByName(container.prefs.currentProfiles(), name)
+            ?: error("No saved profile named \"${name.trim()}\".")
 
     suspend fun updateJobSettings(jobId: String, update: JobSettingsUpdate): JobDetail {
         val job = requireJob(jobId)

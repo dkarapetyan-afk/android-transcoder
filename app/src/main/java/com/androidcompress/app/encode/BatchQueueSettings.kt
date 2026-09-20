@@ -1,15 +1,15 @@
 package com.androidcompress.app.encode
 
-import com.androidcompress.app.data.AudioOption
 import com.androidcompress.app.data.CompressJob
 import com.androidcompress.app.data.ContainerFormat
 import com.androidcompress.app.data.EncodeSettings
 import com.androidcompress.app.data.JobStatus
-import com.androidcompress.app.data.OutputMode
 import com.androidcompress.app.data.Preset
 import com.androidcompress.app.data.SettingsJson
 import com.androidcompress.app.data.TargetSizePreset
+import com.androidcompress.app.data.constrainedTo
 import com.androidcompress.app.data.withContainer
+import com.androidcompress.app.data.withProfile
 
 data class BatchRecipe(
     val preset: Preset,
@@ -41,7 +41,7 @@ object BatchQueueSettings {
 
     fun apply(job: CompressJob, recipe: BatchRecipe): CompressJob {
         val current = SettingsJson.decode(job.settingsJson)
-        var next = EncodeSettings.forPreset(recipe.preset, current.engine).copy(
+        val next = EncodeSettings.forPreset(recipe.preset, current.engine).copy(
             bitrateMode = current.bitrateMode,
             keyframeInterval = current.keyframeInterval,
             h264Profile = current.h264Profile,
@@ -60,18 +60,13 @@ object BatchQueueSettings {
             output = current.output,
             targetSizePreset = TargetSizePreset.OFF,
             targetSizeBytes = null,
-        ).withContainer(recipe.container ?: current.container)
-        next = when {
-            job.isCombine -> next.copy(
-                output = OutputMode.VIDEO,
-                audio = if (next.audio == AudioOption.MUTE) AudioOption.AAC_128 else next.audio,
-            )
-            job.width <= 0 && job.height <= 0 && !job.stillImage -> next.copy(
-                output = OutputMode.AUDIO,
-                audio = if (next.audio == AudioOption.MUTE) AudioOption.AAC_128 else next.audio,
-            )
-            else -> next
-        }
+        ).withContainer(recipe.container ?: current.container).constrainedTo(job)
+        return job.copy(settingsJson = SettingsJson.encode(next))
+    }
+
+    fun apply(job: CompressJob, settings: EncodeSettings): CompressJob {
+        val current = SettingsJson.decode(job.settingsJson)
+        val next = current.withProfile(settings).constrainedTo(job)
         return job.copy(settingsJson = SettingsJson.encode(next))
     }
 }

@@ -256,6 +256,31 @@ fun EncodeSettings.canCopyAudio(source: SourceVideo): Boolean {
     }
 }
 
+/** Clip start/end is per-job, so named profiles store a zero window. */
+fun EncodeSettings.withoutClip(): EncodeSettings = copy(clipStartMs = 0L, clipEndMs = null)
+
+/** Copy every encode option from [profile] except this job's clip window. */
+fun EncodeSettings.withProfile(profile: EncodeSettings): EncodeSettings =
+    profile.copy(clipStartMs = clipStartMs, clipEndMs = clipEndMs)
+        .withContainer(profile.container)
+
+fun EncodeSettings.constrainedTo(job: CompressJob): EncodeSettings = when {
+    job.isCombine -> copy(
+        output = OutputMode.VIDEO,
+        audio = if (audio == AudioOption.MUTE) AudioOption.AAC_128 else audio,
+    )
+    job.width <= 0 && job.height <= 0 && !job.stillImage -> copy(
+        output = OutputMode.AUDIO,
+        audio = if (audio == AudioOption.MUTE) AudioOption.AAC_128 else audio,
+    )
+    else -> this
+}
+
+fun EncodeSettings.matchesProfile(profile: EncodeSettings, job: CompressJob?): Boolean {
+    val applied = withProfile(profile).let { next -> if (job != null) next.constrainedTo(job) else next }
+    return this == applied
+}
+
 fun OutputMode.fileExtension(): String = if (this == OutputMode.AUDIO) "m4a" else "mp4"
 
 fun OutputMode.mimeType(): String = if (this == OutputMode.AUDIO) "audio/mp4" else "video/mp4"

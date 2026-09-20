@@ -36,6 +36,8 @@
     <string name="action_resume">继续</string>
     <string name="action_cancel">取消</string>
     <string name="action_clear">清除</string>
+    <string name="action_save">保存</string>
+    <string name="action_delete">删除</string>
     <string name="app_functions_description">在本机压缩导入的录像、自定义编码设置、启动或等待队列、分享结果并查看进度。</string>
 
     <string name="cd_back">返回</string>
@@ -252,6 +254,19 @@
     <string name="compress_estimate_bytes">%1$s（估计）</string>
     <string name="compress_encoder">编码器</string>
     <string name="compress_preset">预设</string>
+    <string name="compress_profiles">已保存的配置</string>
+    <string name="compress_profiles_hint">保存下方选项，以后可直接加载，不必重新选择。</string>
+    <string name="compress_profiles_label">配置</string>
+    <string name="compress_profiles_placeholder">选择配置</string>
+    <string name="compress_profiles_save">保存配置</string>
+    <string name="compress_profiles_delete">删除配置</string>
+    <string name="compress_profiles_save_title">保存配置</string>
+    <string name="compress_profiles_name">配置名称</string>
+    <string name="compress_profiles_replace">已有同名配置，将被替换。</string>
+    <string name="compress_profiles_empty_name">请输入名称。</string>
+    <string name="compress_profiles_limit">最多可保存 40 个配置。请先删除一个。</string>
+    <string name="compress_profiles_delete_title">删除此配置？</string>
+    <string name="compress_profiles_delete_body">将“%1$s”从已保存配置中移除。当前编码选项保持不变。</string>
     <string name="compress_fit_to_size">适配大小</string>
     <string name="compress_fit_discord">Discord 10 MB</string>
     <string name="compress_fit_whatsapp">WhatsApp 16 MB</string>
