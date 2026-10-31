@@ -18,6 +18,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.SonicAudioProcessor
 import androidx.media3.common.util.Clock
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
@@ -374,6 +375,7 @@ class Media3Transcoder(context: Context) {
         }
     }
 
+    @OptIn(ExperimentalApi::class)
     private fun buildTransformer(
         spec: Media3EncodeSpec,
         onCompleted: () -> Unit,
@@ -445,6 +447,10 @@ class Media3Transcoder(context: Context) {
             )
         if (!spec.removeVideo) {
             builder.setVideoMimeType(spec.videoMimeType)
+            if (spec.stillImage) {
+                // Keep still-image frames from filling the encoder queue and blocking audio muxing.
+                builder.experimentalSetMaxFramesInEncoder(4)
+            }
         }
         if (!spec.removeAudio && !spec.remuxAudio) {
             builder.setAudioMimeType(spec.audioMimeType)
